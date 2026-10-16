@@ -113,7 +113,7 @@ body {
 }
 
 body {
-  font-family: var(--vscode-font-family);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
   color: var(--meo-content-editor-foreground);
   background: var(--meo-background);
   line-height: 1.5em;
@@ -2983,7 +2983,7 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   box-shadow: none;
   /* Offscreen text rendering avoids Windows LCD color fringes on white hints. */
   filter: opacity(1);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
   font-size: 13px;
   font-weight: 400;
   line-height: 18px;
