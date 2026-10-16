@@ -78,6 +78,18 @@ try {
     return layout.visible.length;
   };
   for (const mode of ['source', 'live']) {
+    await prepare(mode);
+    const slashIme = await page.createCDPSession();
+    // Some input methods leave the preedit caret before the slash. Confirming
+    // the same character then changes only the selection, not the document.
+    await slashIme.send('Input.imeSetComposition', { text: '/', selectionStart: 0, selectionEnd: 0 });
+    await slashIme.send('Input.insertText', { text: '/' }); await open();
+    await page.keyboard.type('h1'); await page.keyboard.press('Enter'); await waitText('# ');
+    await prepare(mode);
+    await slashIme.send('Input.imeSetComposition', { text: '/', selectionStart: 0, selectionEnd: 0 });
+    await slashIme.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
+    await page.keyboard.type('word'); await waitText('word'); await closed();
+    await slashIme.detach();
     await prepare(mode); await page.keyboard.type('/'); await open(); await completeRows(mode + ': preferred menu height'); await watchPopup();
     await page.keyboard.type('bold', { delay: 60 }); await open();
     assert.deepEqual(await popupContinuity(), { hiddenFrames: 0, replaced: false }, mode + ': filtering retains the visible popup without blank frames');
@@ -528,6 +540,13 @@ try {
     await page.waitForSelector('tbody textarea'); await page.click('tbody textarea');
     await page.evaluate(pos => (document.activeElement as HTMLTextAreaElement).setSelectionRange(pos, pos), pos);
   };
+  await prepareCell();
+  const cellSlashIme = await page.createCDPSession();
+  await cellSlashIme.send('Input.imeSetComposition', { text: '/', selectionStart: 0, selectionEnd: 0 });
+  await cellSlashIme.send('Input.insertText', { text: '/' }); await open();
+  await page.keyboard.type('bold'); await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).value), '****', 'native cell accepts a slash committed by the IME');
+  await cellSlashIme.detach();
   await prepareCell('', 0, true); await page.keyboard.type('/'); await open();
   assert.equal(await page.$eval('.meo-slash-list', list => (list.lastElementChild as HTMLElement).dataset.command), 'bold', 'native cell uses the fixed upward order');
   await page.keyboard.press('ArrowUp'); await completeRows('native cell: upward navigation');

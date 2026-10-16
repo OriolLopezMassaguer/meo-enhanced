@@ -59,9 +59,12 @@ export function createInputSuggestions(options: {
       if (event.type === 'focusout') {
         queueMicrotask(() => { if (input !== this.view.dom.ownerDocument.activeElement) { this.dismissed = true; this.cellFrom = null; this.cellInput = null; this.fields = []; this.clear(); } }); return;
       }
+      const typed = event as InputEvent;
+      // Native textarea IME commits do not emit an insertText input event.
+      if (this.cellFrom === null && typed.data === '/' && (event.type === 'compositionend' || event.type === 'input' && typed.inputType === 'insertText') && input.selectionStart === input.selectionEnd && input.value[input.selectionStart - 1] === '/') {
+        this.cellInput = input; this.cellFrom = input.selectionStart - 1; this.selectedCommand = ''; this.resolvedQuery = ''; this.above = null;
+      }
       if (event.type === 'input') {
-        const typed = event as InputEvent;
-        if (this.cellFrom === null && typed.inputType === 'insertText' && typed.data === '/') { this.cellInput = input; this.cellFrom = input.selectionStart - 1; this.selectedCommand = ''; this.resolvedQuery = ''; this.above = null; }
         if (this.fieldInput === input && this.fields.length) {
           const before = this.fieldValue, after = input.value;
           let start = 0, end = before.length, nextEnd = after.length;
@@ -348,7 +351,7 @@ export function createInputSuggestions(options: {
       if (outline && !outline.hidden) {
         const bounds = outline.getBoundingClientRect();
         if (bounds.bottom > top && bounds.top < bottom) {
-          if (outline.classList.contains('outline-left')) left = Math.max(left, bounds.right + 8);
+          if (outline.closest<HTMLElement>('[data-outline-position]')?.dataset.outlinePosition === 'left') left = Math.max(left, bounds.right + 8);
           else right = Math.min(right, bounds.left - 8);
         }
       }
@@ -518,7 +521,15 @@ export function createInputSuggestions(options: {
     keydown(event) { return this.keydown(event); },
     blur() { this.dismissed = true; this.slashFrom = null; this.fields = []; this.clear(); return false; },
     compositionstart() { this.composing = true; return false; },
-    compositionend() { this.composing = false; this.schedule(); return false; }
+    compositionend(event) {
+      this.composing = false;
+      const head = this.view.state.selection.main.head;
+      // IME confirmation can move the caret without inserting the slash again.
+      if (this.slashFrom === null && event.data === '/' && this.view.state.selection.main.empty && head > 0 && this.view.state.sliceDoc(head - 1, head) === '/') {
+        this.slashFrom = head - 1; this.selectedCommand = ''; this.resolvedQuery = ''; this.above = null;
+      }
+      this.schedule(); return false;
+    }
   } });
   return plugin;
 }

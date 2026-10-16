@@ -27,7 +27,7 @@ try {
   });
   const imagePages = new WeakSet<object>();
   const chord = async (key: string) => { await page.keyboard.down('Control'); await page.keyboard.press(key); await page.keyboard.up('Control'); };
-  const openFixture = async (text = 'hello\n\n# Heading\n\ntext', mode: 'source' | 'live' = 'source', stubMermaid = false) => {
+  const openFixture = async (text = 'hello\n\n# Heading\n\ntext', mode: 'source' | 'live' = 'source', stubMermaid = false, outline: 'left' | 'right' | 'hidden' = 'hidden') => {
     if (!imagePages.has(page)) {
       await page.exposeFunction('__imageLocationHost', (request: ImageLocationRequest) => imageHost.handle(request, 'settings-document'));
       await page.exposeFunction('__imageSaveHost', async (request: {requestId: string; imageData: string; fileName: string}) => {
@@ -75,7 +75,7 @@ try {
           });
         }
         if(message.type==='editorService') {
-          const value=message.action==='links'?{candidates:[]}:{text:message.action==='readClipboard'?window.__clipboard:''};
+          const value=message.action==='links'?{candidates:window.__linkCandidates??[]}:{text:message.action==='readClipboard'?window.__clipboard:''};
           if(message.action==='writeClipboard') window.__clipboard=message.text;
           const reply=()=>queueMicrotask(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'editorServiceResult',requestId:message.requestId,result:{ok:true,value}}})));
           if(message.action==='readClipboard' && window.__holdNextClipboardRead) { window.__holdNextClipboardRead=false; window.__flushClipboardRead=reply; } else reply();
@@ -84,12 +84,70 @@ try {
     ` });
     if (stubMermaid) await page.evaluate(() => { (window as any).mermaid = { initialize() {}, async render() { return { svg: '<svg viewBox="0 0 120 60"><text x="4" y="20">diagram</text></svg>' }; } }; });
     await page.addScriptTag({ content: await build.outputs[0].text() });
-    await page.evaluate(({ text, mode }) => {
+    await page.evaluate(({ text, mode, outline }) => {
       const global = window as any; global.__preferences = { input: { ...global.EditingSettingsHarness.defaultInputAssistance }, shortcuts: {} };
       global.__initMessage = { type: 'init', documentId: 'file:///settings.md', text, version: 1, savedRevision: { version: 1, text }, diagnostics: [], mode, uiLanguage: 'zh-CN', uiLanguagePreference: 'zh-CN', automaticUiLanguage: 'zh-CN', sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, previewShowComments: false, editorAppearance: 'dark', gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, vscodeTheme: null, editingPreferences: global.__preferences, editingPreferencesRevision: 0 };
+      global.__initMessage.outlinePosition = outline === 'left' ? 'left' : 'right';
+      global.__initMessage.outlineVisible = outline !== 'hidden';
       window.dispatchEvent(new MessageEvent('message', { data: global.__initMessage }));
-    }, { text, mode });
+    }, { text, mode, outline });
   };
+  // Use the real outline controller: its position is owned by the wrapper,
+  // and floating outlines overlap the editor rather than reserving a column.
+  for (const mode of ['source', 'live'] as const) for (const outline of ['left', 'right', 'hidden'] as const) for (const floating of outline === 'hidden' ? [false] : [false, true]) {
+    const label = `${mode}/${outline}/${floating ? 'floating' : 'fixed'}`;
+    await openFixture('', mode, false, outline);
+    await page.waitForSelector('.editor-wrapper:not(.meo-preload-editor-shell) .cm-content');
+    if (floating) await page.click('.outline-header-button[data-action="toggle-mode"]');
+    await page.evaluate(() => {
+      const g = window as any;
+      g.__preferences.input.emoji = true;
+      g.__linkCandidates = [{ label: 'note.md', insert: 'note', detail: 'note.md' }];
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'editingPreferencesChanged', preferences: g.__preferences, revision: ++g.__revision } }));
+    });
+    // A floating left outline covers the start of each line. Keep the input
+    // anchor in visible prose so this exercises placement, not occlusion.
+    const prefix = floating ? 'Visible text '.repeat(4) : '';
+    for (const [name, before, after, typed, expected] of [
+      ['slash', prefix, '', floating ? '/bold' : '/h1', floating ? prefix + '****' : '# '],
+      ['emoji', prefix, '', ':smile', prefix + '😄'],
+      ['wiki', prefix + '[[', ']]', 'no', prefix + '[[note]]'],
+      ['path', prefix + '[File](', ')', 'no', prefix + '[File](note)'],
+      ['heading', '# Target\n\n' + prefix + '[Go](#', ')', 'ta', '# Target\n\n' + prefix + '[Go](#target)']
+    ]) {
+      await page.evaluate(({ before, after }) => {
+        const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: before + after }, selection: { anchor: before.length }, scrollIntoView: true });
+        view.focus();
+      }, { before, after });
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.keyboard.type(typed);
+      await page.waitForSelector('.meo-input-suggestions:not([hidden])', { timeout: 2000 });
+      const bounds = await page.evaluate(() => {
+        const popup = document.querySelector('.meo-input-suggestions')!.getBoundingClientRect();
+        const scroller = document.querySelector('.cm-scroller')!.getBoundingClientRect();
+        const sidebar = document.querySelector('.outline-sidebar')!.getBoundingClientRect();
+        return { popup: popup.toJSON(), scroller: scroller.toJSON(), sidebar: sidebar.toJSON() };
+      });
+      assert.ok(bounds.popup.left >= bounds.scroller.left && bounds.popup.right <= bounds.scroller.right, `${label}/${name}: menu stays inside the editor`);
+      if (outline === 'left') assert.ok(bounds.popup.left >= bounds.sidebar.right, `${label}/${name}: menu clears the left outline`);
+      if (outline === 'right') assert.ok(bounds.popup.right <= bounds.sidebar.left, `${label}/${name}: menu clears the right outline`);
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(expected => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() === expected, { timeout: 2000 }, expected);
+    }
+    if (mode === 'live') {
+      await page.evaluate(prefix => {
+        const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '| A |\n| --- |\n| ' + prefix + ' |' }, selection: { anchor: 0 }, scrollIntoView: true });
+      }, prefix);
+      await page.waitForSelector('tbody textarea');
+      await page.evaluate(() => { const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!; input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
+      await page.keyboard.type('/bold');
+      await page.waitForSelector('.meo-input-suggestions:not([hidden])', { timeout: 2000 });
+      await page.keyboard.press('Enter');
+      assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).value), prefix.trimEnd() + '****', label + ': native table slash command executes');
+    }
+  }
   await openFixture();
   await page.waitForSelector('.cm-editor');
   await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
