@@ -2236,6 +2236,12 @@ button:focus-visible > .menu-switch {
   background-color: var(--meo-ui-surface-hover);
 }
 
+.format-button:disabled {
+  color: var(--meo-ui-text-disabled, var(--meo-ui-text-muted));
+  cursor: default;
+  background-color: transparent;
+}
+
 .format-button.is-discard-armed:hover {
   color: #fff;
   background-color: #bc4b42;

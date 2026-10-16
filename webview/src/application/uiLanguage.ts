@@ -276,6 +276,10 @@ export type UiStrings = Readonly<{
   editInSource: string;
   save: string;
   saveDocument: string;
+  saveAs: string;
+  saveAsFailed: string;
+  undo: string;
+  redo: string;
   reloadDiskVersion: string;
   reloadDiskVersionDoubleClick: string;
   constrainContentWidth: string;
@@ -483,6 +487,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     codeBlock: 'Code block', quote: 'Blockquote', horizontalRule: 'Horizontal rule',
     link: 'Link', wikiLink: 'Wiki link', image: 'Image', table: 'Insert table', line: 'Lines',
     goToLine: 'Go to line', editInSource: 'Click to reveal in source', save: 'Save', saveDocument: 'Save document',
+    saveAs: 'Save as…', saveAsFailed: 'Save As failed', undo: 'Undo', redo: 'Redo',
     reloadDiskVersion: 'Reload (discard unsaved changes)', reloadDiskVersionDoubleClick: 'Confirm reload (discard unsaved changes)',
     constrainContentWidth: 'Constrain Content Width', constrainWidth: 'Limit content width',
     disableConstrainedWidth: 'Disable Constrained Width',
@@ -695,6 +700,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     showOutlineRight: '在右侧显示目录', codeBlock: '代码块', quote: '引用',
     horizontalRule: '分隔线', link: '链接', wikiLink: 'Wiki 链接', image: '图片', table: '插入表格',
     line: '行号', goToLine: '跳转到行', editInSource: '点击定位源码', save: '保存', saveDocument: '保存文档',
+    saveAs: '另存为…', saveAsFailed: '另存为失败', undo: '撤销', redo: '重做',
     reloadDiskVersion: '重新加载（放弃未保存内容）', reloadDiskVersionDoubleClick: '确认重新加载（放弃未保存内容）',
     constrainContentWidth: '限制内容宽度', constrainWidth: '限制宽度',
     disableConstrainedWidth: '取消内容宽度限制',

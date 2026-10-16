@@ -13,7 +13,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, FileOutput, Undo2, Redo2, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -40,6 +40,7 @@ import { createMermaidDiagramPresentationFactory } from './editor/mermaidDiagram
 import { isAcceptedLineJumpInput, parseLineJumpTarget } from './helpers/lineJump';
 import { createEditorNoticeController } from './helpers/notices';
 import { createDocumentCopyTransport } from './adapters/documentCopyTransport';
+import { createDocumentSaveAsTransport } from './adapters/documentSaveAsTransport';
 import { createPreviewController } from './helpers/preview';
 import type { ViewportAnchorToken } from './helpers/viewportController';
 import { createDocumentScrollToTopController } from './helpers/scrollToTop';
@@ -857,6 +858,40 @@ saveBtn.dataset.tooltip = activeUiStrings.save;
 saveBtn.setAttribute('aria-label', activeUiStrings.saveDocument);
 saveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
 
+const saveAsBtn = document.createElement('button');
+saveAsBtn.type = 'button';
+saveAsBtn.className = 'format-button';
+saveAsBtn.dataset.action = 'saveAs';
+saveAsBtn.dataset.tooltip = activeUiStrings.saveAs;
+saveAsBtn.setAttribute('aria-label', activeUiStrings.saveAs);
+saveAsBtn.appendChild(createElement(FileOutput, { width: 18, height: 18 }));
+saveAsBtn.disabled = true;
+const undoBtn = document.createElement('button');
+undoBtn.type = 'button';
+undoBtn.className = 'format-button';
+undoBtn.dataset.action = 'undo';
+undoBtn.dataset.tooltip = activeUiStrings.undo;
+undoBtn.setAttribute('aria-label', activeUiStrings.undo);
+undoBtn.appendChild(createElement(Undo2, { width: 18, height: 18 }));
+undoBtn.disabled = true;
+const redoBtn = document.createElement('button');
+redoBtn.type = 'button';
+redoBtn.className = 'format-button';
+redoBtn.dataset.action = 'redo';
+redoBtn.dataset.tooltip = activeUiStrings.redo;
+redoBtn.setAttribute('aria-label', activeUiStrings.redo);
+redoBtn.appendChild(createElement(Redo2, { width: 18, height: 18 }));
+redoBtn.disabled = true;
+let historyAvailability = { undo: false, redo: false };
+let historyActionPending = false;
+let saveAsPending = false;
+const refreshDocumentActionButtons = (): void => {
+  saveAsBtn.disabled = !editor || saveAsPending;
+  const editable = !!editor && root.dataset.mode !== 'preview' && !historyActionPending;
+  undoBtn.disabled = !editable || !historyAvailability.undo;
+  redoBtn.disabled = !editable || !historyAvailability.redo;
+};
+
 const discardBtn = document.createElement('button');
 discardBtn.type = 'button';
 discardBtn.className = 'format-button';
@@ -870,6 +905,9 @@ formatGroup.append(
   outlineLeftBtn,
   lineJumpControl,
   saveBtn,
+  saveAsBtn,
+  undoBtn,
+  redoBtn,
   discardBtn,
   outlineLeftSeparator,
   headingWrapper,
@@ -1199,6 +1237,10 @@ const applyUiLanguage = (language: UiLanguage): void => {
   lineJumpInput.setAttribute('aria-label', strings.goToLine);
   saveBtn.dataset.tooltip = strings.save;
   saveBtn.setAttribute('aria-label', strings.saveDocument);
+  for (const [button, text] of [[saveAsBtn, strings.saveAs], [undoBtn, strings.undo], [redoBtn, strings.redo]] as const) {
+    button.dataset.tooltip = text;
+    button.setAttribute('aria-label', text);
+  }
   discardBtn.dataset.tooltip = discardBtn.classList.contains('is-discard-armed')
     ? strings.reloadDiskVersionDoubleClick
     : strings.reloadDiskVersion;
@@ -2723,6 +2765,13 @@ const documentCopyTransport = createDocumentCopyTransport({
   getCurrentText: () => editor?.getTextForSave() ?? pendingInitialText,
   whenDocumentIdle: () => documentSessionAdapter.whenIdle()
 });
+const documentSaveAsTransport = createDocumentSaveAsTransport({
+  getUiLanguage: () => activeUiLanguage,
+  postMessage: message => vscode.postMessage(message),
+  commitTransientEdits: commitEditorTransientEdits,
+  getCurrentText: () => editor?.getTextForSave() ?? pendingInitialText,
+  whenDocumentIdle: () => documentSessionAdapter.whenIdle()
+});
 
 const saveCopyAction = (emphasis: 'primary' | 'secondary' = 'primary'): EditorNoticeAction => ({
   id: 'save-copy',
@@ -2785,6 +2834,32 @@ const requestSave = () => {
 saveBtn.addEventListener('click', () => {
   void requestSave();
 });
+saveAsBtn.addEventListener('click', async () => {
+  if (saveAsPending || !editor) return;
+  saveAsPending = true;
+  failureNotice.clearFailureNotice('document-save-as');
+  refreshDocumentActionButtons();
+  try {
+    const result = await documentSaveAsTransport.save();
+    if (!result.ok) failureNotice.setFailureNotice(() => ({
+      title: activeUiStrings.saveAsFailed, message: result.error.message
+    }), 'error', 'document-save-as');
+  } finally {
+    saveAsPending = false;
+    refreshDocumentActionButtons();
+  }
+});
+for (const [button, direction] of [[undoBtn, 'undo'], [redoBtn, 'redo']] as const) {
+  button.addEventListener('pointerdown', event => event.preventDefault());
+  button.addEventListener('click', async () => {
+    if (!editor || historyActionPending || root.dataset.mode === 'preview') return;
+    historyActionPending = true;
+    refreshDocumentActionButtons();
+    try { await editor[direction](); }
+    catch (error) { logWebviewRenderError(`toolbar.${direction}`, error); }
+    finally { historyActionPending = false; refreshDocumentActionButtons(); }
+  });
+}
 
 const shortcutHandlerContext: ShortcutHandlerContext = {
   get editor() { return editor; },
@@ -2828,6 +2903,10 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     onOpenLink: (href: string) => vscode.postMessage({ type: 'openLink', href }),
     onCommentBlocked: () => editorNotice.setEditorNotice(activeUiStrings.commentSelectionBlocked),
     onSelectionChange: (state: any) => selectionMenuController.update(state),
+    onHistoryAvailabilityChange: availability => {
+      historyAvailability = availability;
+      queueMicrotask(refreshDocumentActionButtons);
+    },
     onSourcePositionChange: (change) => {
       sourcePreviewPosition = { line: change.line, active: change.active };
       const canReveal = change.revealIfOutside
@@ -3029,6 +3108,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
   },
   presentModeControl(mode) {
     root.dataset.mode = mode;
+    refreshDocumentActionButtons();
     outlineController.refreshAppearance();
     modeControl.setActive(mode);
     changesReviewMode = mode;
@@ -3475,6 +3555,10 @@ window.addEventListener('message', (event) => {
     documentCopyTransport.accept(message);
     return;
   }
+  if (message.type === 'documentSaveAsResult') {
+    documentSaveAsTransport.accept(message);
+    return;
+  }
   if (themeAdapter.accept(message)) {
     return;
   }
@@ -3751,6 +3835,7 @@ window.addEventListener('beforeunload', () => {
   documentSessionAdapter.dispose();
   documentSaveFlushAdapter.dispose();
   documentCopyTransport.dispose();
+  documentSaveAsTransport.dispose();
   previewAdapter.dispose();
   exportAdapter.dispose();
   editorFocusController.dispose();
@@ -4046,7 +4131,7 @@ scheduleEditorBundleWarmupAfterReady();
 
 function refreshShortcutHints(): void {
   const keys = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
-  const controls: [HTMLElement, EditorCommandId][] = [[saveBtn, 'save'], [findToggleBtn, 'find'], [bulletListBtn, 'bullet'], [numberedListBtn, 'ordered'], [taskBtn, 'taskList'], [codeBlockBtn, 'codeBlock'], [quoteBtn, 'quote'], [hrBtn, 'rule'], [linkBtn, 'link'], [wikiLinkBtn, 'wikiLink'], [imageBtn, 'image'], [tableBtn, 'insertTable']];
+  const controls: [HTMLElement, EditorCommandId][] = [[saveBtn, 'save'], [undoBtn, 'undo'], [redoBtn, 'redo'], [findToggleBtn, 'find'], [bulletListBtn, 'bullet'], [numberedListBtn, 'ordered'], [taskBtn, 'taskList'], [codeBlockBtn, 'codeBlock'], [quoteBtn, 'quote'], [hrBtn, 'rule'], [linkBtn, 'link'], [wikiLinkBtn, 'wikiLink'], [imageBtn, 'image'], [tableBtn, 'insertTable']];
   for (const option of headingDropdown.querySelectorAll<HTMLElement>('[data-level]')) {
     controls.push([option, ('heading' + option.dataset.level) as EditorCommandId]);
   }

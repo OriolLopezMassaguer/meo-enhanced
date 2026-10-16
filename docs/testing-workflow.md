@@ -169,6 +169,17 @@ exact commands without running them.
 
 ## Daily repair loop
 
+`scripts/test-document-save-as.ts` checks strict request/response codecs, draft
+preparation, document-specific native Save As, cancellation, failures, duplicate
+requests and replacement of the old panel before completion. It distinguishes a
+saved file from failure to reopen its Markdown target in MEO.
+`scripts/test-document-toolbar.ts` exercises the production toolbar order,
+Live/Source undo/redo, pending native table cells, Save As snapshots and retries,
+Preview restrictions, user shortcut hints and light/dark Chinese/English layouts.
+Narrow layouts use the existing overflow menu. Host API contracts and browser
+clicks are separate evidence; native dialogs and final installed-VSIX replacement
+still require native acceptance.
+
 `scripts/test-list-toolbar-browser.ts` checks all three toolbar list actions in Live
 and Source with monospaced/proportional fonts: empty and nonempty caret placement,
 indented markers, immediate task layout without overshoot, conversion, cancellation,

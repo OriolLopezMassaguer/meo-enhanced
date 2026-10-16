@@ -227,6 +227,8 @@ type CreateEditorOptions = {
   onOpenLink?: (href: string) => void;
   onCommentBlocked?: () => void;
   onSelectionChange?: (state: SelectionMenuState & { from?: number; to?: number }) => void;
+  /** Includes confirmed native-cell drafts; unfinished IME input keeps history unavailable. */
+  onHistoryAvailabilityChange?: (availability: { undo: boolean; redo: boolean }) => void;
   onSourcePositionChange?: (change: SourcePositionChange) => void;
   onGitDiffSummaryChange?: (summary: ChangesReviewDiffSummary) => void;
   onViewportChange?: () => void;
@@ -377,6 +379,7 @@ export function createEditor({
   onOpenLink,
   onCommentBlocked,
   onSelectionChange,
+  onHistoryAvailabilityChange,
   onSourcePositionChange,
   onGitDiffSummaryChange,
   onViewportChange,
@@ -1135,6 +1138,24 @@ export function createEditor({
       return false;
     }
     return commitPendingTableEdits(view);
+  };
+  let historyCompositionActive = false;
+  let previousHistoryAvailability = '';
+  const emitHistoryAvailability = () => {
+    if (!view || !onHistoryAvailabilityChange) return;
+    const input = getActiveTableInput();
+    const range = input ? getTableInputSourceRange(input) : null;
+    const pendingCell = input && range
+      ? tableCellEditorValueToSource(input.value) !== view.state.doc.sliceString(range.from, range.to) : false;
+    const composing = historyCompositionActive || imeCompositionActive;
+    const availability = {
+      undo: !composing && (pendingCell || undoDepth(view.state) > 0),
+      redo: !composing && !pendingCell && redoDepth(view.state) > 0
+    };
+    const key = `${availability.undo}:${availability.redo}`;
+    if (key === previousHistoryAvailability) return;
+    previousHistoryAvailability = key;
+    onHistoryAvailabilityChange(availability);
   };
 
   const restoreTableModeSelection = (
@@ -2670,6 +2691,7 @@ export function createEditor({
             searchOverviewRuler?.refresh({ positionsChanged: update.docChanged || searchQueryChanged });
           });
         }
+        if (!liveDerivedRefresh) emitHistoryAvailability();
       })
     ]
   });
@@ -2745,6 +2767,16 @@ export function createEditor({
   // CodeMirror filters events owned by embedded editors. Their projected
   // changes still belong to this document and must share its IME save boundary.
   const onNestedComposition = (event: Event) => {
+    const compositionEnded = event.type === 'compositionend' || event.type === 'blur'
+      || (event.type === 'beforeinput' && event instanceof InputEvent
+        && event.inputType === 'insertText' && !event.isComposing);
+    if (event.type === 'compositionstart' || compositionEnded) {
+      historyCompositionActive = event.type === 'compositionstart';
+      emitHistoryAvailability();
+      if (compositionEnded) {
+        queueMicrotask(() => { if (!editorDestroyed) emitHistoryAvailability(); });
+      }
+    }
     const content = event.target instanceof Element ? event.target.closest('.cm-content') : null;
     if (!content || content === view.contentDOM) return;
     if (event.type === 'compositionstart') startImeComposition();
@@ -3091,6 +3123,7 @@ export function createEditor({
   view.dom.addEventListener('meo-activate-image', onWidgetActivateImage);
   onTableSelectionChange = () => {
     emitSelectionChange();
+    emitHistoryAvailability();
   };
   view.dom.addEventListener('meo-table-selection-change', onTableSelectionChange);
   onHtmlContentPointerDown = (event) => {
@@ -3269,6 +3302,7 @@ export function createEditor({
   }
   emitSelectionChange();
   emitSourcePositionChange(view.hasFocus);
+  emitHistoryAvailability();
 
   return {
     view,

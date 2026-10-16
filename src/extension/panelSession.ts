@@ -24,6 +24,7 @@ import type { HostViewNavigationPort } from '../application/hostViewNavigationLi
 import type { ReadingPositionPort } from '../application/readingPositionMemory';
 import {
   EXTENSION_CONFIG_SECTION,
+  MARKDOWN_EDITOR_VIEW_TYPE,
   GIT_CHANGES_GUTTER_SETTING_KEY,
   GIT_DIFF_DETAILS_VISIBLE_SETTING_KEY,
   DIFF_BASELINE_MODE_SETTING_KEY,
@@ -86,6 +87,7 @@ import { createExportSnapshotTransport } from '../host/exportSnapshotTransport';
 import { respondToDocumentSessionRequest } from '../host/documentSessionRequestHandler';
 import { createVscodeDocumentReloadAdapter } from '../host/vscodeDocumentReloadAdapter';
 import { createVscodeDocumentCopyAdapter } from '../host/vscodeDocumentCopyAdapter';
+import { createVscodeDocumentSaveAsAdapter } from '../host/vscodeDocumentSaveAsAdapter';
 import { showSavedDocumentCopyFeedback } from '../host/vscodeDocumentCopyFeedback';
 import { createVscodeDocumentSaveLifecycleAdapter } from '../host/vscodeDocumentSaveLifecycleAdapter';
 import type { createImageStorageHost } from '../host/imageStorage';
@@ -357,6 +359,12 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     document,
     postMessage: postToWebview,
     showFailure: (message) => { void vscode.window.showWarningMessage(message); }
+  });
+  const documentSaveAsAdapter = createVscodeDocumentSaveAsAdapter(document, {
+    getUiLanguage,
+    markdownEditorViewType: MARKDOWN_EDITOR_VIEW_TYPE,
+    runPreparedSave: save => documentSaveLifecycle.runPreparedSave(save),
+    onFailure: message => { void vscode.window.showErrorMessage(message); }
   });
   let requestDiffBaselineRefresh = (_options: GitBaselineRefreshOptions): void => undefined;
   const diffBaselineSelection = createDiffBaselineSelection<GitBaselinePayload>({
@@ -1045,6 +1053,11 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await postToWebview(response);
         return;
       }
+      case 'saveDocumentAs': {
+        const response = await documentSaveAsAdapter.handle(raw);
+        await postToWebview(response);
+        return;
+      }
       case 'saveImageFromClipboard': {
         const response = await handleSaveImageFromClipboard(raw, documentUri);
         await postToWebview(response);
@@ -1187,6 +1200,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     savedRevisionLifecycle.dispose();
     documentSaveLifecycle.dispose();
     documentCopyAdapter.dispose();
+    documentSaveAsAdapter.dispose();
 
     runBackground(enqueue(async () => {
       try {
