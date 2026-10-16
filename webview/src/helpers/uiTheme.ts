@@ -161,7 +161,9 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
 
     if (paletteCache?.key !== key) {
       const hover = highContrast ? raised : compatibleSurface(mix(raised, tint, appearance === 'light' ? 0.04 : 0.08));
-      const pressed = highContrast ? raised : compatibleSurface(mix(raised, tint, appearance === 'light' ? 0.08 : 0.13));
+      // A brief press needs a stronger fill than hover, including when high
+      // contrast keeps hover on the base surface and press outlines are absent.
+      const pressed = compatibleSurface(mix(raised, tint, appearance === 'light' ? 0.14 : 0.22));
       const selected = nativeSelection ?? compatibleSurface(mix(raised, tint, appearance === 'light' ? 0.10 : 0.17));
       const field = highContrast ? raised : compatibleSurface(mix(raised, appearance === 'light' ? white : black, appearance === 'light' ? 0.30 : 0.08));
       const track = highContrast ? surface : compatibleSurface(mix(surface, tint, appearance === 'light' ? 0.12 : 0.17));

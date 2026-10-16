@@ -138,11 +138,11 @@ async function main(): Promise<void> {
         }
         throw new Error(`Timed out waiting for ${label}`);
       };
-      const pointer = (button: HTMLButtonElement) => button.dispatchEvent(new PointerEvent('pointerdown', {
-        button: 0,
-        bubbles: true,
-        cancelable: true
-      }));
+      const pointer = (button: HTMLButtonElement) => {
+        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        button.dispatchEvent(new PointerEvent('pointerup', { button: 0, bubbles: true, cancelable: true }));
+        return button.dispatchEvent(new MouseEvent('click', { button: 0, bubbles: true, cancelable: true }));
+      };
 
       await waitUntil(() => Boolean(document.querySelector('.meo-md-html-table-shell tbody textarea')), 'table mount');
       await frames(8);
@@ -709,6 +709,82 @@ async function main(): Promise<void> {
       );
     };
     await resetTrustedClickScenario();
+    await trustedMouseClick('.meo-md-html-table-context-collapse');
+    const triggerSelector = '.meo-md-html-table-context-trigger';
+    await page.hover(triggerSelector);
+    await page.mouse.down();
+    await waitForFrames(page, 8);
+    assert.equal(await page.$eval('.meo-md-html-table-context-menu', menu => (menu as HTMLElement).hidden), true,
+      'holding the table trigger must show press feedback before opening the toolbar');
+    assert.equal(await page.$eval(triggerSelector, trigger => trigger.matches(':active')), true);
+    await page.mouse.move(850, 580);
+    await page.mouse.up();
+    assert.equal(await page.$eval('.meo-md-html-table-context-menu', menu => (menu as HTMLElement).hidden), true,
+      'releasing outside the trigger must cancel opening');
+    await trustedMouseClick(triggerSelector);
+    await trustedMouseClick('.meo-md-html-table-context-next');
+    const alignmentCommand = await page.$eval(
+      '.meo-md-html-table-context-btn[role="menuitemradio"][aria-checked="false"]',
+      button => (button as HTMLElement).dataset.command!
+    );
+    const alignmentSelector = `.meo-md-html-table-context-btn[data-command="${alignmentCommand}"]`;
+    const beforePress = await page.evaluate(() => {
+      const input = document.activeElement as HTMLTextAreaElement;
+      return { text: (window as any).__tableContextMenuEditor.getText(), start: input.selectionStart, end: input.selectionEnd };
+    });
+    await page.hover(alignmentSelector);
+    await waitForFrames(page, 8);
+    const hoverBackground = await page.$eval(alignmentSelector, button => getComputedStyle(button).backgroundColor);
+    await page.mouse.down();
+    await waitForFrames(page, 8);
+    const pressAppearance = await page.$eval(alignmentSelector, button => {
+      const style = getComputedStyle(button);
+      return { active: button.matches(':active'), background: style.backgroundColor, shadow: style.boxShadow };
+    });
+    assert.equal(pressAppearance.active, true, 'a held action must retain its actual native pressed state');
+    assert.equal(pressAppearance.shadow, 'none', 'press feedback must not add an inset outline');
+    const hoverChannels = parseComputedColor(hoverBackground);
+    const pressChannels = parseComputedColor(pressAppearance.background);
+    assert.ok(Math.max(...(['red', 'green', 'blue'] as const).map(channel =>
+      Math.abs(hoverChannels[channel] - pressChannels[channel]))) >= 20,
+    'pressed and hover fills must be visibly separated in the default palette');
+    assert.equal(await page.evaluate(() => (window as any).__tableContextMenuEditor.getText()), beforePress.text,
+      'holding an action must preserve the document and active cell until release');
+    assert.deepEqual(await page.evaluate(() => {
+      const input = document.activeElement as HTMLTextAreaElement;
+      return { tag: input.tagName, start: input.selectionStart, end: input.selectionEnd };
+    }), { tag: 'TEXTAREA', start: beforePress.start, end: beforePress.end });
+    await page.mouse.move(850, 580);
+    await page.mouse.up();
+    assert.equal(await page.evaluate(() => (window as any).__tableContextMenuEditor.getText()), beforePress.text,
+      'releasing outside an action must cancel the command');
+    await trustedMouseClick(alignmentSelector);
+    await page.waitForFunction(selector => document.querySelector(selector)?.getAttribute('aria-checked') === 'true', {}, alignmentSelector);
+    await page.hover(alignmentSelector);
+    await page.mouse.down();
+    assert.equal(await page.$eval(alignmentSelector, button => getComputedStyle(button).boxShadow), 'none',
+      'the selected action also clears its inset outline while pressed');
+    await page.mouse.move(850, 580);
+    await page.mouse.up();
+    await page.focus(alignmentSelector);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.$eval('.meo-md-html-table-context-menu', menu => (menu as HTMLElement).hidden), true);
+    await page.focus(triggerSelector);
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.$eval('.meo-md-html-table-context-menu', menu => (menu as HTMLElement).hidden), false);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.activeElement!).outlineStyle), 'solid',
+      'keyboard focus remains visible independently of the press fill');
+    await trustedMouseClick('.meo-md-html-table-context-next');
+    for (const key of ['Enter', 'Space']) {
+      const command = await page.$eval(
+        '.meo-md-html-table-context-btn[role="menuitemradio"][aria-checked="false"]',
+        button => (button as HTMLElement).dataset.command!
+      );
+      const selector = `.meo-md-html-table-context-btn[data-command="${command}"]`;
+      await page.focus(selector);
+      await page.keyboard.press(key);
+      await page.waitForFunction(target => document.querySelector(target)?.getAttribute('aria-checked') === 'true', {}, selector);
+    }
     await trustedClick('Move column right', 'button[data-tooltip="Move column right"]');
     await trustedClick('Insert row below', 'button[data-tooltip="Insert row below"]');
     await trustedClick('Insert column right', 'button[data-tooltip="Insert column right"]');

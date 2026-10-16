@@ -76,11 +76,11 @@ async function main() {
           queueMicrotask(check);
         });
       };
-      const pointer = (button: HTMLButtonElement) => button.dispatchEvent(new PointerEvent('pointerdown', {
-        button: 0,
-        bubbles: true,
-        cancelable: true
-      }));
+      const pointer = (button: HTMLButtonElement) => {
+        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        button.dispatchEvent(new PointerEvent('pointerup', { button: 0, bubbles: true, cancelable: true }));
+        return button.dispatchEvent(new MouseEvent('click', { button: 0, bubbles: true, cancelable: true }));
+      };
       const editor = harness.createEditor({
         parent: app,
         text: [
@@ -661,7 +661,7 @@ async function main() {
       await page.evaluate((title) => {
         const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-md-html-table-context-btn'))
           .find((candidate) => candidate.dataset.tooltip === title)!;
-        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        button.click();
       }, matrixCase.title);
       await page.waitForFunction((expected) => (
         (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === expected
@@ -741,7 +741,7 @@ async function main() {
       const before = editor.getHistoryDepth();
       const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-md-html-table-context-btn'))
         .find(button => button.dataset.tooltip === 'Align selected column center')!;
-      button.dispatchEvent(new PointerEvent('pointerdown', {button: 0, bubbles: true, cancelable: true}));
+      button.click();
       return {before, after: editor.getHistoryDepth(), text: editor.getText()};
     });
     assert.deepEqual(pendingCommand.before, {undo: 0, redo: 0});
@@ -784,7 +784,7 @@ async function main() {
       await page.evaluate((label) => {
         const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-md-html-table-context-btn'))
           .find((candidate) => candidate.dataset.tooltip === label)!;
-        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        button.click();
       }, title);
     };
 

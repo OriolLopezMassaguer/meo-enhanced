@@ -5485,13 +5485,15 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     }
     button.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
+      // Preserve the cell selection; activate on click so a held button can
+      // paint its native pressed state before a command replaces the table DOM.
       event.preventDefault();
       event.stopPropagation();
-      onClick();
     });
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (event.button === 0 && !button.disabled) onClick();
     });
     button.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -5791,6 +5793,11 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+    });
+    trigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.button !== 0) return;
       if (menu.hidden) this.setContextPage('structure');
       this.setContextMenuOpen(menu.hidden);
     });

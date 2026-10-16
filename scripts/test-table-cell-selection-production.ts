@@ -386,7 +386,7 @@ async function main() {
     }
     await page.evaluate(() => {
       document.querySelector<HTMLButtonElement>('button[data-tooltip="Delete column"]')!
-        .dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        .click();
     });
     await page.waitForFunction(() => (window as any).__selectionEditor.getText().startsWith('| <tag> |'));
     await page.evaluate((text) => (window as any).__selectionEditor.setText(text), source);

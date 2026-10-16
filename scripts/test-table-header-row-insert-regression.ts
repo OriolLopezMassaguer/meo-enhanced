@@ -66,11 +66,11 @@ async function main(): Promise<void> {
       headerInput.focus();
       headerInput.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
       const trigger = document.querySelector<HTMLButtonElement>('.meo-md-html-table-context-trigger')!;
-      trigger.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+      trigger.click();
       const insertBelow = document.querySelector<HTMLButtonElement>(
         '.meo-md-html-table-context-btn[data-command="insert-row-below"]'
       )!;
-      insertBelow.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+      insertBelow.click();
       await waitUntil(() => editor.view.state.doc.lines === lines.length + 1, 'inserted row');
 
       const text = editor.view.state.doc.toString();
