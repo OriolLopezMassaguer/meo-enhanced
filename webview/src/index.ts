@@ -13,7 +13,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, Pen, Undo2, Redo2, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, Pen, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -909,7 +909,7 @@ discardBtn.dataset.action = 'discard';
 discardBtn.dataset.tooltip = activeUiStrings.reloadDiskVersion;
 discardBtn.dataset.tooltipLiveUpdate = 'true';
 discardBtn.setAttribute('aria-label', activeUiStrings.reloadDiskVersion);
-discardBtn.appendChild(createElement(HardDriveUpload, { width: 18, height: 18 }));
+discardBtn.appendChild(createElement(RotateCcw, { width: 18, height: 18 }));
 
 formatGroup.append(
   outlineLeftBtn,
@@ -2547,7 +2547,7 @@ const clearDiscardConfirmation = () => {
   discardBtn.classList.remove('is-discard-armed');
   discardBtn.dataset.tooltip = activeUiStrings.reloadDiskVersion;
   discardBtn.setAttribute('aria-label', activeUiStrings.reloadDiskVersion);
-  discardBtn.replaceChildren(createElement(HardDriveUpload, { width: 18, height: 18 }));
+  discardBtn.replaceChildren(createElement(RotateCcw, { width: 18, height: 18 }));
 };
 
 const discardUnsavedChanges = () => {
