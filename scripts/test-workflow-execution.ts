@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import fs, { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TestWorkflowCommand, TestWorkflowPlan } from './test-workflow-policy';
 
@@ -120,7 +120,18 @@ export function saveReport(directory: string, report: WorkflowReport): void {
   mkdirSync(directory, { recursive: true });
   const path = join(directory, 'report.json');
   writeFileSync(`${path}.tmp`, JSON.stringify(report, null, 2) + '\n');
-  renameSync(`${path}.tmp`, path);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(`${path}.tmp`, path);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 9 || (code !== 'EPERM' && code !== 'EBUSY')) throw error;
+      // Windows scanners can briefly hold either file during an atomic replace.
+      // Retain the previous report and fail normally if the lock does not clear.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
 }
 
 export async function executeWorkflow(options: {
