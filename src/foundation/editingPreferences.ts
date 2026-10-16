@@ -1,5 +1,5 @@
 export const editorCommandIds = [
-  'save', 'undo', 'redo', 'find', 'replace', 'all', 'copy', 'cut', 'paste', 'plain',
+  'save', 'saveAs', 'undo', 'redo', 'find', 'replace', 'all', 'copy', 'cut', 'paste', 'plain',
   'bold', 'italic', 'inlineCode', 'strike', 'highlight', 'underline', 'kbd', 'link', 'wikiLink', 'image', 'inlineMath', 'blockMath',
   'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'headingUp', 'headingDown',
   'bullet', 'ordered', 'taskList', 'taskDone', 'quote', 'codeBlock', 'rule', 'indent',

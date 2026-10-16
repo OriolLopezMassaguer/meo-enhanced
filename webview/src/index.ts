@@ -2898,6 +2898,7 @@ const shortcutHandlerContext: ShortcutHandlerContext = {
   requestTableCopy: format => { void copyTableToHost(format); },
   get editorSurfaceActive() { return getActiveEditorMode() !== 'preview'; },
   requestSave,
+  requestSaveAs,
   openFindPanel: (target) => findPanelController.open(target),
   requestMode: (mode) => {
     void editorModeRuntime.dispatch({ type: 'requestMode', mode, source: 'user' });
@@ -4160,7 +4161,7 @@ scheduleEditorBundleWarmupAfterReady();
 
 function refreshShortcutHints(): void {
   const keys = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
-  const controls: [HTMLElement, EditorCommandId][] = [[saveBtn, 'save'], [undoBtn, 'undo'], [redoBtn, 'redo'], [findToggleBtn, 'find'], [bulletListBtn, 'bullet'], [numberedListBtn, 'ordered'], [taskBtn, 'taskList'], [codeBlockBtn, 'codeBlock'], [quoteBtn, 'quote'], [hrBtn, 'rule'], [linkBtn, 'link'], [wikiLinkBtn, 'wikiLink'], [imageBtn, 'image'], [tableBtn, 'insertTable']];
+  const controls: [HTMLElement, EditorCommandId][] = [[saveBtn, 'save'], [saveAsBtn, 'saveAs'], [undoBtn, 'undo'], [redoBtn, 'redo'], [findToggleBtn, 'find'], [bulletListBtn, 'bullet'], [numberedListBtn, 'ordered'], [taskBtn, 'taskList'], [codeBlockBtn, 'codeBlock'], [quoteBtn, 'quote'], [hrBtn, 'rule'], [linkBtn, 'link'], [wikiLinkBtn, 'wikiLink'], [imageBtn, 'image'], [tableBtn, 'insertTable']];
   for (const option of headingDropdown.querySelectorAll<HTMLElement>('[data-level]')) {
     controls.push([option, ('heading' + option.dataset.level) as EditorCommandId]);
   }

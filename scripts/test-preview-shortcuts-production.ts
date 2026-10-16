@@ -21,6 +21,10 @@ try {
       await page.addStyleTag({ path: 'webview/src/styles.css' });
       await page.exposeFunction('__renderShortcutPreview', (message: any) => {
         if (message.type === 'applyChanges') return { type: 'applied', version: message.baseVersion + 1 };
+        if (message.type === 'saveDocumentAs') return {
+          type: 'documentSaveAsResult', requestId: message.requestId,
+          result: { ok: true, value: { status: 'not-completed' } }
+        };
         if (message.type === 'saveDocumentRevision') return {
           type: 'saveDocumentRevisionResult', requestId: message.requestId,
           result: { ok: true, value: { revision: message.revision } }
@@ -117,7 +121,7 @@ try {
       await page.evaluate(() => {
         const global = window as any;
         global.__shortcutPreferences = { ...global.__shortcutPreferences,
-          shortcuts: { preview: ['Ctrl + Alt + V'], find: ['Ctrl + Alt + F'] } };
+          shortcuts: { preview: ['Ctrl + Alt + V'], find: ['Ctrl + Alt + F'], saveAs: ['Ctrl + Alt + S'] } };
         window.dispatchEvent(new MessageEvent('message', { data: {
           type: 'editingPreferencesChanged', preferences: global.__shortcutPreferences, revision: 1
         } }));
@@ -141,6 +145,15 @@ try {
       assert.equal(saves[0].revision.text, editedText);
       assert.ok(!(await page.evaluate(() => (window as any).__hostKeys)).some((event: any) => event.key === 's'),
         `${surface}: handled MEO Save must not also reach the host`);
+      await page.evaluate(() => { (window as any).__hostKeys = []; });
+      await focusBody();
+      await chord('s', true);
+      await page.waitForFunction(() => (window as any).__shortcutMessages.some((message: any) => message.type === 'saveDocumentAs'), { timeout: 3000 });
+      const saveAsRequests = await page.evaluate(() => (window as any).__shortcutMessages.filter((message: any) => message.type === 'saveDocumentAs'));
+      assert.equal(saveAsRequests.length, 1, `${surface}: Save As must dispatch exactly once`);
+      assert.equal(saveAsRequests[0].text, editedText);
+      assert.ok(!(await page.evaluate(() => (window as any).__hostKeys)).some((event: any) => event.key === 's'),
+        `${surface}: handled MEO Save As must not also reach the host`);
       await page.evaluate(() => { (window as any).__hostKeys = []; });
       await chord('a');
       assert.ok(await frame.evaluate(() => (getSelection()?.toString().length ?? 0) > 0), `${surface}: native Preview selection was stolen`);
@@ -223,7 +236,7 @@ try {
         finally { await page.keyboard.up('Shift'); await page.keyboard.up('Alt'); }
         await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'live', { timeout: 3000 });
       }
-      console.log(`PASS ${surface} Preview: current bindings, find/replace/save/mode, native selection and isolated editor history`);
+      console.log(`PASS ${surface} Preview: current bindings, find/replace/save/save-as/mode, native selection and isolated editor history`);
     } finally {
       await page.close();
     }

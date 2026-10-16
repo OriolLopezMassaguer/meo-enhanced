@@ -259,6 +259,7 @@
               "propertyNames": {
                 "enum": [
                   "save",
+                  "saveAs",
                   "undo",
                   "redo",
                   "find",

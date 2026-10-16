@@ -509,6 +509,24 @@ try {
   await page.click('.settings-footer > .settings-button'); await page.click('.settings-reset-popover .settings-primary');
   await page.waitForFunction(() => Object.keys((window as any).__preferences.shortcuts).length === 0);
   assert.equal(await page.evaluate(() => (window as any).__preferences.input.wrapSelection), false, 'reset must preserve input preferences');
+  await page.click('[data-edit-command="saveAs"]');
+  const beforeSaveAsRecording = await page.evaluate(() => (window as any).__messages.filter((message: any) => message.type === 'saveDocumentAs').length);
+  await page.keyboard.down('Shift'); await chord('s'); await page.keyboard.up('Shift');
+  assert.equal(await page.$eval('.settings-recorder', e => (e as HTMLInputElement).value), 'Ctrl + Shift + S');
+  assert.equal(await page.evaluate(() => (window as any).__messages.filter((message: any) => message.type === 'saveDocumentAs').length), beforeSaveAsRecording,
+    'recording Save As must not run the document action from Settings');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (window as any).__preferences.shortcuts.saveAs?.[0] === 'Ctrl + Shift + S');
+  assert.equal(await page.$eval('[data-action="saveAs"]', e => (e as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Shift + S');
+  await page.click('.settings-search'); await page.keyboard.type('新路径保存');
+  assert.deepEqual(await page.$$eval('.settings-item[data-command]', elements => elements.map(e => (e as HTMLElement).dataset.command)), ['saveAs']);
+  await page.click('.settings-search-clear');
+  await page.click('[data-command="saveAs"] .settings-subtle');
+  await page.waitForFunction(() => (window as any).__preferences.shortcuts.saveAs?.length === 0);
+  assert.equal(await page.$eval('[data-action="saveAs"]', e => (e as HTMLElement).dataset.tooltipShortcut), undefined);
+  await page.click('.settings-footer > .settings-button'); await page.click('.settings-reset-popover .settings-primary');
+  await page.waitForFunction(() => Object.keys((window as any).__preferences.shortcuts).length === 0);
+  assert.equal(await page.$eval('[data-action="saveAs"]', e => (e as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Shift + S');
   await page.click('.settings-search'); await page.keyboard.type('  ');
   assert.equal(await page.$eval('.settings-search-clear', e => (e as HTMLElement).hidden), false);
   assert.ok(await page.$$eval('.settings-tab-badge', elements => elements.every(e => (e as HTMLElement).hidden)));
@@ -561,6 +579,14 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.editorAppearance), appearance);
     assert.equal(await page.$eval('.more-tools-settings-button', element => element.textContent), language === 'en' ? 'Open settings' : '打开设置');
     assert.equal(await page.$('.more-tools-settings-button svg'), null, 'Open settings uses a text-only button');
+    await page.click('.settings-tab[data-tab="shortcuts"]');
+    assert.equal(await page.$eval('[data-command="saveAs"] .settings-item-title', e => e.textContent), language === 'en' ? 'Save as…' : '另存为…');
+    assert.ok(await page.$('[data-command="saveAs"] [data-edit-command="saveAs"]'));
+    if (process.env.MEO_SETTINGS_SCREENSHOTS) {
+      const directory = path.resolve(process.env.MEO_SETTINGS_SCREENSHOTS); await fs.mkdir(directory, { recursive: true });
+      await page.$eval('[data-command="saveAs"]', row => row.scrollIntoView({ block: 'center' }));
+      await page.screenshot({ path: path.join(directory, `save-as-shortcut-${language}-${appearance}.png`) });
+    }
     await page.click('.settings-tab[data-tab="typing"]');
     assert.equal(await page.$eval('[data-setting="selectionToolbar"] .settings-item-title', e => e.textContent), language === 'en' ? 'Selection toolbar' : '选区工具栏');
     const wrappingDescription = await page.$eval(wrap + ' .settings-description', element => element.textContent ?? '');

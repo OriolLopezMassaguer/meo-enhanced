@@ -17,7 +17,7 @@ export type ShortcutStroke = {
 };
 
 const fixedCommands = new Set<EditorCommandId>(['copy', 'cut', 'paste', 'selection', 'home', 'enter', 'tab', 'escape', 'delete', 'indent', 'tableNav']);
-const globalCommands = new Set<EditorCommandId>(['save', 'find', 'replace', 'mode', 'preview']);
+const globalCommands = new Set<EditorCommandId>(['save', 'saveAs', 'find', 'replace', 'mode', 'preview']);
 const tableCommands = new Set<EditorCommandId>([
   'cellBreak', 'rowAbove', 'rowBelow', 'rowDelete', 'columnBefore', 'columnAfter', 'columnDelete',
   'moveRowUp', 'moveRowDown', 'moveColumnLeft', 'moveColumnRight', 'alignLeft', 'alignCenter', 'alignRight', 'copyMarkdown', 'copyCsv'
@@ -35,7 +35,7 @@ export function defaultShortcuts(platform: ShortcutPlatform): Record<EditorComma
   const primary = platform === 'mac' ? 'Cmd' : 'Ctrl';
   const result = Object.fromEntries(editorCommandIds.map(id => [id, [] as readonly string[]])) as Record<EditorCommandId, readonly string[]>;
   Object.assign(result, {
-    save: [`${primary} + S`], undo: [`${primary} + Z`], redo: platform === 'mac' ? ['Cmd + Shift + Z'] : ['Ctrl + Y', 'Ctrl + Shift + Z'],
+    save: [`${primary} + S`], saveAs: [`${primary} + Shift + S`], undo: [`${primary} + Z`], redo: platform === 'mac' ? ['Cmd + Shift + Z'] : ['Ctrl + Y', 'Ctrl + Shift + Z'],
     find: [`${primary} + F`], replace: platform === 'mac' ? ['Cmd + Alt + F'] : ['Ctrl + H'],
     all: [`${primary} + A`], copy: [`${primary} + C`], cut: [`${primary} + X`], paste: [`${primary} + V`],
     lineComment: [`${primary} + /`], selectionComment: ['Alt + Shift + A'],
@@ -94,6 +94,10 @@ export function effectiveShortcuts(overrides: ShortcutOverrides, platform: Short
     const keys = overrides[command];
     if (keys && canBindCommand(command) && keys.every(key => normalizeShortcut(key))) defaults[command] = keys.map(key => normalizeShortcut(key)!);
   }
+  // Adding Save As must not steal a chord already assigned in older preferences.
+  if (!Object.hasOwn(overrides, 'saveAs') && editorCommandIds.some(command => command !== 'saveAs'
+    && canBindCommand(command) && Object.hasOwn(overrides, command)
+    && defaults[command].some(key => defaults.saveAs.includes(key)))) defaults.saveAs = [];
   return defaults;
 }
 

@@ -64,7 +64,7 @@ export function modeOptions(key: 'pairMode' | 'skipMode' | 'deleteMode', languag
   return (['smart', 'always', 'off'] as const).map((value, index) => ({ value, label: settingsText(language, labels[index][0], labels[index][1]) }));
 }
 export const shortcutSections: Readonly<Record<string, readonly EditorCommandId[]>> = {
-  document: ['save', 'undo', 'redo', 'find', 'replace', 'all', 'copy', 'cut', 'paste', 'plain'],
+  document: ['save', 'saveAs', 'undo', 'redo', 'find', 'replace', 'all', 'copy', 'cut', 'paste', 'plain'],
   format: ['bold', 'italic', 'inlineCode', 'strike', 'highlight', 'underline', 'kbd', 'link', 'wikiLink', 'image', 'inlineMath', 'blockMath'],
   blocks: ['heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'headingUp', 'headingDown', 'bullet', 'ordered', 'taskList', 'taskDone', 'quote', 'codeBlock', 'rule', 'indent'],
   table: ['insertTable', 'tableNav', 'cellBreak', 'rowAbove', 'rowBelow', 'rowDelete', 'columnBefore', 'columnAfter', 'columnDelete', 'moveRowUp', 'moveRowDown', 'moveColumnLeft', 'moveColumnRight', 'alignLeft', 'alignCenter', 'alignRight', 'copyMarkdown', 'copyCsv', 'convert'],
@@ -73,7 +73,7 @@ export const shortcutSections: Readonly<Record<string, readonly EditorCommandId[
   navigation: ['mode', 'preview', 'enter', 'tab', 'escape', 'delete']
 };
 export const commandTitles: Record<EditorCommandId, readonly [string, string]> = {
-  save: ['保存', 'Save'], undo: ['撤销', 'Undo'], redo: ['重做', 'Redo'], find: ['查找', 'Find'], replace: ['替换', 'Replace'], all: ['全选', 'Select all'], copy: ['复制', 'Copy'], cut: ['剪切', 'Cut'], paste: ['粘贴', 'Paste'], plain: ['粘贴为纯文本', 'Paste as plain text'],
+  save: ['保存', 'Save'], saveAs: ['另存为…', 'Save as…'], undo: ['撤销', 'Undo'], redo: ['重做', 'Redo'], find: ['查找', 'Find'], replace: ['替换', 'Replace'], all: ['全选', 'Select all'], copy: ['复制', 'Copy'], cut: ['剪切', 'Cut'], paste: ['粘贴', 'Paste'], plain: ['粘贴为纯文本', 'Paste as plain text'],
   bold: ['粗体', 'Bold'], italic: ['斜体', 'Italic'], inlineCode: ['行内代码', 'Inline code'], strike: ['删除线', 'Strikethrough'], highlight: ['高亮', 'Highlight'], underline: ['下划线', 'Underline'], kbd: ['按键样式', 'Keyboard style'], link: ['链接', 'Link'], wikiLink: ['双链', 'Wiki link'], image: ['图片', 'Image'], inlineMath: ['行内公式', 'Inline math'], blockMath: ['块公式', 'Math block'],
   heading1: ['一级标题', 'Heading 1'], heading2: ['二级标题', 'Heading 2'], heading3: ['三级标题', 'Heading 3'], heading4: ['四级标题', 'Heading 4'], heading5: ['五级标题', 'Heading 5'], heading6: ['六级标题', 'Heading 6'], headingUp: ['提升标题级别', 'Promote heading'], headingDown: ['降低标题级别', 'Demote heading'], bullet: ['无序列表', 'Bullet list'], ordered: ['有序列表', 'Numbered list'], taskList: ['任务列表', 'Task list'], taskDone: ['切换任务完成状态', 'Toggle task completion'], quote: ['引用', 'Blockquote'], codeBlock: ['代码块', 'Code block'], rule: ['分割线', 'Horizontal rule'], indent: ['缩进与取消缩进', 'Indent and outdent'],
   insertTable: ['插入表格', 'Insert table'], tableNav: ['单元格导航', 'Cell navigation'], cellBreak: ['单元格内换行', 'Line break in a cell'], rowAbove: ['上方插入行', 'Insert row above'], rowBelow: ['下方插入行', 'Insert row below'], rowDelete: ['删除行', 'Delete row'], columnBefore: ['左侧插入列', 'Insert column before'], columnAfter: ['右侧插入列', 'Insert column after'], columnDelete: ['删除列', 'Delete column'], moveRowUp: ['上移行', 'Move row up'], moveRowDown: ['下移行', 'Move row down'], moveColumnLeft: ['左移列', 'Move column left'], moveColumnRight: ['右移列', 'Move column right'], alignLeft: ['左对齐', 'Align left'], alignCenter: ['居中对齐', 'Align center'], alignRight: ['右对齐', 'Align right'], copyMarkdown: ['复制为 Markdown 表格', 'Copy as Markdown table'], copyCsv: ['复制为 CSV', 'Copy as CSV'], convert: ['转换选中表格文本', 'Convert selected table text'],
@@ -118,6 +118,7 @@ export const imageLocationSearchKeywords: SearchKeywords = [
 ];
 export const shortcutSearchKeywords: Readonly<Record<EditorCommandId, SearchKeywords>> = {
   save: ['存盘 写入文件', 'persist write file disk'],
+  saveAs: ['另存 换名保存 新路径保存 保存到', 'save as save under new name new path save to'],
   undo: ['撤回 回退 上一步', 'revert rollback previous edit'],
   redo: ['恢复撤销 下一步', 'repeat undone edit restore'],
   find: ['搜索 检索 查找文字', 'search locate text'],

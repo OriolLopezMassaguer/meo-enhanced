@@ -53,6 +53,17 @@ try {
       assert.equal(await page.$eval('[data-action="undo"]', button => (button as HTMLButtonElement).disabled), true);
       assert.equal(await page.$eval('[data-action="redo"]', button => (button as HTMLButtonElement).disabled), true);
       assert.equal(await page.$eval('[data-action="saveAs"]', button => button.getAttribute('aria-label')), language === 'en' ? 'Save as…' : '另存为…');
+      assert.equal(await page.$eval('[data-action="saveAs"]', button => (button as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Shift + S');
+      await page.focus('.editor-host > .cm-editor .cm-content');
+      await page.keyboard.down('Control'); await page.keyboard.down('Shift'); await page.keyboard.press('s');
+      await page.keyboard.up('Shift'); await page.keyboard.up('Control');
+      await page.waitForFunction(() => (window as any).__toolbarMessages.some((m: any) => m.type === 'saveDocumentAs'));
+      const defaultSaveAs = await page.evaluate(() => (window as any).__toolbarMessages.find((m: any) => m.type === 'saveDocumentAs'));
+      assert.equal(defaultSaveAs.text, original);
+      await page.evaluate(requestId => window.dispatchEvent(new MessageEvent('message', { data: {
+        type: 'documentSaveAsResult', requestId, result: { ok: true, value: { status: 'not-completed' } }
+      } })), defaultSaveAs.requestId);
+      await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="saveAs"]')!.disabled);
       await page.click('[data-mode="live"]');
       await page.waitForSelector('textarea[data-table-col="0"]');
       await page.evaluate(() => {
@@ -97,9 +108,24 @@ try {
       await page.evaluate(() => {
         const global = window as any;
         window.dispatchEvent(new MessageEvent('message', { data: { type: 'editingPreferencesChanged', revision: 1,
-          preferences: { input: global.EditingSettingsHarness.defaultInputAssistance, shortcuts: { undo: ['Ctrl + Alt + Z'], redo: ['Ctrl + Alt + Y'] } } } }));
+          preferences: { input: global.EditingSettingsHarness.defaultInputAssistance, shortcuts: { undo: ['Ctrl + Alt + Z'], redo: ['Ctrl + Alt + Y'], saveAs: ['Ctrl + Alt + S'] } } } }));
       });
       assert.equal(await page.$eval('[data-action="undo"]', button => (button as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Alt + Z');
+      assert.equal(await page.$eval('[data-action="saveAs"]', button => (button as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Alt + S');
+      for (const mode of ['source', 'live']) {
+        await page.click(`[data-mode="${mode}"]`);
+        await page.focus('.editor-host > .cm-editor .cm-content');
+        await page.evaluate(() => { (window as any).__toolbarMessages.length = 0; });
+        await page.keyboard.down('Control'); await page.keyboard.down('Alt'); await page.keyboard.press('s');
+        await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+        await page.waitForFunction(() => (window as any).__toolbarMessages.some((m: any) => m.type === 'saveDocumentAs'));
+        const request = await page.evaluate(() => (window as any).__toolbarMessages.find((m: any) => m.type === 'saveDocumentAs'));
+        assert.equal(request.text, await read(), `${mode}: Save As shortcut uses the current document`);
+        await page.evaluate(requestId => window.dispatchEvent(new MessageEvent('message', { data: {
+          type: 'documentSaveAsResult', requestId, result: { ok: true, value: { status: 'not-completed' } }
+        } })), request.requestId);
+        await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="saveAs"]')!.disabled);
+      }
       const beforeCell = await read();
       await page.evaluate(() => {
         const input = document.querySelector<HTMLTextAreaElement>('textarea[data-table-col="0"]')!;
@@ -114,7 +140,11 @@ try {
       });
       for (const status of ['not-completed', 'error', 'saved', 'timeout']) {
         await page.evaluate(() => { (window as any).__toolbarMessages.length = 0; });
-        await page.click('[data-action="saveAs"]');
+        if (status === 'error' || status === 'saved') {
+          await page.keyboard.down('Control'); await page.keyboard.down('Alt');
+          await page.keyboard.press('s'); await page.keyboard.press('s');
+          await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+        } else await page.click('[data-action="saveAs"]');
         await page.waitForFunction(() => (window as any).__toolbarMessages.some((message: any) => message.type === 'saveDocumentAs'));
         const requests = await page.evaluate(() => (window as any).__toolbarMessages.filter((message: any) => message.type === 'saveDocumentAs'));
         assert.equal(requests.length, 1);

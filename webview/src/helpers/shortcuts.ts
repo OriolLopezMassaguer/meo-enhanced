@@ -11,6 +11,7 @@ export interface ShortcutHandlerContext {
   shortcuts?: ShortcutOverrides;
   platform?: ShortcutPlatform;
   requestSave: () => void;
+  requestSaveAs?: () => void;
   openFindPanel: (target: 'find' | 'replace') => void;
   requestMode: (mode: 'live' | 'source') => void;
   requestPreview?: () => void;
@@ -52,6 +53,7 @@ export const handleEditorShortcut = (event: KeyboardEvent, context: ShortcutHand
   consume();
   switch (command) {
     case 'save': context.requestSave(); break;
+    case 'saveAs': context.requestSaveAs?.(); break;
     case 'find': case 'replace': context.openFindPanel(command); break;
     case 'mode': context.requestMode(context.editableMode === 'live' ? 'source' : 'live'); break;
     case 'preview': context.requestPreview?.(); break;

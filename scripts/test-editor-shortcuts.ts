@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { ShortcutOverrides } from '../src/foundation/editingPreferences';
 
 Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
@@ -13,6 +14,8 @@ type ShortcutCase = {
   readonly editableMode?: 'live' | 'source';
   readonly focused?: boolean;
   readonly editorSurfaceActive?: boolean;
+  readonly shortcuts?: ShortcutOverrides;
+  readonly platform?: 'mac' | 'other';
   readonly expectedHandled: boolean;
   readonly expectedEffects?: readonly string[];
 };
@@ -23,6 +26,46 @@ const cases: readonly ShortcutCase[] = [
     event: { key: 's', code: 'KeyS', ctrlKey: true },
     expectedHandled: true,
     expectedEffects: ['save']
+  },
+  {
+    name: 'default Save As uses the document action',
+    event: { key: 's', code: 'KeyS', ctrlKey: true, shiftKey: true },
+    expectedHandled: true,
+    expectedEffects: ['saveAs']
+  },
+  {
+    name: 'assigned Save As uses the document action',
+    shortcuts: { saveAs: ['Ctrl + Alt + S'] },
+    event: { key: 's', code: 'KeyS', ctrlKey: true, altKey: true },
+    expectedHandled: true,
+    expectedEffects: ['saveAs']
+  },
+  {
+    name: 'Save As accepts a Mac binding',
+    platform: 'mac',
+    event: { key: 's', code: 'KeyS', metaKey: true, shiftKey: true },
+    expectedHandled: true,
+    expectedEffects: ['saveAs']
+  },
+  {
+    name: 'Preview body can Save As without editing the hidden editor',
+    focused: false,
+    editorSurfaceActive: false,
+    event: { key: 's', code: 'KeyS', ctrlKey: true, shiftKey: true, target: { nodeName: 'BODY' } as EventTarget },
+    expectedHandled: true,
+    expectedEffects: ['saveAs']
+  },
+  {
+    name: 'cleared Save As consumes its old default without running it',
+    shortcuts: { saveAs: [] },
+    event: { key: 's', code: 'KeyS', ctrlKey: true, shiftKey: true },
+    expectedHandled: true
+  },
+  {
+    name: 'IME composition has priority over assigned Save As',
+    shortcuts: { saveAs: ['Ctrl + Shift + S'] },
+    event: { key: 's', code: 'KeyS', ctrlKey: true, shiftKey: true, isComposing: true },
+    expectedHandled: false
   },
   {
     name: 'find',
@@ -138,9 +181,10 @@ for (const testCase of cases) {
     },
     editableMode: testCase.editableMode ?? 'source',
     editorSurfaceActive: testCase.editorSurfaceActive ?? true,
-    shortcuts: {},
-    platform: 'other' as const,
+    shortcuts: testCase.shortcuts ?? {},
+    platform: testCase.platform ?? 'other',
     requestSave: () => effects.push('save'),
+    requestSaveAs: () => effects.push('saveAs'),
     openFindPanel: (target: 'find' | 'replace') => effects.push(`find:${target}`),
     requestMode: (mode: 'live' | 'source') => effects.push(`mode:${mode}`)
   }, {
