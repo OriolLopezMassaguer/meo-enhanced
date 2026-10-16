@@ -13,7 +13,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, FileOutput, Undo2, Redo2, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, Pen, Undo2, Redo2, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -864,7 +864,17 @@ saveAsBtn.className = 'format-button';
 saveAsBtn.dataset.action = 'saveAs';
 saveAsBtn.dataset.tooltip = activeUiStrings.saveAs;
 saveAsBtn.setAttribute('aria-label', activeUiStrings.saveAs);
-saveAsBtn.appendChild(createElement(FileOutput, { width: 18, height: 18 }));
+const saveAsIcon = createElement(Save, { width: 18, height: 18, viewBox: '0 0 28 28', 'aria-hidden': 'true' });
+// Keep the gap under the pen transparent across normal, hover and theme surfaces.
+for (const path of saveAsIcon.children) path.setAttribute('clip-path', 'url(#meo-save-as-disk-clip)');
+const saveAsDiskClip = document.createElementNS(saveAsIcon.namespaceURI, 'clipPath');
+saveAsDiskClip.id = 'meo-save-as-disk-clip';
+const saveAsDiskClipShape = document.createElementNS(saveAsIcon.namespaceURI, 'polygon');
+saveAsDiskClipShape.setAttribute('points', '0,0 28,0 28,4 4,28 0,28');
+saveAsDiskClip.appendChild(saveAsDiskClipShape);
+saveAsIcon.prepend(saveAsDiskClip);
+saveAsIcon.appendChild(createElement(Pen, { x: 10, y: 10, width: 18, height: 18, 'stroke-width': 8 / 3 }));
+saveAsBtn.appendChild(saveAsIcon);
 saveAsBtn.disabled = true;
 const undoBtn = document.createElement('button');
 undoBtn.type = 'button';
