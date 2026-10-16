@@ -13,6 +13,8 @@ let saveCount = 0;
 let gate: Promise<void> | undefined;
 let onNativeSave = () => undefined;
 const opened: unknown[][] = [];
+const warnings: { message: string; actions: string[] }[] = [];
+let warningChoice: ((actions: string[]) => string | undefined) | undefined;
 mock.module('vscode', () => ({
   workspace: { async saveAs(uri: URI) {
     assert.equal(uri, source, 'native Save As must target this document, not the active native editor');
@@ -25,6 +27,10 @@ mock.module('vscode', () => ({
   commands: { async executeCommand(...args: unknown[]) {
     if (openFailure) throw new Error('open refused');
     opened.push(args);
+  } },
+  window: { async showWarningMessage(message: string, ...actions: string[]) {
+    warnings.push({ message, actions });
+    return warningChoice?.(actions);
   } }
 }));
 const { createVscodeDocumentSaveAsAdapter } = await import('../src/host/vscodeDocumentSaveAsAdapter');
@@ -51,8 +57,10 @@ assert.equal(saveCount, 1, 'duplicate requests must not open another native dial
 assert.equal(preparations, 1);
 selected = undefined;
 const openCount = opened.length;
-assert.deepEqual((await adapter.handle(request('cancel'))).result, { ok: true, value: { status: 'cancelled' } });
+assert.deepEqual((await adapter.handle(request('cancel'))).result, { ok: true, value: { status: 'not-completed' } });
 assert.equal(opened.length, openCount);
+assert.equal(warnings.length, 0, 'an ambiguous native result must not turn cancellation into an error');
+assert.equal(decodeHostToWebviewMessage({ type: 'documentSaveAsResult', requestId: 'old', result: { ok: true, value: { status: 'cancelled' } } }), null);
 const beforeStale = saveCount;
 assert.equal((await adapter.handle(request('stale', 'obsolete'))).result.ok, false);
 assert.equal(saveCount, beforeStale, 'an unaccepted snapshot must not reach native Save As');
@@ -67,8 +75,10 @@ text = '';
 assert.equal((await adapter.handle(request('empty'))).result.ok, true);
 text = '# current draft';
 saveFailure = true;
-assert.equal((await adapter.handle(request('failed'))).result.ok, false);
-assert.match(failures.at(-1)!, /save refused/);
+const failed = await adapter.handle(request('failed'));
+assert.equal(failed.result.ok, false);
+if (!failed.result.ok) assert.match(failed.result.error.message, /save refused/);
+assert.equal(failures.length, 0, 'the live Webview owns errors without a duplicate native notification');
 saveFailure = false;
 selected = target;
 let release!: () => void;
@@ -86,9 +96,36 @@ assert.equal(opened.at(-1)?.[1], target);
 onNativeSave = () => undefined;
 const failingOpen = createAdapter();
 openFailure = true;
-assert.equal((await failingOpen.handle(request('open-failed'))).result.ok, false);
-assert.match(failures.at(-1)!, /saved.*open refused/i, 'report a written file separately from a failed editor open');
+assert.deepEqual((await failingOpen.handle(request('open-failed'))).result, { ok: true, value: { status: 'saved' } });
+assert.match(warnings.at(-1)!.message, /saved.*open refused/i, 'report a written file separately from a failed editor open');
+assert.ok(warnings.at(-1)!.message.includes(target.fsPath));
+const beforeRecovery = saveCount;
+warningChoice = actions => { openFailure = false; return actions[0]; };
+openFailure = true;
+await failingOpen.handle(request('retry-open'));
+assert.deepEqual(opened.at(-1), ['vscode.openWith', target, 'meoEnhanced.editor', { preview: false }]);
+assert.equal(saveCount, beforeRecovery + 1, 'opening recovery must never repeat Save As');
+warningChoice = actions => { openFailure = false; return actions[1]; };
+openFailure = true;
+await failingOpen.handle(request('use-text-editor'));
+assert.deepEqual(opened.at(-1), ['vscode.openWith', target, 'default', { preview: false }]);
+warningChoice = undefined;
 openFailure = false; failingOpen.dispose();
+const replacedOpenFailure = createAdapter();
+onNativeSave = () => replacedOpenFailure.dispose();
+warningChoice = actions => { openFailure = false; return actions[0]; };
+openFailure = true;
+assert.deepEqual((await replacedOpenFailure.handle(request('replaced-open-failed'))).result,
+  { ok: true, value: { status: 'saved' } });
+assert.deepEqual(opened.at(-1), ['vscode.openWith', target, 'meoEnhanced.editor', { preview: false }]);
+onNativeSave = () => undefined; warningChoice = undefined;
+const closing = createAdapter();
+gate = new Promise(resolve => { release = resolve; });
+saveFailure = true;
+const closeFailure = closing.handle(request('closed-during-save'));
+closing.dispose(); release(); await closeFailure;
+assert.match(failures.at(-1)!, /save refused/, 'a closed Webview must still get native failure feedback');
+gate = undefined; saveFailure = false;
 
 const posted: ReturnType<typeof request>[] = [];
 const steps: string[] = [];
@@ -104,7 +141,7 @@ await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 assert.deepEqual(steps, ['commit', 'idle', 'read', 'idle']);
 assert.equal(posted[0]?.text, '# confirmed cell');
 assert.equal(transport.accept({ type: 'documentSaveAsResult', requestId: 'stale', result: { ok: true, value: { status: 'saved' } } }), false);
-const response = { type: 'documentSaveAsResult' as const, requestId: posted[0].requestId, result: { ok: true as const, value: { status: 'cancelled' as const } } };
+const response = { type: 'documentSaveAsResult' as const, requestId: posted[0].requestId, result: { ok: true as const, value: { status: 'not-completed' as const } } };
 assert.deepEqual(decodeHostToWebviewMessage(response), response);
 assert.equal(transport.accept(response), true);
 assert.deepEqual(await transported, response.result);
@@ -121,4 +158,17 @@ const late = lateTransport.save();
 lateTransport.dispose(); releaseIdle();
 assert.equal((await late).ok, false);
 assert.equal(readsAfterClose, 0, 'a closed editor must not be read after its idle barrier');
+let expire!: () => void;
+const timeoutTransport = createDocumentSaveAsTransport({
+  getUiLanguage: () => 'en', commitTransientEdits: () => undefined, whenDocumentIdle: async () => undefined,
+  getCurrentText: () => text, postMessage: () => undefined
+}, { scheduleTimeout: callback => { expire = callback; return 1; }, cancelTimeout: () => undefined });
+const timedOut = timeoutTransport.save();
+await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+expire();
+const timedOutResult = await timedOut;
+assert.equal(timedOutResult.ok, false);
+if (!timedOutResult.ok) assert.equal(timedOutResult.error.code, 'timeout');
+assert.equal(timeoutTransport.accept({ type: 'documentSaveAsResult', requestId: 'document-save-as-0', result: { ok: true, value: { status: 'saved' } } }), false);
+timeoutTransport.dispose();
 console.log('Save As protocol, snapshot preparation, native document replacement, cancellation, failures and idempotence passed');

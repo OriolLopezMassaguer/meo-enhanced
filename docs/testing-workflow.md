@@ -173,12 +173,20 @@ exact commands without running them.
 preparation, document-specific native Save As, cancellation, failures, duplicate
 requests and replacement of the old panel before completion. It distinguishes a
 saved file from failure to reopen its Markdown target in MEO.
+Native open recovery returns a successful save result and offers retry/default-editor
+actions without writing again, even after the source panel closes. An undefined
+native result stays quiet and does not assert cancellation. Live-Webview errors
+have one owner; closed-panel failures retain native feedback.
 `scripts/test-document-toolbar.ts` exercises the production toolbar order,
 Live/Source undo/redo, pending native table cells, Save As snapshots and retries,
 Preview restrictions, user shortcut hints and light/dark Chinese/English layouts.
 Narrow layouts use the existing overflow menu. Host API contracts and browser
 clicks are separate evidence; native dialogs and final installed-VSIX replacement
 still require native acceptance.
+The toolbar browser fixture also injects Save As failures/timeouts and native
+history failures. It checks latest-draft retry, quiet incomplete results,
+no automatic repeat writes/replays, actionable copy recovery for toolbar/keyboard,
+and captures bilingual light/dark screenshots of the production notice UI.
 
 `scripts/test-list-toolbar-browser.ts` checks all three toolbar list actions in Live
 and Source with monospaced/proportional fonts: empty and nonempty caret placement,

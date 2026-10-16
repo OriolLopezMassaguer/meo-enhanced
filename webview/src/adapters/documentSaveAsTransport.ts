@@ -1,4 +1,4 @@
-import { DOCUMENT_SAVE_AS_TIMEOUT_MS, type DocumentSaveAsResponse, type DocumentSaveAsResult, type SaveDocumentAsRequest } from '../../../src/protocol/documentSaveAs';
+import { DOCUMENT_SAVE_AS_TIMEOUT_MS, type DocumentSaveAsOutcome, type DocumentSaveAsResponse, type DocumentSaveAsResult, type SaveDocumentAsRequest } from '../../../src/protocol/documentSaveAs';
 import { createRequestLifecycle, type RequestLifecycleOptions } from './requestLifecycle';
 import type { UiLanguage } from '../application/uiLanguage';
 
@@ -9,7 +9,7 @@ export function createDocumentSaveAsTransport(dependencies: {
   readonly getCurrentText: () => string | null;
   readonly whenDocumentIdle: () => Promise<void>;
 }, options: RequestLifecycleOptions = {}) {
-  const requests = createRequestLifecycle<{ readonly status: 'saved' | 'cancelled' }>(
+  const requests = createRequestLifecycle<DocumentSaveAsOutcome>(
     'document-save-as', DOCUMENT_SAVE_AS_TIMEOUT_MS, options);
   let disposed = false;
   const label = (en: string, zh: string) => dependencies.getUiLanguage() === 'zh-CN' ? zh : en;

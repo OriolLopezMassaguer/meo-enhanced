@@ -278,6 +278,11 @@ export type UiStrings = Readonly<{
   saveDocument: string;
   saveAs: string;
   saveAsFailed: string;
+  retrySaveAs: string;
+  saveAsResultUnknown: string;
+  saveAsResultUnknownMessage: string;
+  historyFailed: string;
+  historyFailedMessage: string;
   undo: string;
   redo: string;
   reloadDiskVersion: string;
@@ -488,6 +493,11 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     link: 'Link', wikiLink: 'Wiki link', image: 'Image', table: 'Insert table', line: 'Lines',
     goToLine: 'Go to line', editInSource: 'Click to reveal in source', save: 'Save', saveDocument: 'Save document',
     saveAs: 'Save as…', saveAsFailed: 'Save As failed', undo: 'Undo', redo: 'Redo',
+    retrySaveAs: 'Retry Save As…',
+    saveAsResultUnknown: 'Save As result not confirmed',
+    saveAsResultUnknownMessage: 'Saving may still be in progress. Check the Save As dialog and destination file before trying again.',
+    historyFailed: 'Undo/Redo could not finish',
+    historyFailedMessage: 'Check the current document before continuing. You can save a copy to keep its current contents.',
     reloadDiskVersion: 'Reload (discard unsaved changes)', reloadDiskVersionDoubleClick: 'Confirm reload (discard unsaved changes)',
     constrainContentWidth: 'Constrain Content Width', constrainWidth: 'Limit content width',
     disableConstrainedWidth: 'Disable Constrained Width',
@@ -701,6 +711,11 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     horizontalRule: '分隔线', link: '链接', wikiLink: 'Wiki 链接', image: '图片', table: '插入表格',
     line: '行号', goToLine: '跳转到行', editInSource: '点击定位源码', save: '保存', saveDocument: '保存文档',
     saveAs: '另存为…', saveAsFailed: '另存为失败', undo: '撤销', redo: '重做',
+    retrySaveAs: '重试另存为…',
+    saveAsResultUnknown: '尚未确认另存为结果',
+    saveAsResultUnknownMessage: '保存可能仍在进行。请先检查另存为对话框和目标文件，确认后再重试。',
+    historyFailed: '撤销或重做未能完成',
+    historyFailedMessage: '请先检查当前文档内容，再继续编辑。你可以另存副本保留当前内容。',
     reloadDiskVersion: '重新加载（放弃未保存内容）', reloadDiskVersionDoubleClick: '确认重新加载（放弃未保存内容）',
     constrainContentWidth: '限制内容宽度', constrainWidth: '限制宽度',
     disableConstrainedWidth: '取消内容宽度限制',

@@ -2844,29 +2844,46 @@ const requestSave = () => {
 saveBtn.addEventListener('click', () => {
   void requestSave();
 });
-saveAsBtn.addEventListener('click', async () => {
+const requestSaveAs = async (): Promise<void> => {
   if (saveAsPending || !editor) return;
   saveAsPending = true;
   failureNotice.clearFailureNotice('document-save-as');
   refreshDocumentActionButtons();
   try {
     const result = await documentSaveAsTransport.save();
-    if (!result.ok) failureNotice.setFailureNotice(() => ({
-      title: activeUiStrings.saveAsFailed, message: result.error.message
-    }), 'error', 'document-save-as');
+    if (!result.ok) {
+      const unknownResult = result.error.code === 'timeout';
+      failureNotice.setFailureNotice(() => unknownResult ? {
+        title: activeUiStrings.saveAsResultUnknown,
+        message: activeUiStrings.saveAsResultUnknownMessage
+      } : {
+        title: activeUiStrings.saveAsFailed, message: result.error.message,
+        actions: [{ id: 'retry-save-as', label: activeUiStrings.retrySaveAs, emphasis: 'primary', run: requestSaveAs }, saveCopyAction('secondary')]
+      }, unknownResult ? 'warning' : 'error', 'document-save-as');
+    }
   } finally {
     saveAsPending = false;
     refreshDocumentActionButtons();
   }
-});
+};
+saveAsBtn.addEventListener('click', () => { void requestSaveAs(); });
+const showHistoryFailure = (): void => {
+  // A new failed replay must be visible even if a previous failure was dismissed.
+  failureNotice.clearFailureNotice('editor-history');
+  failureNotice.setFailureNotice(() => ({
+    title: activeUiStrings.historyFailed, message: activeUiStrings.historyFailedMessage,
+    actions: [saveCopyAction()]
+  }), 'error', 'editor-history');
+};
 for (const [button, direction] of [[undoBtn, 'undo'], [redoBtn, 'redo']] as const) {
   button.addEventListener('pointerdown', event => event.preventDefault());
   button.addEventListener('click', async () => {
     if (!editor || historyActionPending || root.dataset.mode === 'preview') return;
+    failureNotice.clearFailureNotice('editor-history');
     historyActionPending = true;
     refreshDocumentActionButtons();
     try { await editor[direction](); }
-    catch (error) { logWebviewRenderError(`toolbar.${direction}`, error); }
+    catch (error) { logWebviewRenderError(`toolbar.${direction}`, error); showHistoryFailure(); }
     finally { historyActionPending = false; refreshDocumentActionButtons(); }
   });
 }
@@ -2917,6 +2934,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
       historyAvailability = availability;
       queueMicrotask(refreshDocumentActionButtons);
     },
+    onHistoryError: () => { queueMicrotask(showHistoryFailure); },
     onSourcePositionChange: (change) => {
       sourcePreviewPosition = { line: change.line, active: change.active };
       const canReveal = change.revealIfOutside

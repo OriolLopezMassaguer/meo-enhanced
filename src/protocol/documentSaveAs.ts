@@ -6,7 +6,8 @@ export type SaveDocumentAsRequest = {
   readonly requestId: string;
   readonly text: string;
 };
-export type DocumentSaveAsOutcome = { readonly status: 'saved' | 'cancelled' };
+/** VS Code does not distinguish cancellation from an unsuccessful native save. */
+export type DocumentSaveAsOutcome = { readonly status: 'saved' | 'not-completed' };
 export type DocumentSaveAsResult = RequestResult<DocumentSaveAsOutcome>;
 export type DocumentSaveAsResponse = {
   readonly type: 'documentSaveAsResult';
@@ -25,7 +26,7 @@ export function decodeDocumentSaveAsResponse(value: unknown): DocumentSaveAsResp
   if (!isRecord(value) || value.type !== 'documentSaveAsResult'
     || typeof value.requestId !== 'string' || value.requestId.length === 0) return null;
   const result = decodeRequestResult(value.result, (outcome): DocumentSaveAsOutcome | null =>
-    isRecord(outcome) && (outcome.status === 'saved' || outcome.status === 'cancelled')
+    isRecord(outcome) && (outcome.status === 'saved' || outcome.status === 'not-completed')
       ? { status: outcome.status } : null);
   return result ? { type: 'documentSaveAsResult', requestId: value.requestId, result } : null;
 }

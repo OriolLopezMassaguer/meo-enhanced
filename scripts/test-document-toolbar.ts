@@ -22,6 +22,7 @@ try {
       await page.addStyleTag({ content: `:root{--vscode-font-family:Arial;--vscode-editor-font-family:monospace;--vscode-editor-font-size:14px;--vscode-editor-background:${theme === 'dark' ? '#202124' : '#ffffff'};--vscode-editor-foreground:${theme === 'dark' ? '#dddddd' : '#222222'};--vscode-foreground:${theme === 'dark' ? '#dddddd' : '#222222'};--vscode-editorWidget-background:${theme === 'dark' ? '#28292c' : '#f3f3f3'}}` });
       await page.exposeFunction('__toolbarHost', (message: any) => {
         if (message.type === 'applyChanges') return { type: 'applied', version: message.baseVersion + 1 };
+        if (message.type === 'saveDocumentCopy') return { type: 'documentCopyResult', requestId: message.requestId, result: { ok: true, value: { status: 'saved' } } };
         if (message.type !== 'requestPreviewRender') return null;
         return { type: 'previewRenderResult', requestId: message.requestId, result: { ok: true, value: runtime.renderPreviewDocument({
           markdownText: message.text, sourceDocumentPath: 'C:/notes/toolbar.md', uiLanguage: language as 'en' | 'zh-CN',
@@ -91,6 +92,8 @@ try {
       await page.evaluate(() => document.querySelector('.editor-host > .cm-editor .cm-content')!
         .dispatchEvent(new FocusEvent('blur')));
       await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="undo"]')!.disabled);
+      await page.evaluate(() => document.querySelector('.editor-host > .cm-editor .cm-content')!
+        .dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })));
       await page.evaluate(() => {
         const global = window as any;
         window.dispatchEvent(new MessageEvent('message', { data: { type: 'editingPreferencesChanged', revision: 1,
@@ -109,7 +112,7 @@ try {
         const input = document.querySelector<HTMLTextAreaElement>('textarea[data-table-col="0"]')!;
         input.focus(); input.value = 'Save confirmed cell'; input.dispatchEvent(new Event('input', { bubbles: true }));
       });
-      for (const status of ['cancelled', 'error', 'saved']) {
+      for (const status of ['not-completed', 'error', 'saved', 'timeout']) {
         await page.evaluate(() => { (window as any).__toolbarMessages.length = 0; });
         await page.click('[data-action="saveAs"]');
         await page.waitForFunction(() => (window as any).__toolbarMessages.some((message: any) => message.type === 'saveDocumentAs'));
@@ -117,12 +120,81 @@ try {
         assert.equal(requests.length, 1);
         assert.ok(requests[0].text.includes('Save confirmed cell'));
         assert.equal(await page.$eval('[data-action="saveAs"]', button => (button as HTMLButtonElement).disabled), true);
-        await page.evaluate(({ requestId, status }) => window.dispatchEvent(new MessageEvent('message', { data: {
-          type: 'documentSaveAsResult', requestId, result: status === 'error'
-            ? { ok: false, error: { code: 'operation-failed', message: 'Save As fixture failure' } }
+        await page.evaluate(({ requestId, status, language }) => window.dispatchEvent(new MessageEvent('message', { data: {
+          type: 'documentSaveAsResult', requestId, result: status === 'error' || status === 'timeout'
+            ? { ok: false, error: { code: status === 'timeout' ? 'timeout' : 'operation-failed', message: status === 'timeout' ? 'Timed out' :
+              (language === 'en' ? 'Pending editor changes have not reached the document. Try Save As again.' : '编辑内容尚未同步到文档，请重试另存为。') } }
             : { ok: true, value: { status } }
-        } })), { requestId: requests[0].requestId, status });
+        } })), { requestId: requests[0].requestId, status, language });
         await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="saveAs"]')!.disabled);
+        if (status === 'not-completed' || status === 'saved') {
+          assert.equal(await page.$eval('.editor-notice', notice => (notice as HTMLElement).hidden), true);
+        } else {
+          await page.waitForSelector('.editor-notice.is-visible', { visible: true });
+          assert.equal(await page.$eval('.editor-notice', notice => (notice as HTMLElement).dataset.kind), status === 'timeout' ? 'warning' : 'error');
+          await page.screenshot({ path: `${directory}/save-as-${status}-${theme}-${language}.png`, clip: { x: 0, y: 0, width: 1200, height: 400 } });
+          await page.setViewport({ width: 540, height: 760 });
+          await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          await page.screenshot({ path: `${directory}/save-as-${status}-${theme}-${language}-narrow.png`, clip: { x: 0, y: 0, width: 540, height: 260 } });
+          await page.setViewport({ width: 1200, height: 760 });
+        }
+        if (status === 'error') {
+          assert.equal(await page.$eval('.editor-notice-title', title => title.textContent), language === 'en' ? 'Save As failed' : '另存为失败');
+          await edit('\nRetry with latest changes');
+          await page.click('.editor-notice-action[data-action="retry-save-as"]');
+          await page.waitForFunction(() => (window as any).__toolbarMessages.filter((message: any) => message.type === 'saveDocumentAs').length === 2);
+          const retry = await page.evaluate(() => (window as any).__toolbarMessages.filter((message: any) => message.type === 'saveDocumentAs').at(-1));
+          assert.notEqual(retry.requestId, requests[0].requestId);
+          assert.equal(retry.text, await read(), 'retry must prepare the latest draft instead of reusing a failed snapshot');
+          await page.evaluate(requestId => window.dispatchEvent(new MessageEvent('message', { data: {
+            type: 'documentSaveAsResult', requestId, result: { ok: true, value: { status: 'saved' } }
+          } })), retry.requestId);
+          await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="saveAs"]')!.disabled);
+        }
+        if (status === 'timeout') {
+          assert.equal(await page.$('.editor-notice-action[data-action="retry-save-as"]'), null,
+            'an unknown in-flight save must not offer an immediate repeat-write action');
+          assert.equal((await page.evaluate(() => (window as any).__toolbarMessages.filter((message: any) => message.type === 'saveDocumentAs'))).length, 1);
+          await page.click('.editor-notice-close');
+        }
+      }
+      for (const trigger of ['toolbar', 'keyboard']) {
+        const beforeFailure = await read();
+        await page.evaluate(() => {
+          const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+          const dispatch = view.dispatch;
+          view.focus();
+          view.dispatch = (...args: any[]) => {
+            if (args.some(transaction => transaction?.isUserEvent?.('undo') || transaction?.userEvent === 'undo')) {
+              view.dispatch = dispatch;
+              throw new Error('Injected native history failure');
+            }
+            return dispatch.apply(view, args);
+          };
+        });
+        if (trigger === 'toolbar') await page.click('[data-action="undo"]');
+        else {
+          await page.keyboard.down('Control'); await page.keyboard.down('Alt');
+          await page.keyboard.press('z');
+          await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+        }
+        await page.waitForFunction(language => document.querySelector('.editor-notice-title')?.textContent ===
+          (language === 'zh-CN' ? '撤销或重做未能完成' : 'Undo/Redo could not finish'), {}, language);
+        assert.equal(await read(), beforeFailure, 'a failed replay must not trigger an automatic second Undo');
+        await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="undo"]')!.disabled);
+        await page.screenshot({ path: `${directory}/history-error-${theme}-${language}-${trigger}.png`, clip: { x: 0, y: 0, width: 1200, height: 400 } });
+        if (trigger === 'keyboard') {
+          await page.setViewport({ width: 540, height: 760 });
+          await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+          await page.screenshot({ path: `${directory}/history-error-${theme}-${language}-narrow.png`, clip: { x: 0, y: 0, width: 540, height: 260 } });
+          await page.setViewport({ width: 1200, height: 760 });
+        }
+        const copyCount = await page.evaluate(() => (window as any).__toolbarMessages.filter((message: any) => message.type === 'saveDocumentCopy').length);
+        await page.click('.editor-notice-action[data-action="save-copy"]');
+        await page.waitForFunction(count => (window as any).__toolbarMessages.filter((message: any) => message.type === 'saveDocumentCopy').length === count + 1, {}, copyCount);
+        const copy = await page.evaluate(() => (window as any).__toolbarMessages.filter((message: any) => message.type === 'saveDocumentCopy').at(-1));
+        assert.equal(copy.text, beforeFailure);
+        await page.click('.editor-notice-close');
       }
       await page.screenshot({ path: `${directory}/${theme}-${language}.png`, clip: { x: 0, y: 0, width: 1200, height: 80 } });
       const beforeOverflowUndo = await read();
@@ -147,5 +219,5 @@ try {
       await page.close();
     }
   }
-  console.log('Document toolbar: exact button order, Live/Source history, pending native cells, Save As requests, retries, Preview, bindings and bilingual/theme screenshots passed');
+  console.log('Document toolbar: button order, Live/Source history, native cells, Save As latest-draft retry, unknown outcomes, toolbar/keyboard failure recovery, Preview, bindings and bilingual/theme screenshots passed');
 } finally { await browser.close(); }

@@ -229,6 +229,8 @@ type CreateEditorOptions = {
   onSelectionChange?: (state: SelectionMenuState & { from?: number; to?: number }) => void;
   /** Includes confirmed native-cell drafts; unfinished IME input keeps history unavailable. */
   onHistoryAvailabilityChange?: (availability: { undo: boolean; redo: boolean }) => void;
+  /** Reports both native replay and interaction-restore failures, including keyboard actions. */
+  onHistoryError?: () => void;
   onSourcePositionChange?: (change: SourcePositionChange) => void;
   onGitDiffSummaryChange?: (summary: ChangesReviewDiffSummary) => void;
   onViewportChange?: () => void;
@@ -380,6 +382,7 @@ export function createEditor({
   onCommentBlocked,
   onSelectionChange,
   onHistoryAvailabilityChange,
+  onHistoryError,
   onSourcePositionChange,
   onGitDiffSummaryChange,
   onViewportChange,
@@ -2977,6 +2980,7 @@ export function createEditor({
     },
     reportError(operation, error) {
       console.error(`Editor history ${operation} failed`, error);
+      if (!editorDestroyed) onHistoryError?.();
     },
     dispose() {
       pendingTableHistoryFocus = null;
@@ -3000,7 +3004,10 @@ export function createEditor({
   editorHistoryRuntime = createEditorHistoryRuntime(
     editorHistoryApplication,
     editorHistoryEffectAdapter,
-    (error) => console.error('Editor history Runtime failed', error)
+    (error) => {
+      console.error('Editor history Runtime failed', error);
+      if (!editorDestroyed) onHistoryError?.();
+    }
   );
   setEditorHistoryRunner(view, (direction) => requestEditorHistoryReplay(direction));
   onHistoryKeyDown = (event) => {
