@@ -120,6 +120,7 @@ try {
         assert.equal(requests.length, 1);
         assert.ok(requests[0].text.includes('Save confirmed cell'));
         assert.equal(await page.$eval('[data-action="saveAs"]', button => (button as HTMLButtonElement).disabled), true);
+        assert.equal(await page.$eval('[data-action="saveAs"]', button => button.getAttribute('aria-busy')), 'true');
         await page.evaluate(({ requestId, status, language }) => window.dispatchEvent(new MessageEvent('message', { data: {
           type: 'documentSaveAsResult', requestId, result: status === 'error' || status === 'timeout'
             ? { ok: false, error: { code: status === 'timeout' ? 'timeout' : 'operation-failed', message: status === 'timeout' ? 'Timed out' :
@@ -127,6 +128,7 @@ try {
             : { ok: true, value: { status } }
         } })), { requestId: requests[0].requestId, status, language });
         await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('[data-action="saveAs"]')!.disabled);
+        assert.equal(await page.$eval('[data-action="saveAs"]', button => button.getAttribute('aria-busy')), 'false');
         if (status === 'not-completed' || status === 'saved') {
           assert.equal(await page.$eval('.editor-notice', notice => (notice as HTMLElement).hidden), true);
         } else {

@@ -1244,26 +1244,11 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   cursor: pointer;
 }
 
-.preview-toolbar-action:hover {
-  color: var(--meo-ui-text);
-  background: var(--meo-ui-surface-hover, rgba(127, 127, 127, 0.18));
-}
-
 .preview-preset-info {
   flex: 0 0 auto;
   width: 24px;
   padding: 0;
   border-radius: 6px;
-}
-
-.preview-preset-info:focus-visible {
-  outline: 1px solid var(--meo-ui-focus, currentColor);
-  outline-offset: 1px;
-}
-
-.preview-toolbar-action:focus-visible {
-  outline: 1px solid var(--meo-ui-focus, currentColor);
-  outline-offset: 1px;
 }
 
 .preview-export-control {
@@ -1330,7 +1315,6 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   background: var(--meo-ui-surface-hover);
 }
 
-.preview-preset-info.has-error { color: var(--meo-ui-danger); }
 
 .preview-export-note {
   max-width: 248px;
@@ -1435,10 +1419,6 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   background-color: var(--meo-ui-surface);
 }
 
-.toolbar-overflow-indicator.is-active {
-  background-color: var(--meo-ui-surface-hover);
-}
-
 .toolbar-overflow-indicator[hidden] {
   display: none;
 }
@@ -1474,13 +1454,6 @@ html[data-editor-appearance='dark'] .preview-preset-dropdown-panel {
   font-size: 11px;
   line-height: 16px;
   cursor: pointer;
-}
-
-.changes-review-trigger:hover,
-.changes-review-trigger:focus-visible,
-.changes-review-trigger.is-open {
-  background: var(--meo-ui-surface-hover);
-  outline: none;
 }
 
 .changes-review-trigger-icon,
@@ -2218,38 +2191,98 @@ button:focus-visible > .menu-switch {
   background-color: transparent;
 }
 
-.format-button.is-discard-armed {
-  color: #fff;
-  background-color: #bc4b42;
-  outline: none;
-  box-shadow: none;
-}
-
 .format-button svg,
 .heading-dropdown-option svg {
   display: block;
 }
 
-.format-button:hover,
-.heading-dropdown-option:hover,
-.more-tools-wrapper > .format-button.is-active {
+.heading-dropdown-option:hover {
   background-color: var(--meo-ui-surface-hover);
 }
 
-.format-button:disabled {
+/* These controls keep their own size and shape, but share interaction states. */
+:is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):hover:not(:disabled) {
+  color: var(--meo-ui-text);
+  background-color: var(--meo-ui-surface-hover);
+}
+
+:is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):is(.is-active, .is-open, [aria-pressed='true'], [aria-expanded='true']):not(:disabled),
+:where(.heading-wrapper, .table-wrapper):hover > .format-button:not(:disabled) {
+  color: var(--meo-ui-text-selected);
+  background-color: var(--meo-ui-surface-selected);
+  box-shadow: inset 0 0 0 1px var(--meo-ui-selection-border);
+}
+
+.preview-toolbar-dropdown[aria-expanded='true'] :is(.preview-preset-heading, .preview-select-label, .preview-toolbar-dropdown-chevron),
+.preview-toolbar-dropdown:disabled :is(.preview-preset-heading, .preview-select-label, .preview-toolbar-dropdown-chevron) {
+  color: inherit;
+}
+
+:is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):active:not(:disabled) {
+  color: var(--meo-ui-text);
+  background-color: var(--meo-ui-surface-pressed);
+  box-shadow: inset 0 0 0 1px var(--meo-ui-border-control);
+}
+
+:is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):focus-visible:not(:disabled) {
+  /* Keep keyboard cues visible through the legacy global focus reset below. */
+  outline: 1px solid var(--meo-ui-focus) !important;
+  outline-offset: 1px;
+}
+
+html[data-meo-ui-contrast='high'] :is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):hover:not(:disabled):not(.is-discard-armed) {
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+html[data-meo-ui-contrast='high'] :is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):active:not(:disabled):not(.is-discard-armed) {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+:is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):disabled {
   color: var(--meo-ui-text-disabled, var(--meo-ui-text-muted));
   cursor: default;
   background-color: transparent;
+  box-shadow: none;
 }
 
-.format-button.is-discard-armed:hover {
-  color: #fff;
-  background-color: #bc4b42;
+.format-button.is-discard-armed:not(:disabled) {
+  color: var(--meo-ui-danger-emphasis);
+  background-color: color-mix(in srgb, var(--meo-ui-danger) 12%, var(--meo-ui-surface));
+  box-shadow: inset 0 0 0 1px var(--meo-ui-danger);
 }
 
-.format-button.toggle-button:not(.is-active) {
-  color: var(--meo-ui-text-muted, var(--meo-ui-text));
-  opacity: 0.5;
+.format-button.is-discard-armed:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--meo-ui-danger) 18%, var(--meo-ui-surface));
+}
+
+.format-button.is-discard-armed:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--meo-ui-danger) 22%, var(--meo-ui-surface));
+}
+
+.format-button[aria-busy='true'] {
+  position: relative;
+  color: var(--meo-ui-text);
+  cursor: wait;
+  background-color: var(--meo-ui-surface-pressed);
+}
+
+.format-button[aria-busy='true'] > svg { visibility: hidden; }
+.format-button[aria-busy='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: meo-toolbar-busy 0.8s linear infinite;
+}
+
+@keyframes meo-toolbar-busy { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .format-button[aria-busy='true']::after { animation: none; }
 }
 
 .heading-dropdown-option {
@@ -6864,15 +6897,6 @@ body.outline-resizing .preview-frame {
   display: inline-flex;
 }
 
-.source-preview-button.is-active {
-  color: var(--meo-ui-text);
-  background-color: var(--meo-ui-surface-hover);
-}
-
-.source-preview-button > svg {
-  color: var(--meo-ui-text);
-}
-
 .source-preview-tools {
   position: absolute;
   z-index: calc(var(--meo-layer-document-floating) + 10);
@@ -6902,21 +6926,11 @@ body.outline-resizing .preview-frame {
   cursor: pointer;
 }
 
-.source-preview-tool-button:hover,
-.source-preview-tool-button:focus-visible {
-  background-color: var(--meo-ui-surface-hover);
-}
-
 .source-preview-tool-button:focus-visible {
   border-color: var(--meo-ui-focus);
 }
 
-.source-preview-tool-button:active {
-  background-color: var(--meo-ui-surface-pressed);
-}
-
 .source-preview-tool-button svg {
-  opacity: 0.8;
   pointer-events: none;
 }
 
@@ -6964,16 +6978,6 @@ body.outline-resizing .preview-frame {
 .preview-options-panel .preview-font-family-dropdown,
 .preview-options-panel .preview-code-font-family-dropdown {
   max-width: 132px;
-}
-
-.preview-toolbar-dropdown:disabled {
-  color: var(--meo-ui-text-disabled);
-  cursor: default;
-}
-
-.preview-options-trigger[aria-expanded='true'] {
-  color: var(--meo-ui-text);
-  background: var(--meo-ui-surface-hover);
 }
 
 .preview-frame {
@@ -8454,8 +8458,7 @@ body .cm-tooltip.meo-hex-color-adjustment,
 .preview-toolbar-action:is(:hover, :focus-visible) { color: var(--meo-ui-text); }
 .preview-select-control .preview-select-label,
 .preview-preset-dropdown .preview-select-label,
-.preview-toolbar-dropdown-chevron,
-.preview-toolbar-dropdown:is(:hover, [aria-expanded='true'], :focus-visible) .preview-toolbar-dropdown-chevron { color: var(--meo-ui-text-muted); }
+.preview-toolbar-dropdown-chevron { color: var(--meo-ui-text-muted); }
 .changes-review-option-icon,
 .changes-review-check:not(.is-warning) { color: inherit; }
 :is(.more-tools-section-label, .more-tools-feedback-prompt, .more-tools-option-info, .preview-export-note, .find-status, .settings-description, .settings-jump, .settings-native, .settings-unassigned, .settings-context, .settings-empty, .settings-reset-description, .settings-tab-badge, .settings-subtle, .meo-input-suggestion-detail, .meo-suggestion-parameters),
@@ -8476,7 +8479,6 @@ html[data-meo-ui-contrast='normal'] .find-panel .find-clear-button > svg { strok
 .find-panel .find-clear-button:is(:hover, :focus-visible) { color: var(--meo-ui-text); }
 html .find-panel .find-clear-button:is(:hover, :focus-visible) > svg { stroke-width: 2; }
 html[data-meo-ui-contrast='high'] .find-panel .find-clear-button:is(:hover, :focus-visible) > svg { stroke-width: 2.5; }
-.format-button.toggle-button:not(.is-active) { color: var(--meo-ui-text-muted); }
 .segmented-control-button,
 html[data-editor-appearance='light'] .segmented-control-button:not(.is-active) { color: var(--meo-ui-text-muted); }
 .segmented-control-button:is(.is-active, :hover, :focus-visible),
@@ -8494,9 +8496,8 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 :is(.more-tools-option, .heading-dropdown-option, .preview-export-menu-action, .settings-button, .changes-review-option, .changes-review-snapshot-select, .changes-review-snapshot-action):disabled,
 .cm-editor .meo-md-html-table-context-btn:disabled { color: var(--meo-ui-text-disabled); }
 /* These actions retain their semantic foregrounds and paired button fills. */
-.format-button.is-discard-armed, .format-button.is-discard-armed:hover { color: #fff; }
 .find-status.is-error { color: var(--meo-ui-danger); }
-.preview-preset-info.has-error { color: var(--meo-ui-danger); }
+.preview-preset-info.has-error:not(:disabled) { color: var(--meo-ui-danger); }
 /* Only Source preview chrome uses the document palette; toolbar popups opt in after portaling. */
 .source-preview-tools,
 .preview-options-panel.source-preview-more-panel,

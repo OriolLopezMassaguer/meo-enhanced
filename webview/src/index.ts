@@ -897,6 +897,7 @@ let historyActionPending = false;
 let saveAsPending = false;
 const refreshDocumentActionButtons = (): void => {
   saveAsBtn.disabled = !editor || saveAsPending;
+  saveAsBtn.setAttribute('aria-busy', String(saveAsPending));
   const editable = !!editor && root.dataset.mode !== 'preview' && !historyActionPending;
   undoBtn.disabled = !editable || !historyAvailability.undo;
   redoBtn.disabled = !editable || !historyAvailability.redo;
