@@ -274,6 +274,7 @@ export type UiStrings = Readonly<{
   line: string;
   goToLine: string;
   editInSource: string;
+  revealInPreview: string;
   save: string;
   saveDocument: string;
   saveAs: string;
@@ -491,7 +492,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     showOutlineLeft: 'Show outline on left', showOutlineRight: 'Show outline on right',
     codeBlock: 'Code block', quote: 'Blockquote', horizontalRule: 'Horizontal rule',
     link: 'Link', wikiLink: 'Wiki link', image: 'Image', table: 'Insert table', line: 'Lines',
-    goToLine: 'Go to line', editInSource: 'Click to reveal in source', save: 'Save', saveDocument: 'Save document',
+    goToLine: 'Go to line', editInSource: 'Click to reveal in source', revealInPreview: 'Click to reveal in preview', save: 'Save', saveDocument: 'Save document',
     saveAs: 'Save as…', saveAsFailed: 'Save As failed', undo: 'Undo', redo: 'Redo',
     retrySaveAs: 'Retry save as…',
     saveAsResultUnknown: 'Save As result not confirmed',
@@ -709,7 +710,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     numberedList: '有序列表', task: '任务列表', showOutlineLeft: '在左侧显示目录',
     showOutlineRight: '在右侧显示目录', codeBlock: '代码块', quote: '引用',
     horizontalRule: '分隔线', link: '链接', wikiLink: 'Wiki 链接', image: '图片', table: '插入表格',
-    line: '行号', goToLine: '跳转到行', editInSource: '点击定位源码', save: '保存', saveDocument: '保存文档',
+    line: '行号', goToLine: '跳转到行', editInSource: '点击定位源码', revealInPreview: '点击定位预览', save: '保存', saveDocument: '保存文档',
     saveAs: '另存为…', saveAsFailed: '另存为失败', undo: '撤销', redo: '重做',
     retrySaveAs: '重试另存为…',
     saveAsResultUnknown: '尚未确认另存为结果',

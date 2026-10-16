@@ -439,8 +439,21 @@ menu avoidance. It also verifies clipped outline and completion text outside the
 list on the right/left, row alignment, explicit direction precedence and fallback
 when neither side fits. It runs in the targeted appearance and release browser gates.
 The production tooltip check also reveals a clipped heading beside the real outline.
-Production source locator and floating table header checks also verify the two
-pointer-positioned navigation hints and their existing click behavior.
+Production source locator and floating table header checks also verify the
+button-anchored source hint, pointer-positioned table hint and click behavior.
+`scripts/test-source-position-marker.ts` covers the divider's circular source
+locator, stable block targeting across the iframe boundary, tall-block visible
+centering, nearest available placement around top tools and viewport edges,
+nested-list bottom-edge placement with at most half the button outside the block,
+unavailable-position button hiding with retained block highlighting, hint stability and dismissal,
+focus/leave dismissal, and explicit navigation with linked and independent panes.
+Both directions share one control. The contract also checks Source-to-Preview
+centering with scroll sync on/off, wrapped visual-row placement, direction/target
+locking, Source selection/focus/viewport retention, offscreen caret hiding and
+hidden-comment targets, keyboard return focus, asynchronous Preview updates and
+inner-line navigation in tall code blocks. Layout-only notifications must not take navigation ownership
+or cancel a newly requested Source control.
+The old paragraph-height gutter must remain non-clickable.
 
 `scripts/test-tooltip-hover-sequence.ts` checks the 500ms continuation window
 with native button and Preview frame crossings in both themes, including hover

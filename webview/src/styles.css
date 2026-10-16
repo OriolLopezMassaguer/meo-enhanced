@@ -210,8 +210,9 @@ body {
 }
 
 .editor-surface[data-source-preview] > .preview-host {
+  --meo-source-preview-divider: var(--meo-content-panel-border, var(--meo-ui-separator));
   grid-area: 1 / 2;
-  border-left: 1px solid var(--meo-content-panel-border, color-mix(in srgb, var(--meo-foreground) 18%, transparent));
+  border-left: 1px solid var(--meo-source-preview-divider);
 }
 
 .editor-surface > .preview-host[hidden] {
@@ -6902,6 +6903,45 @@ body.outline-resizing .preview-frame {
   pointer-events: none;
 }
 
+.format-button.meo-preview-source-navigation {
+  position: absolute;
+  z-index: calc(var(--meo-layer-document-floating) + 11);
+  left: -1px;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--meo-ui-surface-raised) 70%, var(--meo-ui-text-muted));
+  border-radius: 50%;
+  color: var(--meo-ui-text-muted);
+  background: var(--meo-ui-surface-raised);
+  transform: translate(-50%, -50%);
+}
+
+.meo-preview-source-navigation:hover:not(:disabled) {
+  background: var(--meo-ui-surface-hover);
+}
+
+.meo-preview-source-navigation:active:not(:disabled) {
+  background: var(--meo-ui-surface-pressed);
+}
+
+.meo-preview-source-navigation[hidden] {
+  display: none;
+}
+
+.meo-preview-source-navigation svg {
+  pointer-events: none;
+  stroke-width: 1.8;
+}
+
+.meo-preview-source-navigation[data-meo-source-navigation-direction='preview'] svg {
+  transform: scaleX(-1);
+}
+
+html[data-meo-ui-contrast='high'] .meo-preview-source-navigation {
+  border-color: var(--meo-ui-text);
+}
+
 .preview-options-panel {
   box-sizing: border-box;
   overflow: auto;
@@ -8474,6 +8514,7 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .preview-preset-info.has-error:not(:disabled) { color: var(--meo-ui-danger); }
 /* Only Source preview chrome uses the document palette; toolbar popups opt in after portaling. */
 .source-preview-tools,
+.meo-preview-source-navigation,
 .preview-options-panel.source-preview-more-panel,
 .preview-dropdown-panel[data-source-preview-theme] {
   --meo-ui-text: var(--meo-preview-foreground);

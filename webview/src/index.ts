@@ -1772,6 +1772,7 @@ const previewController = createPreviewController({
     editor.scrollToLine(line, 'center');
     readingPositionLifecycle?.userInteracted();
   },
+  getSourceNavigationPosition: () => editor?.getSourceNavigationPosition() ?? null,
   onPaintReady: () => {
     previewPaintReady = true;
     resolveInitialPreviewPaint?.();
@@ -1791,11 +1792,17 @@ const previewController = createPreviewController({
     }
     readingPositionLifecycle?.surfaceReady();
   },
-  onViewportInteraction: () => {
+  onViewportInteraction: (owner) => {
     previewViewportInteractionGeneration += 1;
-    editor?.markPreviewViewportInteraction?.();
-    sourcePreviewPosition = { ...sourcePreviewPosition, active: false };
-    presentSourcePreviewPosition();
+    if (owner === 'source') {
+      editor?.markViewportInteraction();
+      editor?.holdLinkedPreviewAttention();
+      editor?.focus();
+    } else {
+      editor?.markPreviewViewportInteraction?.();
+      sourcePreviewPosition = { ...sourcePreviewPosition, active: false };
+      presentSourcePreviewPosition();
+    }
     readingPositionLifecycle?.userInteracted();
   },
   onViewportChange: () => {
@@ -1952,12 +1959,12 @@ const isSidePreviewVisible = (): boolean => (
 const isPreviewSurfaceVisible = (): boolean => (
   getActiveEditorMode() === 'preview' || isSidePreviewVisible()
 );
-const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false): boolean => (
+const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false, activateNavigation = false): boolean => (
   previewController.setSourcePositionMarker({
     visible: isSidePreviewVisible(),
     line: sourcePreviewPosition.line,
     active: sourcePreviewPosition.active
-  }, { revealIfOutside, deferLayout }) === true
+  }, { revealIfOutside, deferLayout, activateNavigation }) === true
 );
 function presentSourcePreviewControls(): void {
   const split = isSidePreviewVisible();
@@ -2942,7 +2949,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
       const canReveal = change.revealIfOutside
         && isSidePreviewVisible()
         && sourcePreviewScrollSyncEnabled;
-      if (presentSourcePreviewPosition(canReveal)) {
+      if (presentSourcePreviewPosition(canReveal, false, change.activateNavigation)) {
         editor?.holdLinkedPreviewAttention?.();
       }
     },
