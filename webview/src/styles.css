@@ -2206,7 +2206,7 @@ button:focus-visible > .menu-switch {
   background-color: var(--meo-ui-surface-hover);
 }
 
-:is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):is(.is-active, .is-open, [aria-pressed='true'], [aria-expanded='true']):not(:disabled),
+:is(.format-button, .preview-toolbar-action, .preview-toolbar-dropdown, .changes-review-trigger):not(:where(.source-preview-tool-button)):is(.is-active, .is-open, [aria-pressed='true'], [aria-expanded='true']):not(:disabled),
 :where(.heading-wrapper, .table-wrapper):hover > .format-button:not(:disabled) {
   color: var(--meo-ui-text-selected);
   background-color: var(--meo-ui-surface-selected);
@@ -6887,7 +6887,7 @@ body.outline-resizing .preview-frame {
   height: 20px;
   box-sizing: border-box;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--meo-ui-border-control) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--meo-ui-text) 27%, var(--meo-ui-surface));
   border-radius: 50%;
   color: var(--meo-ui-text);
   background: var(--meo-ui-surface);
