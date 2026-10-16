@@ -853,9 +853,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       case 'openLink': {
         if (await viewNavigation.revealDocumentLink(raw.href)) return;
-        await openLink(raw.href, documentUri, {
-          localEditor: raw.source === 'preview' ? 'default' : 'associated'
-        });
+        await openLink(raw.href, documentUri);
         return;
       }
       case 'openImageExternally':

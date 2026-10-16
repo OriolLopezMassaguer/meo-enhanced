@@ -55,7 +55,7 @@ try {
   // removed by Markdown parsing or sanitization before iframe binding.
   for (const preset of ['default', 'github-readme', 'whitey', 'newsprint', 'obsidian-minimal'] as const) {
     const payload = exportRuntime.renderPreviewDocument({
-      markdownText: '[Absolute file](<D:\\notes\\link target.md>)',
+      markdownText: '[Absolute file](<D:\\notes\\link target.md>)\n\n[Document](./guide.md#target)\n\n[Reference][guide]\n\n[guide]: ./guide.md#target\n\n<a href="./guide.md#target">HTML</a>\n\n[[guide#target|Wiki]]',
       sourceDocumentPath: 'C:/notes/current.md', uiLanguage: 'en', preset
     });
     await page.evaluate(({ preset, payload }) => {
@@ -99,6 +99,25 @@ try {
     const opened = await page.evaluate(() => (window as any).__previewMessages.filter((message: any) => message.type === 'openLink'));
     if (opened.length !== 1 || opened[0].href !== 'file:///D:/notes/link%20target.md' || opened[0].source !== 'preview') {
       throw new Error(`${preset}: absolute file navigation differs from shared normalization: ${JSON.stringify(opened)}`);
+    }
+    for (const label of ['Document', 'Reference', 'HTML', ...(preset === 'github-readme' ? [] : ['Wiki'])]) {
+      for (const modified of [false, true]) {
+        const point = await page.evaluate(label => {
+          const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
+          const link = [...frame.contentDocument!.querySelectorAll('a[data-meo-preview-href]')].find(link => link.textContent === label)!;
+          const rect = link.getBoundingClientRect(), outer = frame.getBoundingClientRect();
+          (window as any).__previewMessages.length = 0;
+          return { x: outer.left + rect.left + rect.width / 2, y: outer.top + rect.top + rect.height / 2 };
+        }, label);
+        if (modified) await page.keyboard.down('Control');
+        await page.mouse.click(point.x, point.y);
+        if (modified) await page.keyboard.up('Control');
+        const messages = await page.evaluate(() => (window as any).__previewMessages.filter((message: any) => message.type === 'openLink'));
+        const href = label === 'Wiki' ? 'meo-wiki:guide%23target' : './guide.md#target';
+        if (messages.length !== 1 || messages[0].href !== href || messages[0].source !== 'preview') {
+          throw new Error(`${preset}: ${label} modified=${modified}: ${JSON.stringify(messages)}`);
+        }
+      }
     }
   }
   await page.evaluate(() => {

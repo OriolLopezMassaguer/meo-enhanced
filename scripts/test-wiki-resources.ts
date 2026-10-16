@@ -32,6 +32,7 @@ fs.writeFileSync(path.join(otherVault, 'same.png'), bytes);
 const watchers: Array<{ disposed: boolean; handlers: Record<string, ((uri: URI) => void)[]> }> = [];
 const searches: string[] = [];
 const opened: string[] = [];
+const openRoutes: Array<{ command: string; editor: unknown }> = [];
 const warnings: string[] = [];
 let overflow = false;
 let workspaceEnabled = true;
@@ -46,7 +47,9 @@ mock.module('vscode', () => ({
     cancel() { this.cancellationState.isCancellationRequested = true; }
     dispose() {}
   },
-  commands: { executeCommand: async (_command: string, uri: URI) => { opened.push(uri.toString()); } },
+  commands: { executeCommand: async (command: string, uri: URI, editor: unknown) => {
+    opened.push(uri.toString()); openRoutes.push({ command, editor });
+  } },
   window: { showWarningMessage: (message: string) => { warnings.push(message); } },
   workspace: {
     getWorkspaceFolder: (uri: URI) => workspaceEnabled ? ({ uri: URI.file(uri.fsPath.toLowerCase().startsWith(otherVault.toLowerCase()) ? otherVault : directory) }) : undefined,
@@ -117,6 +120,11 @@ try {
   assert.equal((await resolveWikiResource('notes/other#Heading', document as never)).uri?.fragment, 'Heading');
   await openLink(`meo-wiki:${encodeURIComponent('assets/字面%E8%AE%BE.png')}`, document as never);
   assert.equal(opened.at(-1), percentImage.toString(), 'Wiki image links open through the associated editor');
+  assert.equal(openRoutes.at(-1)?.command, 'vscode.open');
+  await openLink('meo-wiki:notes%2Fother%23Heading', document as never);
+  assert.equal(opened.at(-1), URI.file(path.join(vault, 'notes/other.md')).with({ fragment: 'Heading' }).toString());
+  assert.deepEqual(openRoutes.at(-1), { command: 'vscode.openWith', editor: 'meoEnhanced.editor' },
+    'Wiki Markdown targets use MEO and preserve their fragment');
   await openLink('meo-wiki:same.png', document as never);
   assert.match(warnings.at(-1)!, /assets\/a\/same.png/);
   assert.equal(await resolveWebviewImageSrc(wikiImageSrc('assets/字面%E8%AE%BE.png'), document as never, webview as never), `data:image/png;base64,${bytes.toString('base64')}`);

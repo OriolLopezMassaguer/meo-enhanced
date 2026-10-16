@@ -278,6 +278,15 @@ their pointer, hover hint and click routing in every built-in preset. MEO Previe
 and HTML/PDF exports explicitly allow local file links in every preset; executable
 URL schemes remain filtered. The direct GitHub compatibility renderer retains its
 strict defaults. Raw HTML destinations must normalize before early URL filtering.
+Host contracts assert the final editor choice: resolved Markdown targets use MEO
+in every view, including Wiki, extension fallback, mixed-case extensions, remote
+URIs and fragments; other files retain their associations. Same-document fragments
+reveal without reopening. Browser contracts click Markdown, reference, Wiki and
+HTML links through production Live/Source and Preview paths, including ordinary
+and Ctrl clicks where supported. Source HTML coverage includes relative hrefs,
+multiline tags, unquoted attributes and entities, with code/comments and unsafe
+schemes excluded. Browser message delivery and Host command routing are distinct
+evidence; final installed-VSIX behavior still requires native acceptance.
 
 `scripts/test-export-links.ts` and `scripts/test-export-links-browser.ts` run in
 quick, targeted appearance and release gates. They cover all built-in presets and

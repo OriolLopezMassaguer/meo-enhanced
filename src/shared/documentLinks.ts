@@ -8,6 +8,7 @@ import { resolveWikiResource } from '../host/wikiResources';
 import { canResolveImageFromRoot, getImagePathCandidates } from './imagePaths';
 import { normalizeLinkDestination } from '../foundation/linkDestination';
 import { markdownPathTarget, resolveMarkdownReference } from '../host/markdownPathTargets';
+import { isMarkdownDocumentPath, MARKDOWN_EDITOR_VIEW_TYPE } from './extensionConfig';
 
 const ALLOWED_IMAGE_SRC_RE = /^(?:https?:|data:|blob:|vscode-webview:|vscode-webview-resource:|vscode-resource:)/i;
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
@@ -67,22 +68,15 @@ async function openLocalImageWithSystemApp(uri: vscode.Uri): Promise<void> {
   });
 }
 
-type LocalLinkEditor = 'associated' | 'default';
-
-type OpenLinkOptions = {
-  localEditor?: LocalLinkEditor;
-};
-
 export async function openLink(
   rawHref: string,
-  documentUri: vscode.Uri,
-  { localEditor = 'associated' }: OpenLinkOptions = {}
+  documentUri: vscode.Uri
 ): Promise<void> {
   rawHref = normalizeLinkDestination(rawHref);
   if (await openWikiLink(rawHref, documentUri)) {
     return;
   }
-  if (await openLocalLink(rawHref, documentUri, localEditor)) {
+  if (await openLocalLink(rawHref, documentUri)) {
     return;
   }
   if (looksLikeLocalHref(rawHref)) {
@@ -99,8 +93,7 @@ export async function openLink(
 
 export async function openLocalLink(
   rawHref: string,
-  documentUri: vscode.Uri,
-  localEditor: LocalLinkEditor = 'associated'
+  documentUri: vscode.Uri
 ): Promise<boolean> {
   const targetUri = await resolveLocalLinkTargetUri(rawHref, documentUri);
   if (!targetUri) {
@@ -112,16 +105,22 @@ export async function openLocalLink(
     ? targetUri.with({ fragment: safeDecodeURIComponent(fragmentHref.slice(1)) })
     : targetUri;
 
-  if (localEditor === 'default') {
-    await vscode.commands.executeCommand('vscode.openWith', navigationUri, 'default', {
+  await openDocumentLinkTarget(navigationUri);
+  return true;
+}
+
+async function openDocumentLinkTarget(targetUri: vscode.Uri): Promise<void> {
+  // Navigation inside MEO retains its editor even when the workspace associates
+  // Markdown with another editor. Classify after resolution and extension fallback.
+  if (isMarkdownDocumentPath(targetUri.path.toLowerCase())) {
+    await vscode.commands.executeCommand('vscode.openWith', targetUri, MARKDOWN_EDITOR_VIEW_TYPE, {
       preview: false
     });
   } else {
-    await vscode.commands.executeCommand('vscode.open', navigationUri, {
+    await vscode.commands.executeCommand('vscode.open', targetUri, {
       preview: false
     });
   }
-  return true;
 }
 
 export function getDocumentFragmentHref(rawHref: string): string {
@@ -150,7 +149,7 @@ export async function openWikiLink(rawHref: string, documentUri: vscode.Uri): Pr
     return true;
   }
 
-  await vscode.commands.executeCommand('vscode.open', targetUri, { preview: false });
+  await openDocumentLinkTarget(targetUri);
   return true;
 }
 

@@ -29,6 +29,7 @@ import {
 import { AgentReviewOverrideController } from './agents/reviewOverrides';
 import {
   EXTENSION_CONFIG_SECTION,
+  MARKDOWN_EDITOR_VIEW_TYPE as VIEW_TYPE,
   GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY,
   GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY,
   GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY,
@@ -96,7 +97,6 @@ import { createPreviewFonts, readSystemPreviewFonts } from './host/previewFonts'
 import { createPreviewPresetPreferences, PREVIEW_PRESET_PREFERENCES_STATE_KEY } from './host/previewPresetPreferences';
 import type { PreviewPresetsChanged, PreviewPresetRequest, PreviewPresetResponse } from './protocol/previewPresets';
 
-const VIEW_TYPE = 'meoEnhanced.editor';
 const ACTIVE_EDITOR_CONTEXT_KEY = 'meoEnhanced.activeEditor';
 const FIND_OPTIONS_STATE_KEY = 'findOptions';
 
