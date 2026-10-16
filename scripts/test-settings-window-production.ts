@@ -569,7 +569,21 @@ try {
     assert.ok(Math.abs(sample.width - value.samples[0].width) <= .1 && Math.abs(sample.height - value.samples[0].height) <= .1 && sample.radius === value.samples[0].radius, 'the selected pill keeps its dimensions and corner radius throughout the slide');
   }
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
-  assert.equal(await page.$eval('[data-appearance-mode="dark"]', e => { (e as HTMLButtonElement).click(); return e.querySelector<HTMLElement>('.segmented-control-button-indicator')!.getAnimations().length; }), 0);
+  await page.evaluate(() => document.body.classList.add('vscode-reduce-motion'));
+  const reducedMotionAnimation = await page.$eval('[data-appearance-mode="dark"]', e => {
+    (e as HTMLButtonElement).click();
+    const pill = e.querySelector<HTMLElement>('.segmented-control-button-indicator')!;
+    return pill.getAnimations().map(animation => {
+      animation.pause();
+      const positions = [0, 75, 150].map(time => { animation.currentTime = time; return pill.getBoundingClientRect().left; });
+      const duration = animation.effect?.getTiming().duration;
+      animation.finish();
+      return { positions, duration };
+    });
+  });
+  assert.ok(reducedMotionAnimation.some(value => value.duration === 150 && value.positions[0] < value.positions[1]
+    && value.positions[1] < value.positions[2]), 'segmented controls still slide when system and Host reduced-motion preferences are enabled');
+  await page.evaluate(() => document.body.classList.remove('vscode-reduce-motion'));
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
   for (const language of ['en', 'zh-CN']) for (const appearance of ['light', 'dark']) {
     await page.click('.settings-tab[data-tab="general"]');
