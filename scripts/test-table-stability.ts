@@ -49,6 +49,57 @@ async function main() {
         return editor;
       };
 
+      const trailingWhitespaceTableLines = [
+        '| 正则  | 名称        | 含义            | 示例       | 匹配结果       | NULL |',
+        '| :---: | :--------: | :-------------: | :--------: | :-----------: | :-----: |',
+        '| `.`   | 点号       | 任意一个字符     | `a.c`      | `abc` `a1c`   |         |',
+        '| `\\d`  | 数字       | 一个数字         | `\\d\\d`     | `12`         |         |',
+        '| `\\D`  | 非数字     | 非数字字符       | `\\D+`      | `abc`         |         |',
+        '| `\\w`  | 单词字符   | 字母数字下划线   | `\\w+`      | `user_1`      |         |',
+        '| `\\W`  | 非单词字符 | 特殊符号         | `\\W+`      | `@#`          |         |',
+        '| `\\s`  | 空白字符   | 空格/tab/换行    | `a\\sb`     | `a b`         |         |',
+        '| `\\S`  | 非空白     | 非空格字符       | `\\S+`      | `hello`       |         |',
+        '| `^`   | 开头       | 行开始          | `^abc`      | abc开头       |         |',
+        '| `$`   | 结尾       | 行结束          | `abc$`      | abc结尾      |         |',
+        '| `[]`  | 字符集     | 指定字符之一     | `[abc]`     | a/b/c        |         |',
+        '| `[^]` | 排除字符   | 不包含指定字符   | `[^0-9]`    | 非数字        |         |',
+        '| `()`  | 分组       | 捕获内容        | `(ab)+`     | abab          |         |',
+        '| `    | `         | 或               | 多选一      | `cat\\|dog`   | cat/dog |'
+      ];
+      for (const suffix of ['', ' ', '\t', ' \t  ']) {
+        const text = trailingWhitespaceTableLines
+          .map((line, index) => index === 1 ? line + suffix : line)
+          .join('\n');
+        const tableEditor = await create(text);
+        try {
+          const tableSelector = '.meo-md-html-table:not(.meo-md-html-table-sticky-table)';
+          const table = app.querySelector<HTMLTableElement>(tableSelector);
+          const rows = Array.from(table?.querySelectorAll('tbody tr') ?? []);
+          const previews = Array.from(rows.at(-1)?.querySelectorAll<HTMLElement>('.meo-md-html-table-cell-preview') ?? []);
+          const snapshot = {
+            suffix,
+            tables: app.querySelectorAll(tableSelector).length,
+            rows: rows.length,
+            lastRow: previews.map((preview) => preview.textContent ?? ''),
+            literalCodeCount: previews.slice(0, 2).reduce((count, preview) => count + preview.querySelectorAll('code').length, 0),
+            alternationCode: previews[4]?.querySelector('code')?.textContent ?? '',
+            sourceUnchanged: tableEditor.view.state.doc.toString() === text
+          };
+          if (
+            snapshot.tables !== 1 ||
+            snapshot.rows !== 13 ||
+            JSON.stringify(snapshot.lastRow) !== JSON.stringify(['`', '`', '或', '多选一', 'cat|dog', 'cat/dog']) ||
+            snapshot.literalCodeCount !== 0 ||
+            snapshot.alternationCode !== 'cat|dog' ||
+            !snapshot.sourceUnchanged
+          ) {
+            throw new Error(`table delimiter trailing whitespace changed cell rendering: ${JSON.stringify(snapshot)}`);
+          }
+        } finally {
+          tableEditor.destroy();
+        }
+      }
+
       const editingEditor = await create('| A |\n| --- |\n| asd |');
       editingEditor.setSearchQuery('asd');
       editingEditor.findNext('asd', { focusEditor: false });

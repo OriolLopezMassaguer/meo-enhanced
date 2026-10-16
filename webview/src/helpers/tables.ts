@@ -6145,7 +6145,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
 }
 
 export function isTableDelimiterLine(lineText: string): boolean {
-  return tableDelimiterRegex.test(parseBlockLinePrefix(lineText).content);
+  return tableDelimiterRegex.test(parseBlockLinePrefix(lineText).content.trimEnd());
 }
 
 export function parseTableInfo(state: EditorState, tableNode: Pick<SyntaxNodeRef, 'from' | 'to'>) {
