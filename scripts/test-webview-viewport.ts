@@ -317,7 +317,7 @@ async function main() {
       language: 'zh-CN',
       previewTools: '预览工具',
       sourceColoring: '代码着色',
-      exports: ['导出为...'],
+      exports: ['导出为…'],
       previewFrameTitle: 'Markdown 预览',
       previewAppearance: '预览主题',
       editorAppearance: '界面主题',

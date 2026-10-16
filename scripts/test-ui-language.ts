@@ -30,7 +30,7 @@ assert.equal(english.properties, 'Properties');
 assert.equal(chinese.properties, 'Properties');
 assert.equal(getReadingUiStrings('en').properties, 'Properties');
 assert.equal(english.exportHtml, 'Export as HTML');
-assert.equal(english.exportDocument, 'Export as...');
+assert.equal(english.exportDocument, 'Export as…');
 assert.deepEqual(
   [english.previewFontFamily, english.previewCodeFontFamily, english.previewCodeColors, english.previewAppearance],
   ['Body font', 'Code font', 'Code color', 'Preview theme']
@@ -63,7 +63,7 @@ assert.deepEqual([chinese.feedbackPrompt, chinese.reportIssue], ['使用中遇�
 assert.equal(english.line, 'Lines');
 assert.equal(chinese.line, '行号');
 assert.equal(chinese.exportHtml, '导出为 HTML');
-assert.equal(chinese.exportDocument, '导出为...');
+assert.equal(chinese.exportDocument, '导出为…');
 assert.equal(english.findMatches(2), '2 matches');
 assert.equal(chinese.findMatches(2), '2 个匹配项');
 assert.equal(chinese.replacedRemaining(3), '已替换 • 剩余 3 个');
