@@ -95,9 +95,25 @@ the long-run authorization policy below.
 | Light UI | Copy, existing icon replacements, or local visual style changes meet the boundary below | Build plus a scoped smoke pass | `bun run test:ui-light` |
 | Quick | A behavior or other implementation change is ready for a general regression check | Last measured baseline about 18 minutes; host dependent | `bun run test:quick` |
 | Targeted | A change affects one high-risk area, or a quick check identifies that area | About 1–5 minutes | `bun run test:targeted -- <area>` |
-| Release | A milestone or release candidate needs the complete gate | Last measured baseline about 60 minutes, excluding native acceptance and endurance | `bun run test:release -- --confirm-long-run` |
+| Release | A release candidate or separately authorized cross-cutting risk needs the complete gate | Last measured baseline about 60 minutes, excluding native acceptance and endurance | `bun run test:release -- --confirm-long-run` |
 | Large document | A shorter production-like document stress pass is specifically needed | About 1–3 minutes | `bun run test:large-document -- <document> --confirm-long-run` |
 | Endurance | Full-document edit, undo/redo, cursor, and viewport stress is specifically needed | About 20–35 minutes per run | `bun run test:endurance -- <document> --confirm-long-run` |
+
+## Validation for commits and merges
+
+Select validation by behavioral scope and risk. An ordinary feature/fix commit
+or merge into `main` uses the normal quick/targeted checks and applicable type,
+build, privacy and staged architecture/Protocol checks. Reuse evidence that
+still covers the same candidate; a fast-forward merge does not require another
+run. Conflict resolution or integration changes require checking the affected
+scope. Ordinary completion needs no waiver from the full long-running suite.
+
+Full long-running validation primarily supports release acceptance. Outside
+release work, recommend it only when specific cross-cutting, Protocol,
+persistence/migration or accumulated interaction risks expose gaps in the
+existing checks. State those gaps, scope and duration and obtain current-task
+authorization. A commit, merge, completed feature or milestone alone does not
+promote validation to the release tier; release coverage remains unchanged.
 
 ## Light UI changes
 
@@ -134,8 +150,8 @@ The agent owns the decision to recommend a long run; the user does not need to
 remember the tiers or commands. Recommend the appropriate run proactively when
 the work reaches one of these boundaries:
 
-- **Release:** a milestone or release candidate is becoming fixed, or broad
-  cross-cutting changes need release confidence.
+- **Release:** a release candidate needs acceptance, or specific broad
+  cross-cutting risks exceed the coverage of normal quick/targeted checks.
 - **Large document:** a shorter production benchmark, sampled strict UAT, and
   live-scroll integrity pass are enough to assess document-scale risk.
 - **Endurance:** undo/redo, cursor, viewport, tables, or rendered-block editing
@@ -146,8 +162,8 @@ the work reaches one of these boundaries:
 Every recommendation must state the test type, why it is warranted, its scope,
 and its expected duration. Release, endurance, full browser matrices, repeated
 stress runs, full-document sweeps, and VM validation wait for explicit user authorization
-in the current task. A generic request to fix, build, or test is
-not authorization. The confirmation flag records an intentional invocation;
+in the current task. A generic request to fix, build, test, commit, or merge
+is not authorization. The confirmation flag records an intentional invocation;
 it is not a substitute for asking. `--dry-run` is always safe and prints the
 exact commands without running them.
 
