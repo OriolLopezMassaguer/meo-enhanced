@@ -8121,11 +8121,12 @@ html[data-meo-ui-contrast='high'] .cm-editor :is(.meo-md-html-table-context-trig
 .settings-search-clear { width: 24px; height: 24px; flex: 0 0 auto; color: var(--meo-settings-search-muted); }
 .settings-search-clear[hidden] { display: none; }
 .settings-layout { display: grid; grid-template-columns: minmax(170px, max-content) minmax(0, 1fr); min-height: 0; flex: 1 1 auto; }
+.settings-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .settings-navigation { padding: 16px 12px; border-right: 1px solid var(--meo-ui-separator); overflow: auto; }
 .settings-jump { display: block; box-sizing: border-box; width: 100%; border: 0; padding: 8px 10px; border-radius: 6px; margin: 2px 0; text-align: left; white-space: nowrap; color: var(--meo-ui-text-muted); background: transparent; font: inherit; cursor: pointer; }
 .settings-jump:hover { background: var(--meo-ui-surface-hover); }
 .settings-jump.is-active { color: var(--meo-ui-text-selected); background: var(--meo-ui-surface-selected); }
-.settings-content { min-height: 0; overflow: auto; padding: 20px 24px 24px; scroll-behavior: auto; }
+.settings-content { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 20px 24px 24px; scroll-behavior: auto; }
 .settings-section { padding-bottom: 6px; border-bottom: 1px solid var(--meo-ui-separator); }
 .settings-section + .settings-section { margin-top: 30px; }
 .settings-section-title { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
@@ -8160,7 +8161,7 @@ html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not
 .settings-button.appearance-color-reset { flex: 0 0 32px; width: 32px; height: 32px; border-radius: 8px; padding: 0; color: var(--meo-ui-text-muted); }
 .appearance-color-reset > svg { display: block; flex: none; }
 .appearance-color-reset:hover:not(:disabled) { color: var(--meo-ui-text); }
-.appearance-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.appearance-footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; width: 100%; }
 .appearance-footer [hidden] { display: none; }
 .appearance-status { margin: 0 0 12px; color: var(--meo-ui-danger); font-size: 12px; }
 .appearance-background-warning {

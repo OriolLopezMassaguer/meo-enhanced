@@ -74,9 +74,10 @@ export function createSettingsWindow(options: {
   const clear = button('', 'settings-search-clear'); clear.append(createElement(X, { width: 16, height: 16, 'aria-hidden': 'true' })); searchbox.append(searchIcon(), search, clear); titlebar.append(title, searchbox, close); top.append(tabs);
   const layout = element('div', 'settings-layout');
   const navigation = element('nav', 'settings-navigation');
+  const main = element('div', 'settings-main');
   const content = element('div', 'settings-content'); content.id = 'meo-settings-content'; content.setAttribute('role', 'tabpanel');
   const status = element('p', 'settings-status'); status.setAttribute('role', 'status'); status.hidden = true;
-  layout.append(navigation, content);
+  layout.append(navigation, main);
   const footer = element('footer', 'settings-footer');
   const reset = button(''); const resetPopover = element('div', 'settings-reset-popover'); resetPopover.hidden = true;
   resetPopover.setAttribute('role', 'group'); const resetTitle = element('strong', 'settings-reset-title');
@@ -84,7 +85,8 @@ export function createSettingsWindow(options: {
   const cancelReset = button(''); const confirmReset = button('', 'settings-button settings-primary');
   resetActions.append(cancelReset, confirmReset); resetPopover.append(resetTitle, resetDescription, resetActions); footer.append(resetPopover, reset);
   const appearanceFooter = element('footer', 'settings-footer'); appearanceFooter.append(appearance.footer); appearanceFooter.hidden = true;
-  dialog.append(titlebar, top, status, layout, footer, appearanceFooter); document.body.append(dialog);
+  main.append(content, footer, appearanceFooter);
+  dialog.append(titlebar, top, status, layout); document.body.append(dialog);
   const disposeSearchFocus = options.registerInput?.(search);
   const t = (zh: string, en: string) => settingsText(language, zh, en);
   const query = () => normalizeSettingsSearch(search.value);
