@@ -9,6 +9,7 @@ const build = await Bun.build({ entrypoints: ['scripts/test-preview-reading-surf
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 const bundle = await build.outputs[0]!.text();
 const text = [
+  '---', '111: aaa', '222: bbb', '333: ccc', '444: ddd', '555: eee', '666: fff', '---', '',
   '# Preview presets', '', 'first', 'second', '', '<!-- retained default comment -->', '',
   '> [!NOTE]', '> A GitHub reading style.', '', '- [x] Ready', '- [ ] Pending', '',
   '```typescript', 'const answer = { value: 42 };', 'console.log(answer.value);', '```', '',
@@ -111,6 +112,15 @@ try {
       const diagram = doc.querySelector('.meo-export-mermaid')!.getBoundingClientRect();
       const scroller = doc.scrollingElement!;
       return {
+        frontmatter: {
+          rows: Array.from(doc.querySelector<HTMLTableElement>('.meo-export-frontmatter table')!.rows,
+            row => Array.from(row.cells, cell => [cell.tagName, cell.textContent])),
+          padding: style('.meo-export-frontmatter th').padding,
+          border: [style('.meo-export-frontmatter td').borderTopWidth, style('.meo-export-frontmatter td').borderTopStyle, style('.meo-export-frontmatter td').borderTopColor],
+          backgrounds: [1, 2].map(row => style(`.meo-export-frontmatter tr:nth-child(${row})`).backgroundColor),
+          colors: ['th', 'td'].map(tag => style(`.meo-export-frontmatter ${tag}`).color),
+          weights: ['th', 'td'].map(tag => style(`.meo-export-frontmatter ${tag}`).fontWeight)
+        },
         keycap: [style('kbd').borderTopWidth, style('kbd').borderTopStyle, style('kbd').boxShadow],
         // These links have already passed through Preview's navigation binding.
         links: ['.footnote-ref a', '.footnote-backref', 'p a[data-meo-preview-href]:not([id])'].map(selector => {
@@ -132,6 +142,16 @@ try {
     });
     const linkColor = appearance === 'light' ? 'rgb(9, 105, 218)' : 'rgb(68, 147, 248)';
     const background = appearance === 'light' ? 'rgb(255, 255, 255)' : 'rgb(13, 17, 23)';
+    const foreground = appearance === 'light' ? 'rgb(31, 35, 40)' : 'rgb(240, 246, 252)';
+    assert.deepEqual(actual.frontmatter, {
+      rows: [['111', 'aaa'], ['222', 'bbb'], ['333', 'ccc'], ['444', 'ddd'], ['555', 'eee'], ['666', 'fff']]
+        .map(([key, value]) => [['TH', key], ['TD', value]]),
+      padding: '6px 13px',
+      border: ['1px', 'solid', appearance === 'light' ? 'rgb(209, 217, 224)' : 'rgb(61, 68, 77)'],
+      backgrounds: [background, appearance === 'light' ? 'rgb(246, 248, 250)' : 'rgb(21, 27, 35)'],
+      colors: [foreground, foreground],
+      weights: ['600', '400']
+    }, 'Frontmatter keeps GitHub key/value rows, borders, striping and text in both themes');
     assert.deepEqual(actual.keycap.slice(0, 2), ['1px', 'solid'], 'Keyboard keycaps keep their visible border');
     assert.notEqual(actual.keycap[2], 'none', 'Keyboard keycaps keep their bottom shadow');
     for (const link of actual.links) assert.deepEqual(link, [linkColor, 'underline', false, true], 'Bound Preview links retain GitHub colors and decoration');

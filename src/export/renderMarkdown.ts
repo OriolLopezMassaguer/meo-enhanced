@@ -1333,7 +1333,7 @@ function renderGithubFrontmatter(lines: string[], bodyStartLine: number): string
     const text = (entry: unknown): string => entry === null || entry === undefined ? ''
       : Array.isArray(entry) ? entry.map(text).join(', ')
       : typeof entry === 'object' ? JSON.stringify(entry) : String(entry);
-    return `<div class="meo-export-frontmatter" data-source-line="1" data-source-end-line="${end}"><table><thead><tr>${fields.map(([key]) => `<th>${escapeHtml(key)}</th>`).join('')}</tr></thead><tbody><tr>${fields.map(([, entry]) => `<td>${escapeHtml(text(entry))}</td>`).join('')}</tr></tbody></table></div>`;
+    return `<div class="meo-export-frontmatter" data-source-line="1" data-source-end-line="${end}"><table><tbody>${fields.map(([key, entry]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(text(entry))}</td></tr>`).join('')}</tbody></table></div>`;
   } catch {
     // Cyclic YAML aliases cannot be projected into table cells; retain their source.
     return `<pre data-source-line="1" data-source-end-line="${end}"><code>${escapeHtml(lines.slice(0, end).join('\n'))}</code></pre>`;

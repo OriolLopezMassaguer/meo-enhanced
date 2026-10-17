@@ -84,6 +84,11 @@ assert.ok(!details.includes('hidden HTML comment'));
 const frontmatter = render('---\ntitle: Sample\ntags: [one, two]\n---\n\n# Body').html;
 assert.ok(frontmatter.includes('<table') && frontmatter.includes('Sample') && frontmatter.includes('one, two'));
 assert.ok(frontmatter.includes('data-source-line="6"'), frontmatter);
+const numericFrontmatter = render('---\n111: aaa\n222: bbb\n333: ccc\n444: ddd\n555: eee\n666: fff\n---\n\n# Body').html;
+assert.deepEqual([...numericFrontmatter.matchAll(/<tr>(.*?)<\/tr>/g)].map(row =>
+  [...row[1].matchAll(/<t[dh]>(.*?)<\/t[dh]>/g)].map(cell => cell[1])
+), [['111', 'aaa'], ['222', 'bbb'], ['333', 'ccc'], ['444', 'ddd'], ['555', 'eee'], ['666', 'fff']],
+'GitHub frontmatter must place each key beside its value');
 assert.ok(render('---\ncycle: &items [*items]\n---\n\n# Body').html.includes('Body'));
 assert.deepEqual(resolvePreviewPresetSettings('github-readme', environment), {
   previewFontFamily: '', previewSourceColoring: true, previewShowComments: false
