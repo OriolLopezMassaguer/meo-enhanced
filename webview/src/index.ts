@@ -13,7 +13,8 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, Pen, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -856,7 +857,7 @@ saveBtn.className = 'format-button';
 saveBtn.dataset.action = 'save';
 saveBtn.dataset.tooltip = activeUiStrings.save;
 saveBtn.setAttribute('aria-label', activeUiStrings.saveDocument);
-saveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
+saveBtn.appendChild(createCodicon('save'));
 
 const saveAsBtn = document.createElement('button');
 saveAsBtn.type = 'button';
@@ -864,17 +865,7 @@ saveAsBtn.className = 'format-button';
 saveAsBtn.dataset.action = 'saveAs';
 saveAsBtn.dataset.tooltip = activeUiStrings.saveAs;
 saveAsBtn.setAttribute('aria-label', activeUiStrings.saveAs);
-const saveAsIcon = createElement(Save, { width: 18, height: 18, viewBox: '0 0 28 28', 'aria-hidden': 'true' });
-// Keep the gap under the pen transparent across normal, hover and theme surfaces.
-for (const path of saveAsIcon.children) path.setAttribute('clip-path', 'url(#meo-save-as-disk-clip)');
-const saveAsDiskClip = document.createElementNS(saveAsIcon.namespaceURI, 'clipPath');
-saveAsDiskClip.id = 'meo-save-as-disk-clip';
-const saveAsDiskClipShape = document.createElementNS(saveAsIcon.namespaceURI, 'polygon');
-saveAsDiskClipShape.setAttribute('points', '0,0 28,0 28,4 4,28 0,28');
-saveAsDiskClip.appendChild(saveAsDiskClipShape);
-saveAsIcon.prepend(saveAsDiskClip);
-saveAsIcon.appendChild(createElement(Pen, { x: 10, y: 10, width: 18, height: 18, 'stroke-width': 8 / 3 }));
-saveAsBtn.appendChild(saveAsIcon);
+saveAsBtn.appendChild(createCodicon('save-as'));
 saveAsBtn.disabled = true;
 const undoBtn = document.createElement('button');
 undoBtn.type = 'button';
@@ -1465,18 +1456,7 @@ sourcePreviewButton.dataset.tooltip = activeUiStrings.showSidePreview;
 sourcePreviewButton.dataset.tooltipLiveUpdate = 'true';
 sourcePreviewButton.setAttribute('aria-label', activeUiStrings.showSidePreview);
 sourcePreviewButton.setAttribute('aria-pressed', 'false');
-const sourcePreviewButtonLabel = document.createElement('span');
-sourcePreviewButtonLabel.className = 'source-preview-button-label';
-sourcePreviewButtonLabel.textContent = activeUiStrings.sidePreview;
-sourcePreviewButton.append(
-  createElement(SquareSplitHorizontal, {
-    width: 16,
-    height: 16,
-    'aria-hidden': 'true',
-    'data-icon': 'square-split-horizontal'
-  }),
-  sourcePreviewButtonLabel
-);
+sourcePreviewButton.appendChild(createCodicon('open-preview'));
 rightGroup.insertBefore(sourcePreviewButton, changesControls);
 
 const sourcePreviewScrollSyncButton = document.createElement('button');
@@ -1969,9 +1949,6 @@ function presentSourcePreviewControls(): void {
     : activeUiStrings.showSidePreview;
   sourcePreviewButton.dataset.tooltip = sourcePreviewLabel;
   sourcePreviewButton.setAttribute('aria-label', sourcePreviewLabel);
-  sourcePreviewButtonLabel.textContent = split
-    ? activeUiStrings.exitSidePreview
-    : activeUiStrings.sidePreview;
 
   const syncLabel = sourcePreviewScrollSyncEnabled
     ? activeUiStrings.disableSynchronizedScrolling

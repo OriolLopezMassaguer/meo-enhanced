@@ -6874,12 +6874,6 @@ body.outline-resizing .preview-frame {
 .source-preview-button {
   display: none;
   flex: 0 0 auto;
-  width: auto;
-  min-width: 0;
-  gap: 5px;
-  padding: 0 8px;
-  font: inherit;
-  font-size: 12px;
   color: var(--meo-ui-text-muted);
 }
 
