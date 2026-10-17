@@ -65,6 +65,7 @@ import { runVscodeExportWithFeedback } from './host/vscodeExportFeedback';
 import { createDiffBaselineProtocolAdapter } from './host/diffBaselineProtocolAdapter';
 import { createVscodeViewNavigationAdapter } from './host/vscodeViewNavigationAdapter';
 import { createVscodeReadingPositionAdapter } from './host/vscodeReadingPositionAdapter';
+import { createDocumentSaveAsViewStateHandoff } from './application/documentSaveAsViewState';
 import { cleanupRetiredWorkspaceState } from './host/vscodeRetiredWorkspaceStateCleanup';
 import { type PreviewRenderResult } from './shared/preview';
 import {
@@ -386,6 +387,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   private readonly previewPresetPreferences: ReturnType<typeof createPreviewPresetPreferences>;
   private readonly activePanels = new Set<vscode.WebviewPanel>();
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
+  private readonly saveAsViewStateHandoff = createDocumentSaveAsViewStateHandoff();
   private lastActivePanel: vscode.WebviewPanel | null = null;
 
   constructor(
@@ -667,6 +669,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         document,
         getRestoreReadingPositionOnOpen
       ),
+      saveAsViewStateHandoff: this.saveAsViewStateHandoff,
       saveDocument: async () => document.save(),
       onExportDocument: (session, options) => this.exportSessionDocument(session, options),
       renderPreview: async (options) => {

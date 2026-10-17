@@ -841,12 +841,22 @@ async function backgroundPreparationYieldsAndPromotes(): Promise<void> {
   const releaseEditor = shiki.activateShikiCodeHighlighting('editor');
   const code = 'line\n'.repeat(512);
   let foregroundNeeded = true;
+  let reading = true;
   try {
+    const before = highlighters.length;
     planHighlighter({ onTokenize(highlighter) {
       if (highlighter.tokenizeCalls === 2) foregroundNeeded = false;
     } });
-    shiki.requestShikiTokens('typescript', code, 'source', () => true, 'background');
+    shiki.requestShikiTokens('typescript', code, 'source', () => true, 'background', () => reading);
+    await drain();
+    assert.equal(highlighters.length, before, 'Paused preparation must not initialize a grammar');
+    reading = false;
     await waitFor(() => idle.size > 0, 'paused background preparation');
+    const prepared = highlighters[before];
+    reading = true;
+    for (const run of [...idle.values()]) run();
+    await drain();
+    assert.equal(prepared.tokenizeCalls, 1, 'Reading must pause the next batch without restarting the first');
     planHighlighter();
     shiki.requestShikiTokens('typescript', 'visible fence', 'editor');
     await waitFor(() => !!shiki.getShikiTokens('typescript', 'visible fence', 'editor'), 'visible work bypasses background');
@@ -854,14 +864,16 @@ async function backgroundPreparationYieldsAndPromotes(): Promise<void> {
     shiki.requestShikiTokens('typescript', code, 'source', () => foregroundNeeded);
     // Promotion wakes the held idle boundary. Cancelling the foreground caller
     // keeps useful background work, but releases the global foreground turn.
-    await waitFor(() => !foregroundNeeded && idle.size > 0, 'cancelled foreground resumes background priority');
+    await waitFor(() => !foregroundNeeded, 'cancelled foreground resumes background priority');
     shiki.requestShikiTokens('typescript', 'another visible fence', 'editor');
     await waitFor(() => !!shiki.getShikiTokens('typescript', 'another visible fence', 'editor'), 'demoted work yields');
+    reading = false;
     for (let attempt = 0; attempt < 20 && !shiki.getShikiTokens('typescript', code, 'source'); attempt++) {
       for (const run of [...idle.values()]) run();
       await drain();
     }
     assert.ok(shiki.getShikiTokens('typescript', code, 'source'), 'Demotion must finish without waiting on its own batch');
+    assert.equal(prepared.tokenizeCalls, 5, 'Promotion and reading pauses must retain every completed batch');
   } finally {
     releaseSource(); releaseEditor();
     shiki.setShikiTheme(null, 'source'); shiki.setShikiTheme(null, 'editor');

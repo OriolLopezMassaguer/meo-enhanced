@@ -13,7 +13,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, Pen, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, CirclePlus, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -865,15 +865,16 @@ saveAsBtn.dataset.action = 'saveAs';
 saveAsBtn.dataset.tooltip = activeUiStrings.saveAs;
 saveAsBtn.setAttribute('aria-label', activeUiStrings.saveAs);
 const saveAsIcon = createElement(Save, { width: 18, height: 18, viewBox: '0 0 28 28', 'aria-hidden': 'true' });
-// Keep the gap under the pen transparent across normal, hover and theme surfaces.
+// Cut around the badge's outer stroke with a transparent gap on every surface.
 for (const path of saveAsIcon.children) path.setAttribute('clip-path', 'url(#meo-save-as-disk-clip)');
 const saveAsDiskClip = document.createElementNS(saveAsIcon.namespaceURI, 'clipPath');
 saveAsDiskClip.id = 'meo-save-as-disk-clip';
-const saveAsDiskClipShape = document.createElementNS(saveAsIcon.namespaceURI, 'polygon');
-saveAsDiskClipShape.setAttribute('points', '0,0 28,0 28,4 4,28 0,28');
+const saveAsDiskClipShape = document.createElementNS(saveAsIcon.namespaceURI, 'path');
+saveAsDiskClipShape.setAttribute('d', 'M0 0h28v28H0Z M29 19a10 10 0 1 0-20 0a10 10 0 1 0 20 0Z');
+saveAsDiskClipShape.setAttribute('clip-rule', 'evenodd');
 saveAsDiskClip.appendChild(saveAsDiskClipShape);
 saveAsIcon.prepend(saveAsDiskClip);
-saveAsIcon.appendChild(createElement(Pen, { x: 10, y: 10, width: 18, height: 18, 'stroke-width': 8 / 3 }));
+saveAsIcon.appendChild(createElement(CirclePlus, { x: 10, y: 10, width: 18, height: 18, 'stroke-width': 8 / 3 }));
 saveAsBtn.appendChild(saveAsIcon);
 saveAsBtn.disabled = true;
 const undoBtn = document.createElement('button');
@@ -2783,6 +2784,14 @@ const documentSaveAsTransport = createDocumentSaveAsTransport({
   postMessage: message => vscode.postMessage(message),
   commitTransientEdits: commitEditorTransientEdits,
   getCurrentText: () => editor?.getTextForSave() ?? pendingInitialText,
+  getViewState: () => {
+    const position = getActiveEditorMode() === 'preview'
+      ? previewController.getTopVisiblePosition() : getTopVisiblePosition();
+    if (!position || !editor) return null;
+    const { anchor, head } = editor.view.state.selection.main;
+    return { mode: getActiveEditorMode(),
+      position: { line: position.topLine, lineOffset: position.topLineOffset }, selection: { anchor, head } };
+  },
   whenDocumentIdle: () => documentSessionAdapter.whenIdle()
 });
 
@@ -3290,7 +3299,8 @@ const handleInit = (message: InitMessage) => {
   setRestoreReadingPositionOnOpen(message.restoreReadingPositionOnOpen, { post: false });
   readingPositionLifecycle?.start({
     enabled: message.restoreReadingPositionOnOpen,
-    restore: message.readingPositionRestore
+    restore: message.readingPositionRestore,
+    transientRestore: message.saveAsViewState?.position
   });
   if (typeof message.contentMaxWidthEnabled === 'boolean') {
     setContentMaxWidthEnabled(message.contentMaxWidthEnabled, { post: false });
@@ -3560,6 +3570,12 @@ window.addEventListener('message', (event) => {
       void editorModeRuntime.dispatch({ type: 'initialize', hostMode: message.mode })
         .then(async () => {
           const initializedMode = editorModeApplication.getState().mode;
+          if (message.saveAsViewState && editor) {
+            const { anchor, head } = message.saveAsViewState.selection;
+            editor.revealSelection(Math.min(anchor, message.text.length), Math.min(head, message.text.length), {
+              focusEditor: false, align: 'none'
+            });
+          }
           readingPositionLifecycle?.surfaceReady();
           if (initializedMode === 'preview') {
             await waitForInitialPreviewPaint();

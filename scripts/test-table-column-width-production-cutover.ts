@@ -1773,13 +1773,19 @@ async function main(): Promise<void> {
       await page.waitForFunction((selector) => {
         const table = document.querySelector<HTMLTableElement>(selector);
         const cells = Array.from(table?.querySelectorAll<HTMLElement>('thead th') ?? []);
-        if (!table || cells.length !== 3) return false;
+        const stickyCells = Array.from(table?.closest('.meo-md-html-table-shell')
+          ?.querySelectorAll<HTMLElement>('.meo-md-html-table-sticky-table thead th') ?? []);
+        // Intrinsic sizing can satisfy the main table's minimum in its first
+        // layout, before the rebuilt sticky header receives its geometry.
+        if (!table || cells.length !== 3 || stickyCells.length !== 3) return false;
         const numeric = (value: string) => Number.parseFloat(value) || 0;
-        return cells.every((cell) => {
+        return cells.every((cell, index) => {
           const cellStyle = getComputedStyle(cell);
           const preview = cell.querySelector<HTMLElement>('.meo-md-html-table-cell-preview');
           const previewStyle = preview ? getComputedStyle(preview) : cellStyle;
-          return cell.getBoundingClientRect().width >= numeric(previewStyle.fontSize)
+          const width = cell.getBoundingClientRect().width;
+          return Math.abs(width - stickyCells[index].getBoundingClientRect().width) < 1
+            && width >= numeric(previewStyle.fontSize)
             + numeric(previewStyle.paddingLeft)
             + numeric(previewStyle.paddingRight)
             + numeric(cellStyle.borderLeftWidth)

@@ -1,6 +1,7 @@
 import { DOCUMENT_SAVE_AS_TIMEOUT_MS, type DocumentSaveAsOutcome, type DocumentSaveAsResponse, type DocumentSaveAsResult, type SaveDocumentAsRequest } from '../../../src/protocol/documentSaveAs';
 import { createRequestLifecycle, type RequestLifecycleOptions } from './requestLifecycle';
 import type { UiLanguage } from '../application/uiLanguage';
+import type { DocumentViewState } from '../../../src/foundation/documentViewState';
 
 export function createDocumentSaveAsTransport(dependencies: {
   readonly postMessage: (message: SaveDocumentAsRequest) => void;
@@ -8,6 +9,7 @@ export function createDocumentSaveAsTransport(dependencies: {
   readonly commitTransientEdits: () => void;
   readonly getCurrentText: () => string | null;
   readonly whenDocumentIdle: () => Promise<void>;
+  readonly getViewState?: () => DocumentViewState | null;
 }, options: RequestLifecycleOptions = {}) {
   const requests = createRequestLifecycle<DocumentSaveAsOutcome>(
     'document-save-as', DOCUMENT_SAVE_AS_TIMEOUT_MS, options);
@@ -25,7 +27,9 @@ export function createDocumentSaveAsTransport(dependencies: {
         // Reading can commit a native table cell; wait for its accepted revision.
         await dependencies.whenDocumentIdle();
         if (disposed) throw new Error(label('The editor is closed.', '编辑器已关闭。'));
-        return requests.start(requestId => dependencies.postMessage({ type: 'saveDocumentAs', requestId, text }), {
+        const viewState = dependencies.getViewState?.();
+        return requests.start(requestId => dependencies.postMessage({ type: 'saveDocumentAs', requestId, text,
+          ...(viewState ? { viewState } : {}) }), {
           timeout: label('Timed out while waiting for Save As.', '等待另存为操作超时。'),
           sendFailed: label('Could not start Save As.', '无法开始另存为。')
         });

@@ -718,7 +718,6 @@ async function main(): Promise<void> {
     const tableCaret = measured.result.value as {
       visible: boolean; active: boolean; selectionStart: number; selectionEnd: number; valueLength: number;
     };
-    await caretClient.detach();
     if (!tableCaret.visible || !tableCaret.active || tableCaret.selectionStart !== tableCaret.selectionEnd
       || tableCaret.selectionEnd !== tableCaret.valueLength) {
       throw new Error(`Numeric table input left its active line outside the viewport: ${JSON.stringify(tableCaret)}`);
@@ -765,15 +764,41 @@ async function main(): Promise<void> {
         lineHeight: editor.view.defaultLineHeight
       };
     });
+    const { nodeId: stickyInputId } = await caretClient.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: '.meo-md-html-table-shell tbody tr:nth-child(12) td:nth-child(2) textarea'
+    });
+    const stickyInput = await caretClient.send('DOM.describeNode', { nodeId: stickyInputId, depth: -1, pierce: true });
+    const stickyText = descendants(stickyInput.node).filter(node => node.nodeType === 3);
+    if (stickyText.length !== 1) throw new Error('Expected one native sticky-header textarea text node');
+    const { object: stickyObject } = await caretClient.send('DOM.resolveNode', { backendNodeId: stickyText[0].backendNodeId });
+    const stickyMeasured = await caretClient.send('Runtime.callFunctionOn', {
+      objectId: stickyObject.objectId, returnByValue: true,
+      functionDeclaration: function(this: Text) {
+        const input = (this.getRootNode() as ShadowRoot).host as HTMLTextAreaElement;
+        if (this.data !== input.value) throw new Error('Sticky-header textarea text no longer matches its input');
+        const range = this.ownerDocument.createRange();
+        range.setStart(this, input.selectionEnd);
+        range.collapse(true);
+        const caret = range.getBoundingClientRect();
+        return { top: caret.top, height: caret.height, focused: document.activeElement === input };
+      }.toString()
+    });
+    await caretClient.detach();
+    if (stickyMeasured.exceptionDetails || !stickyMeasured.result.value) throw new Error('Native sticky-header caret measurement failed');
+    const stickyCaret = stickyMeasured.result.value as { top: number; height: number; focused: boolean };
     if (
       stickyBefore.stickyBottom === null || stickyAfter.stickyBottom === null ||
       stickyBefore.inputTop >= stickyBefore.stickyBottom ||
-      stickyAfter.inputTop < stickyAfter.stickyBottom + stickyAfter.lineHeight - 2 ||
+      // Reveal operates on the caret, which is inset from the textarea's border.
+      !stickyCaret.focused || stickyCaret.height <= 0 ||
+      stickyCaret.top < stickyAfter.stickyBottom + stickyAfter.lineHeight - 2 ||
       stickyAfter.scrollTop < stickyBefore.scrollTop - stickyAfter.lineHeight * 3
     ) {
       throw new Error(`Table input hidden by the sticky header was not minimally revealed: ${JSON.stringify({
         stickyBefore,
-        stickyAfter
+        stickyAfter,
+        stickyCaret
       })}`);
     }
 

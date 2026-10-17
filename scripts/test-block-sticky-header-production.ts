@@ -156,6 +156,29 @@ try {
   assert.equal(await page.$(header), null, 'short block with insufficient remaining content does not float');
 
   await page.evaluate(() => document.documentElement.style.setProperty('--meo-font-live-size', '20px'));
+  await mount('Preface\n\n' + code + after, true);
+  await pin(3, 70);
+  const lateHeightMapHeader = await page.evaluate(async () => {
+    const view = (window as any).__editor.view;
+    const floating = view.dom.querySelector('.meo-block-sticky-header') as HTMLElement;
+    const toolbar = floating.lastElementChild;
+    const original = view.lineBlockAtHeight;
+    // A virtual gap above the viewport may still report a pre-code source
+    // line while the mounted code rows already occupy the viewport edge.
+    view.lineBlockAtHeight = function(height: number) {
+      return { ...original.call(this, height), from: 0, to: view.state.doc.line(1).to };
+    };
+    try {
+      view.scrollDOM.dispatchEvent(new Event('scroll'));
+      for (let n = 0; n < 3; n++) await new Promise(requestAnimationFrame);
+      return { visible: !floating.hidden, sameToolbar: floating.lastElementChild === toolbar };
+    } finally {
+      view.lineBlockAtHeight = original;
+      view.scrollDOM.dispatchEvent(new Event('scroll'));
+    }
+  });
+  assert.deepEqual(lateHeightMapHeader, { visible: true, sameToolbar: true },
+    'A late height-map receipt must not hide or rebuild the header over mounted code');
   for (const [prefix, context] of [['', 'folded code'], ['> ', 'folded quoted code'], ['  ', 'folded list code']] as const) {
     const leading = prefix === '  ' ? '- Item\n\n' : '';
     const block = leading + code.split('\n').map(line => prefix + line).join('\n');

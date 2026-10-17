@@ -22,6 +22,7 @@ import {
 } from '../application/diffBaselineSelection';
 import type { HostViewNavigationPort } from '../application/hostViewNavigationLifecycle';
 import type { ReadingPositionPort } from '../application/readingPositionMemory';
+import type { createDocumentSaveAsViewStateHandoff } from '../application/documentSaveAsViewState';
 import {
   EXTENSION_CONFIG_SECTION,
   MARKDOWN_EDITOR_VIEW_TYPE,
@@ -140,6 +141,7 @@ type PanelSessionControllerParams = {
   diffBaselineOutput: DiffBaselineOutput<GitBaselinePayload>;
   viewNavigation: HostViewNavigationPort<vscode.TextEditor>;
   readingPosition: ReadingPositionPort;
+  saveAsViewStateHandoff?: ReturnType<typeof createDocumentSaveAsViewStateHandoff>;
   saveDocument: () => Promise<boolean>;
   onExportDocument: (session: PanelSession, options: ExportOptions) => Promise<void>;
   getCustomPreviewPresets?: () => readonly import('../foundation/previewPresets').PreviewPresetDefinition[];
@@ -247,6 +249,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   } = params;
 
   const documentKey = document.uri.toString();
+  const saveAsViewState = params.saveAsViewStateHandoff?.take(documentKey, document.getText()) ?? null;
   const persistedMode = context.globalState.get(EDITOR_MODE_STATE_KEY);
   const persistedEditorMode: EditorMode | null = isEditorMode(persistedMode) ? persistedMode : null;
   let applyQueue: Promise<void> = Promise.resolve();
@@ -363,7 +366,9 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   const documentSaveAsAdapter = createVscodeDocumentSaveAsAdapter(document, {
     getUiLanguage,
     markdownEditorViewType: MARKDOWN_EDITOR_VIEW_TYPE,
+    isTargetEditorActive: () => !disposed && panel.active,
     runPreparedSave: save => documentSaveLifecycle.runPreparedSave(save),
+    stageViewState: (target, text, state) => params.saveAsViewStateHandoff?.stage(target.toString(), text, state) ?? (() => undefined),
     onFailure: message => { void vscode.window.showErrorMessage(message); }
   });
   let requestDiffBaselineRefresh = (_options: GitBaselineRefreshOptions): void => undefined;
@@ -448,7 +453,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     const editorFontSizePreference = getEditorFontSizePreference();
     // Preview compares render responses with CodeMirror's LF-normalized text.
     const initialText = normalizeDocumentText(document.getText());
-    const initialMode = selectInitialEditorMode({
+    const initialMode = saveAsViewState?.mode ?? selectInitialEditorMode({
       text: initialText,
       persistedMode: persistedEditorMode,
       optimizationEnabled: getLargeDocumentOptimizationEnabled()
@@ -507,6 +512,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       boldHeadingsEnabled: getBoldHeadingsEnabled(),
       restoreReadingPositionOnOpen,
       readingPositionRestore,
+      ...(saveAsViewState ? { saveAsViewState } : {}),
       findOptions: getFindOptions(),
       outlinePosition: getOutlinePosition(),
       outlineVisible: getOutlineVisible(context),
@@ -593,7 +599,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           if (externalFileStatus !== 'current') {
             publishExternalFileStatus(externalFileStatus, true);
           }
-          await viewNavigation.ready();
+          await viewNavigation.ready({ preserveInitialView: saveAsViewState !== null });
         }
       } finally {
         initDelivery = null;

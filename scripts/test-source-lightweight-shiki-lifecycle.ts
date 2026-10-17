@@ -69,13 +69,14 @@ const fakeCore = `
         if (!loaded.has(options.lang)) {
           throw new Error('tokenization attempted without an instance-owned grammar');
         }
+        let offset = 0;
         return {
-          tokens: [[{
-            offset: 0,
-            content: code,
-            color: code.includes('latest_second_') ? '#338855' : instance.baseColor,
-            fontStyle: 0
-          }]]
+          tokens: code.split('\\n').map(content => {
+            const syntaxToken = { offset, content,
+              color: code.includes('latest_second_') ? '#338855' : instance.baseColor, fontStyle: 0 };
+            offset += content.length + 1;
+            return [syntaxToken];
+          })
         };
       },
       dispose() {
@@ -428,13 +429,83 @@ async function main(): Promise<void> {
         mode + ' must stop obsolete document tokenization while another editor remains active');
       await page.evaluate(() => { delete (window as any).__onShikiTokenize; });
     }
+    const scrollBounds = await page.evaluate(async () => {
+      const editor = (window as any).__shikiEditors.first;
+      editor.setText([...Array.from({ length: 240 }, (_, i) => `ssr ${i}`), '',
+        '```typescript', 'const cold_scroll_highlight = 1;', '```', '',
+        ...Array.from({ length: 30 }, (_, i) => `tail ${i}`)].join('\n'));
+      editor.view.scrollDOM.scrollTop = 0;
+      for (let n = 0; n < 8; n++) {
+        editor.view.scrollDOM.dispatchEvent(new WheelEvent('wheel', { deltaY: 1 }));
+        await new Promise(requestAnimationFrame);
+      }
+      const rect = editor.view.scrollDOM.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(scrollBounds.x, scrollBounds.y);
+    await page.mouse.wheel({ deltaY: 5300 });
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('#first .cm-line'))
+      .some(line => line.textContent?.includes('cold_scroll_highlight')));
+    for (let n = 0; n < 5; n++) {
+      await page.mouse.wheel({ deltaY: 1 });
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.equal((await readMetrics(page)).instances.some(instance =>
+        instance.tokenizedCodes.some(code => code.trim() === 'const cold_scroll_highlight = 1;')), false,
+      'A newly encountered Live fence must not tokenize during continuous native scrolling');
+      assert.equal((await readMetrics(page)).instances.some(instance =>
+        instance.tokenizedCodes.some(code => code.startsWith('ssr 0'))), false,
+      'Background Source preparation must yield to continuous Live scrolling too');
+    }
+    await page.waitForFunction(() => (window as any).__shikiLifecycleMetrics.instances.some((instance: any) =>
+      instance.tokenizedCodes.some((code: string) => code.trim() === 'const cold_scroll_highlight = 1;')));
+    await page.waitForFunction(() => (window as any).__shikiLifecycleMetrics.instances.some((instance: any) =>
+      instance.tokenizedCodes.some((code: string) => code.startsWith('ssr 0'))));
+    const foregroundTransition = await page.evaluate(async () => {
+      const editor = (window as any).__shikiEditors.first;
+      const harness = (window as any).SourceLightweightShikiHarness;
+      editor.setText('# Cold mode transition\n\n' + editor.getText());
+      const anchor = editor.getText().indexOf('cold_scroll_highlight');
+      editor.view.dispatch({ selection: { anchor, head: anchor + 'cold_scroll_highlight'.length } });
+      const selection = JSON.stringify(editor.view.state.selection.toJSON());
+      const markScrolling = () => editor.view.scrollDOM.dispatchEvent(new WheelEvent('wheel', { deltaY: 1 }));
+      markScrolling();
+      const timer = setInterval(markScrolling, 50);
+      try {
+        // Use the same preparation boundary as index.ts before exposing Source.
+        const prepared = await editor.prepareSourceSyntax(() => true);
+        const liveCoverRetained = editor.view.dom.classList.contains('meo-mode-live');
+        editor.setMode('source');
+        const sourcePaintedImmediately = Boolean(editor.view.contentDOM.querySelector('.meo-source-token'));
+        editor.setMode('live');
+        const beforeCachedReturn = (window as any).__shikiLifecycleMetrics.tokenizeCalls;
+        const cached = await editor.prepareSourceSyntax(() => true);
+        editor.setMode('source');
+        const cacheReused = beforeCachedReturn === (window as any).__shikiLifecycleMetrics.tokenizeCalls;
+        editor.setMode('live');
+        return { prepared, cached, liveCoverRetained, sourcePaintedImmediately, cacheReused,
+          hasSourceTokens: harness.hasSourceTokens(editor),
+          selectionRetained: selection === JSON.stringify(editor.view.state.selection.toJSON()) };
+      } finally { clearInterval(timer); }
+    });
+    assert.deepEqual(foregroundTransition, {
+      prepared: true, cached: true, liveCoverRetained: true, sourcePaintedImmediately: true,
+      cacheReused: true, hasSourceTokens: true, selectionRetained: true
+    }, 'Explicit mode changes must finish during scrolling, retain prepared paint and reuse tokens on return');
     const highlighterCount = (await readMetrics(page)).initCalls;
 
     await page.evaluate(() => {
       const state = (window as any).__shikiEditors;
+      const view = state.first.view;
+      view.scrollDOM.dispatchEvent(new WheelEvent('wheel', { deltaY: 1 }));
+      const from = view.state.doc.toString().indexOf('cold_scroll_highlight');
+      view.dispatch({ changes: { from, to: from + 'cold_scroll_highlight'.length, insert: 'cancelled_scroll_highlight' } });
       state.second.destroy();
       state.first.destroy();
     });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal((await readMetrics(page)).instances.some(instance =>
+      instance.tokenizedCodes.some(code => code.trim() === 'const cancelled_scroll_highlight = 1;')), false,
+    'Destroying the Live editor must cancel its deferred fence refresh');
     await page.waitForFunction((count) => (window as any).__shikiLifecycleMetrics.disposeCalls === count, {}, highlighterCount);
     metrics = await readMetrics(page);
     assert.equal(metrics.disposeCalls, highlighterCount);

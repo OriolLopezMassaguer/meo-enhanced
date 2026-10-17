@@ -475,21 +475,34 @@ globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
 };
 
 class FakeEventTarget {
-  private readonly listeners = new Map<string, Set<EventListener>>();
+  private readonly listeners = new Map<string, Array<{ listener: EventListener; capture: boolean }>>();
 
-  addEventListener(type: string, listener: EventListener): void {
-    const listeners = this.listeners.get(type) ?? new Set<EventListener>();
-    listeners.add(listener);
+  addEventListener(type: string, listener: EventListener, options?: boolean | AddEventListenerOptions): void {
+    const listeners = this.listeners.get(type) ?? [];
+    const capture = typeof options === 'boolean' ? options : options?.capture ?? false;
+    if (!listeners.some(entry => entry.listener === listener && entry.capture === capture)) {
+      listeners.push({ listener, capture });
+    }
     this.listeners.set(type, listeners);
   }
 
-  removeEventListener(type: string, listener: EventListener): void {
-    this.listeners.get(type)?.delete(listener);
+  removeEventListener(type: string, listener: EventListener, options?: boolean | EventListenerOptions): void {
+    const capture = typeof options === 'boolean' ? options : options?.capture ?? false;
+    this.listeners.set(type, (this.listeners.get(type) ?? [])
+      .filter(entry => entry.listener !== listener || entry.capture !== capture));
+  }
+
+  listenerCount(type: string): number {
+    return this.listeners.get(type)?.length ?? 0;
   }
 
   dispatch(type: string, event: unknown): void {
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener(event as Event);
+    // At the event target, capture listeners precede non-capture listeners even
+    // when the latter were registered first, as CodeMirror's scroll observer is.
+    for (const capture of [true, false]) {
+      for (const entry of [...this.listeners.get(type) ?? []]) {
+        if (entry.capture === capture) entry.listener(event as Event);
+      }
     }
   }
 }
@@ -1744,7 +1757,44 @@ const readingWheelView = {
   }),
   requestMeasure: ({ read, write }: { read: () => unknown; write: (value: unknown) => void }) => write(read())
 };
+let pendingScrollMeasurement: { layoutDelta: number; estimateDelta: number } | null = null;
+// CodeMirror installs this non-capture observer before the viewport controller.
+// It can synchronously measure and reconcile inside the native scroll event.
+readingWheelScrollDOM.addEventListener('scroll', () => {
+  if (!pendingScrollMeasurement) return;
+  const { layoutDelta, estimateDelta } = pendingScrollMeasurement;
+  pendingScrollMeasurement = null;
+  readingAnchorDocumentTop += layoutDelta;
+  readingEstimatedOffset += estimateDelta;
+  readingWheelScrollDOM.scrollTop += layoutDelta + estimateDelta;
+  readingWheelController.reconcileAfterEditorUpdate();
+});
 const readingWheelController = new ViewportController(readingWheelView as any);
+for (const progress of [-21.375, 23.5]) {
+  for (const layoutDelta of [-48.25, 0, 78.75]) {
+    readingWheelController.markInteraction();
+    readingAnchorDocumentTop = 1200;
+    readingEstimatedOffset = 0;
+    readingWheelScrollDOM.scrollTop = 1000;
+    readingWheelScrollDOM.dispatch('wheel', { deltaX: 0, deltaY: Math.sign(progress) * 120, ctrlKey: false });
+    readingWheelScrollDOM.scrollTop += Math.sign(progress) * 20;
+    readingWheelScrollDOM.dispatch('scroll', {});
+    readingWheelScrollDOM.scrollTop += progress;
+    const nativeTop = readingWheelScrollDOM.scrollTop;
+    pendingScrollMeasurement = { layoutDelta, estimateDelta: 27.5 };
+    readingWheelScrollDOM.dispatch('scroll', {});
+    const expected = nativeTop + layoutDelta;
+    if (Math.abs(readingWheelScrollDOM.scrollTop - expected) > 0.01) {
+      throw new Error(`Scroll-event measurement discarded native progress: ${JSON.stringify({
+        progress, layoutDelta, nativeTop, expected, actual: readingWheelScrollDOM.scrollTop
+      })}`);
+    }
+  }
+}
+readingWheelController.markInteraction();
+readingAnchorDocumentTop = 1200;
+readingEstimatedOffset = 0;
+readingWheelScrollDOM.scrollTop = 1000;
 readingWheelScrollDOM.dispatch('wheel', { deltaX: 0, deltaY: -100, ctrlKey: false });
 readingWheelScrollDOM.scrollTop = 970;
 readingWheelScrollDOM.dispatch('scroll', {});
@@ -1804,7 +1854,96 @@ if (readingWheelScrollDOM.scrollTop !== 654) {
     `A negative height correction overrode native reading scroll: ${readingWheelScrollDOM.scrollTop}`
   );
 }
+// Smooth scrolling continues well after its last wheel event. Late virtual
+// height-map anchoring must not become a visible backward step during its tail.
+const originalMomentumNow = performance.now;
+let momentumNow = 0;
+performance.now = () => momentumNow;
+try {
+  readingWheelController.markInteraction();
+  readingAnchorDocumentTop = 1200;
+  readingEstimatedOffset = 0;
+  readingWheelScrollDOM.scrollTop = 1000;
+  readingWheelScrollDOM.dispatch('wheel', { deltaX: 0, deltaY: -1200, ctrlKey: false });
+  for (const [time, top] of [[100, 970], [300, 930], [450, 900]]) {
+    momentumNow = time;
+    readingWheelScrollDOM.scrollTop = top;
+    readingWheelScrollDOM.dispatch('scroll', {});
+    const pendingFrames = wheelFrames.splice(0);
+    for (const frame of pendingFrames) frame(time);
+    await Promise.resolve();
+  }
+  momentumNow = 500;
+  readingEstimatedOffset = 100;
+  readingWheelScrollDOM.scrollTop += 100;
+  readingWheelController.reconcileAfterEditorUpdate();
+  if (readingWheelScrollDOM.scrollTop !== 900) {
+    throw new Error(`Late height-map anchoring rebounded during native smooth progress: ${readingWheelScrollDOM.scrollTop}`);
+  }
+  momentumNow = 1500;
+  for (let n = 0; n < 5; n++) {
+    const pendingFrames = wheelFrames.splice(0);
+    for (const frame of pendingFrames) frame(momentumNow);
+    await Promise.resolve();
+  }
+  readingEstimatedOffset += 90;
+  readingWheelScrollDOM.scrollTop += 90;
+  readingWheelController.reconcileAfterEditorUpdate();
+  if (readingWheelScrollDOM.scrollTop !== 900) {
+    throw new Error(`Idle reading lost its anchor before a deferred block measurement: ${readingWheelScrollDOM.scrollTop}`);
+  }
+} finally {
+  readingWheelController.markInteraction();
+  performance.now = originalMomentumNow;
+}
 readingWheelController.destroy();
+if (readingWheelScrollDOM.listenerCount('scroll') !== 1 || readingWheelScrollDOM.listenerCount('wheel') !== 0) {
+  throw new Error('Destroy must detach the capture scroll listener and leave other observers intact');
+}
+
+// A viewport can contain only a rendered table or a diagram, without a normal
+// CodeMirror line. Delayed height-map receipts still need a visual reading owner.
+for (const kind of ['table', 'mermaid']) {
+  const document = new FakeEventTarget();
+  const scroller = Object.assign(new FakeEventTarget(), {
+    ownerDocument: document, scrollTop: 1000, scrollLeft: 0,
+    scrollHeight: 5000, scrollWidth: 900, clientHeight: 500, clientWidth: 900,
+    getBoundingClientRect: () => ({ top: 0, bottom: 500, height: 500 })
+  });
+  const source = Text.of(Array.from({ length: 80 }, () => 'source'));
+  const position = source.line(42).from;
+  let estimateDelta = 0;
+  const block = {
+    dataset: kind === 'table' ? { sourceLineNumber: '42' }
+      : { meoRenderedBlockStartLine: '42', meoRenderedBlockKind: kind },
+    getBoundingClientRect: () => ({
+      top: 800 - scroller.scrollTop,
+      bottom: 2000 - scroller.scrollTop
+    })
+  };
+  const view = {
+    dom: new FakeEventTarget(), scrollDOM: scroller, state: { doc: source },
+    contentDOM: { querySelectorAll: (selector: string) => {
+      if (selector === ':scope > .cm-line') return [];
+      return selector.includes(kind === 'table' ? 'data-source-line-number' : 'data-meo-rendered-block')
+        ? [block] : [];
+    } },
+    posAtDOM: () => position,
+    lineBlockAt: () => ({ from: position, top: 800 + estimateDelta }),
+    requestMeasure: ({ read, write }: any) => write(read())
+  };
+  const controller = new ViewportController(view as any);
+  scroller.dispatch('wheel', { deltaX: 0, deltaY: -120, ctrlKey: false });
+  scroller.scrollTop = 900;
+  scroller.dispatch('scroll', {});
+  estimateDelta = 90;
+  scroller.scrollTop += 90;
+  controller.reconcileAfterEditorUpdate();
+  if (scroller.scrollTop !== 900) {
+    throw new Error(`A ${kind}-only viewport rebounded after delayed measurement: ${scroller.scrollTop}`);
+  }
+  controller.destroy();
+}
 
 wheelController.markInteraction();
 wheelScrollDOM.scrollTop = 1000;

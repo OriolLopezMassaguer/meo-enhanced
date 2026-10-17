@@ -220,6 +220,13 @@ async function main(): Promise<void> {
         }
       });
       const visible = elements(1).stickyChrome.classList.contains('is-visible');
+      const headerBeforeBodyLayout = elements(1).stickyHeaderRow.firstElementChild;
+      await settle(() => {
+        const cell = elements(1).table.tBodies[0]!.rows[0]!.cells[0]!;
+        cell.style.minHeight = '40px';
+        cell.append(Object.assign(document.createElement('span'), { textContent: 'loaded body content' }));
+      });
+      const headerRetainedOnBodyLayout = headerBeforeBodyLayout === elements(1).stickyHeaderRow.firstElementChild;
       const navigationViewport = elements(1).stickyHeaderViewport;
       const navigationClickPrevented = !navigationViewport.dispatchEvent(new MouseEvent('click', {
         bubbles: true,
@@ -569,6 +576,7 @@ async function main(): Promise<void> {
         passive,
         outerScrollAligned,
         visible,
+        headerRetainedOnBodyLayout,
         navigation,
         transform,
         visibleHeight,
@@ -655,6 +663,8 @@ async function main(): Promise<void> {
       currentLate: 0
     });
     assert.equal(result.projectedWidth, '480px');
+    assert.equal(result.headerRetainedOnBodyLayout, true,
+      'Body resizing or image presentation must not detach and recreate a visible floating header');
     assert.equal(result.focusAndSelectionPreserved, true);
     assert.equal(result.hiddenWithOuterMode, true);
     assert.equal(result.visibleAfterRebuild, true);

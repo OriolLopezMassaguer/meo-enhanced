@@ -64,7 +64,8 @@ export async function preloadMermaidDocumentBatch(
   requests: readonly MermaidDiagramRenderRequest[],
   isActive: () => boolean,
   onBatchAvailable: () => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  isUserScrolling: () => boolean = () => false
 ): Promise<void> {
   let completed = false;
   for (const request of requests) {
@@ -73,6 +74,13 @@ export async function preloadMermaidDocumentBatch(
     await new Promise<void>(resolve => setTimeout(resolve, 0));
     if (!isActive()) return;
     if (consumer.getCached?.(request)) continue;
+    // Background graphs share the Webview thread with native scrolling. Yield
+    // between jobs; visible graph requests still use the high-priority path.
+    while (isUserScrolling()) {
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
+      if (!isActive() || signal?.aborted) return;
+    }
+    if (signal?.aborted) return;
     await consumer.preload(request, signal);
     if (!isActive()) return;
     completed = true;
@@ -86,7 +94,8 @@ export async function preloadMermaidDocumentBatch(
 /** Owns bounded, deduplicated Mermaid warming for one Live Editor. */
 export function createMermaidDocumentPreloader(
   consumer: MermaidDiagramPresentationConsumer,
-  onBatchAvailable: () => void
+  onBatchAvailable: () => void,
+  isUserScrolling: () => boolean = () => false
 ): MermaidDocumentPreloader {
   let latestState: EditorState | null = null;
   let timer: number | null = null;
@@ -112,7 +121,8 @@ export function createMermaidDocumentPreloader(
       requests,
       () => !disposed && generation === runGeneration,
       onBatchAvailable,
-      pendingBatch.signal
+      pendingBatch.signal,
+      isUserScrolling
     );
   };
 

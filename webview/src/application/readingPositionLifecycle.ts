@@ -17,7 +17,7 @@ type ReadingPositionLifecycleDependencies = {
 };
 
 export type ReadingPositionLifecycle = {
-  start(input: { readonly enabled: boolean; readonly restore: ReadingPosition | null }): void;
+  start(input: { readonly enabled: boolean; readonly restore: ReadingPosition | null; readonly transientRestore?: ReadingPosition }): void;
   setEnabled(enabled: boolean): void;
   surfaceReady(): boolean;
   viewportChanged(): void;
@@ -69,7 +69,8 @@ export function createReadingPositionLifecycle(
       if (disposed) return;
       initialized = true;
       enabled = input.enabled;
-      pendingRestore = enabled ? input.restore : null;
+      // Save As continues the current view even when opening-position memory is disabled.
+      pendingRestore = input.transientRestore ?? (enabled ? input.restore : null);
       lastPostedKey = null;
       cancelCapture();
     },
@@ -85,7 +86,7 @@ export function createReadingPositionLifecycle(
       }
     },
     surfaceReady() {
-      if (disposed || !initialized || !enabled || !pendingRestore) return false;
+      if (disposed || !initialized || !pendingRestore) return false;
       const restored = dependencies.restore(pendingRestore);
       if (restored) pendingRestore = null;
       return restored;

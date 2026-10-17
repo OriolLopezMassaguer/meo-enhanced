@@ -269,7 +269,17 @@ export function createCodeMirrorDomTableStickyHeaderAdapter(
       const resizeObserver = new ResizeObserver(requestIfActive);
       resizeObserver.observe(elements.scroller);
       cleanup.push(() => resizeObserver.disconnect());
-      const mutationObserver = new MutationObserver(replaceIfActive);
+      const mutationObserver = new MutationObserver((records) => {
+        // Body sizing and image projection change geometry, not header content.
+        // Keep the passive header DOM and its observers alive across those
+        // updates; replacing it on every cell measurement also flashes chrome.
+        if (elements.table.tHead?.rows[0] !== sourceHeader
+          || records.some((record) => sourceHeader?.contains(record.target))) {
+          replaceIfActive();
+        } else {
+          requestIfActive();
+        }
+      });
       mutationObserver.observe(elements.table, {
         attributes: true,
         childList: true,

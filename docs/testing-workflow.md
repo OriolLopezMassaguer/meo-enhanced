@@ -55,6 +55,15 @@ The tall-Mermaid viewport contract checks each trusted pixel-wheel event's targe
 delta and scroll response, then waits for stable anchor/gap/scroll geometry before
 applying its unchanged displacement limit. Failure reports retain event and frame
 traces so dispatch timing cannot be mistaken for settled native scrolling.
+`scripts/test-rendered-block-scroll-layout.ts` bounds Chromium layout counts when
+a 60-row table mounts and scrolls, loads the real Mermaid runtime, and checks
+reading retention when either block fills the viewport without a text line.
+It rejects redundant source-metadata mutations and geometry reads from detached
+or disposing tables, while retaining focused-cell caret measurement.
+Its controlled height-map receipt isolates delayed CodeMirror anchoring from
+actual DOM movement. It also verifies that background Mermaid warming waits for
+native scrolling to settle, resumes afterward, and respects cancellation; visible
+render calls remain immediate. Full-document scroll tests load the same runtime.
 The viewport-controller unit matrix interleaves background document presentation,
 native wheel adoption and virtual-gap contraction in both directions. Document
 presentation yields its fixed-target projection to the active native reading owner;
@@ -169,9 +178,30 @@ exact commands without running them.
 
 ## Daily repair loop
 
+`scripts/test-document-save-as-view-state.ts` checks one-shot view handoff before
+native replacement resolves and when the default editor needs a later MEO open.
+The first init retains mode, semantic reading position and selection with opening
+memory enabled or disabled. Initial native selection must not override it.
+`scripts/test-save-as-view-state-browser.ts` captures the production Save As
+snapshot and verifies both the first visible frame and settled viewport in Live
+and Source, including table geometry above the reading position.
+
+`scripts/test-viewport-controller.ts` covers native smooth progress past its final
+wheel event and deferred height-map updates after scrolling becomes idle. A proven
+reading anchor becomes dormant rather than polling indefinitely; new input retires
+it. `scripts/test-fixed-chrome-dom-geometry.ts` checks that repeated fixed-toolbar
+measurements do not mutate widget DOM, while live transforms and replaced parents
+still produce fresh coordinate mappings.
+
 `scripts/test-document-save-as.ts` checks strict request/response codecs, draft
-preparation, document-specific native Save As, cancellation, failures, duplicate
-requests and replacement of the old panel before completion. It distinguishes a
+preparation, active-MEO native Save As, cancellation, failures, duplicate
+requests and replacement of the old panel before completion. Same-file native/MEO
+tabs in one group or split groups must keep the dialog on MEO and leave the native
+source tab intact. Dispatch guards reject inactive panels, changed documents or
+editor types, including focus changes during save preparation. The native command
+returns no URI, so only the initiating group's resulting tab with a manual native
+save receipt confirms the destination; unrelated saves, source auto-save during
+the dialog and unconfirmed tab changes must not claim success. It distinguishes a
 saved file from failure to reopen its Markdown target in MEO.
 Native open recovery returns a successful save result and offers retry/default-editor
 actions without writing again, even after the source panel closes. An undefined
@@ -218,6 +248,9 @@ palette must paint syntax immediately; edits prepare only the latest revision.
 It also checks preparation behind a hidden Preview cover and cancellation.
 The Shiki lifecycle contracts verify bounded shared caches, unchanged palette
 reuse, real palette invalidation, stale-work cancellation and final disposal.
+Background Source preparation pauses between batches during native reading and
+retains completed work. Explicit Source transitions promote the same job, keep
+the current surface covered until prepared, and reuse the cache on return.
 These checks are small, deterministic regressions rather than long benchmarks.
 
 `scripts/test-shiki-empty-line-recovery.ts` checks the shared Source, Live and

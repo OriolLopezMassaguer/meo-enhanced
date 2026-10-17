@@ -311,6 +311,13 @@ async function main() {
         rawMarkdown: tableImageInput?.value ?? '',
         previewVisibility: tableImagePreview ? getComputedStyle(tableImagePreview).visibility : null
       };
+      if (tableImageInput) {
+        tableImageInput.value += 'x';
+        tableImageInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      const tableImageRetainedDuringInput = Boolean(tableImage &&
+        tableImageInput?.parentElement?.querySelector('.meo-md-html-table-cell-preview') === tableImagePreview &&
+        tableImagePreview?.querySelector('.meo-md-image') === tableImage);
       tableImageEditor.destroy();
 
       const bodyLinkEditor = await create('intro\n\n[external](https://example.com) [internal](#target)');
@@ -1273,6 +1280,7 @@ async function main() {
         nestedInlineState,
         underscoreBoundaryState,
         tableImageClickState,
+        tableImageRetainedDuringInput,
         bodyLinkButtons,
         bodyOpenedHrefs,
         initialMissingIndicatorCount,
@@ -1428,7 +1436,8 @@ async function main() {
       !result.tableImageClickState.inputFocused ||
       !result.tableImageClickState.editing ||
       result.tableImageClickState.rawMarkdown !== '![pixel](https://example.com/pixel.png)' ||
-      result.tableImageClickState.previewVisibility !== 'hidden'
+      result.tableImageClickState.previewVisibility !== 'hidden' ||
+      !result.tableImageRetainedDuringInput
     ) {
       failures.push(`table image click did not reveal its Markdown source: ${JSON.stringify(result.tableImageClickState)}`);
     }

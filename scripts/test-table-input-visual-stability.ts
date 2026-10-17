@@ -27,6 +27,18 @@ async function focusCell(page: import('puppeteer-core').Page, value: string): Pr
 
 async function assertColumnReflowKeepsActiveCell(page: import('puppeteer-core').Page): Promise<void> {
   await page.setViewport({ width: 1280, height: 760, deviceScaleFactor: 1 });
+  const resizeFirstColumn = async (delta: number) => {
+    const point = await page.evaluate(() => {
+      const handle = document.querySelector<HTMLElement>('table[data-table-column-width] [data-table-resize-column="0"]')!;
+      const rect = handle.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    await page.mouse.move(point.x + delta, point.y, { steps: 5 });
+    await page.mouse.up();
+    await waitForFrames(page, 8);
+  };
   let unwrappedCases = 0;
   for (const repeats of [2, 3, 4, 5]) {
     await page.evaluate((repeats) => {
@@ -45,6 +57,9 @@ async function assertColumnReflowKeepsActiveCell(page: import('puppeteer-core').
       editor.scrollToLine(85, 'center');
     }, repeats);
     await waitForFrames(page, 16);
+    // Reflow must come from an actual width change. Typing alone no longer
+    // triggers incidental column projection after passive observers were fixed.
+    await resizeFirstColumn(-60);
     await focusCell(page, '混合嵌套列表');
     await page.evaluate(() => {
       const input = document.activeElement as HTMLTextAreaElement;
@@ -60,6 +75,7 @@ async function assertColumnReflowKeepsActiveCell(page: import('puppeteer-core').
       requestAnimationFrame(sample);
     });
     await page.keyboard.type('X');
+    await resizeFirstColumn(100);
     await new Promise(resolve => setTimeout(resolve, 500));
     await waitForFrames(page, 12);
     const result = await page.evaluate(() => {

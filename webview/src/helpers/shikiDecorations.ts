@@ -26,6 +26,7 @@ import {
   shouldDeferLiveInputDerivedWork
 } from '../editor/liveInputDerivedWork';
 import { getFencedCodeInfo, syntaxTreeChanged } from './markdownSyntax';
+import { getViewportController } from './viewportController';
 
 export const shikiRefreshEffect = StateEffect.define<null>();
 
@@ -174,7 +175,7 @@ function addTokenDecorations(
     // A hidden editor's mapped viewport may cover the whole replacement document.
     // Maintain known blocks and a bounded preparation of newly introduced code.
     if (!hadPresentation && !allowUnseen()) return;
-    requestShikiTokens(lang, code, 'editor', isNeeded);
+    if (isNeeded()) requestShikiTokens(lang, code, 'editor', isNeeded);
     // On first paint there is no completed Shiki presentation to preserve.
     // Cover the block with one neutral foreground until the requested token
     // set arrives, so CodeMirror's language parser cannot briefly expose a
@@ -315,7 +316,7 @@ function buildDecorations(
   view: EditorView,
   previous: DecorationSet,
   allowUnseen: () => boolean,
-  isAlive: () => boolean
+  canHighlight: () => boolean
 ): DecorationSet {
   if (!isShikiThemeReady()) {
     return Decoration.none;
@@ -323,7 +324,7 @@ function buildDecorations(
   const builder = new RangeSetBuilder<Decoration>();
   const markCache = new Map<string, Decoration>();
   const doc = view.state.doc;
-  const isNeeded = () => isAlive() && view.state.doc === doc;
+  const isNeeded = () => view.state.doc === doc && canHighlight();
   try {
     syntaxTree(view.state).iterate({
       from: view.viewport.from,
@@ -347,13 +348,27 @@ const shikiPlugin = ViewPlugin.fromClass(
     decorations: DecorationSet;
     private inView: boolean;
     private destroyed = false;
-    private readonly isAlive = () => !this.destroyed;
+    private scrollRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    private readonly canHighlight = (): boolean => {
+      if (this.destroyed) return false;
+      if (!getViewportController(this.view)?.isUserScrolling()) return true;
+      // First-use grammar compilation can exceed a frame even for a short
+      // fence. Keep its current presentation and retry after native momentum;
+      // input retires the reading gesture, so editing need not wait for it.
+      if (this.scrollRefreshTimer === null) {
+        this.scrollRefreshTimer = setTimeout(() => {
+          this.scrollRefreshTimer = null;
+          if (this.canHighlight()) this.view.dispatch({ effects: shikiRefreshEffect.of(null) });
+        }, 50);
+      }
+      return false;
+    };
     private prepareUnseen = true;
     private readonly allowUnseen: () => boolean;
     private readonly unsubscribe: () => void;
     private readonly releaseHighlighting: () => void;
 
-    constructor(view: EditorView) {
+    constructor(private readonly view: EditorView) {
       this.inView = view.inView;
       this.allowUnseen = () => {
         if (view.inView) return true;
@@ -362,7 +377,7 @@ const shikiPlugin = ViewPlugin.fromClass(
         return allowed;
       };
       this.releaseHighlighting = activateShikiCodeHighlighting();
-      this.decorations = buildDecorations(view, Decoration.none, this.allowUnseen, this.isAlive);
+      this.decorations = buildDecorations(view, Decoration.none, this.allowUnseen, this.canHighlight);
       this.unsubscribe = subscribeShikiRefresh(() => {
         view.dispatch({ effects: shikiRefreshEffect.of(null) });
       });
@@ -390,12 +405,13 @@ const shikiPlugin = ViewPlugin.fromClass(
           || syntaxTreeChanged(transaction)
       );
       if (update.docChanged || update.viewportChanged || refreshed || becameVisible) {
-        this.decorations = buildDecorations(update.view, this.decorations, this.allowUnseen, this.isAlive);
+        this.decorations = buildDecorations(update.view, this.decorations, this.allowUnseen, this.canHighlight);
       }
     }
 
     destroy(): void {
       this.destroyed = true;
+      if (this.scrollRefreshTimer !== null) clearTimeout(this.scrollRefreshTimer);
       this.unsubscribe();
       this.releaseHighlighting();
     }

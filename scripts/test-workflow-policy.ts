@@ -184,6 +184,7 @@ function targetedCommands(
         script('scripts/test-preview-navigation-continuity.ts'),
         script('scripts/test-preview-preset-position.ts'),
         script('scripts/test-native-scroll-progress-production.ts'),
+        script('scripts/test-rendered-block-scroll-layout.ts'),
         script('scripts/test-long-document-scroll.ts'),
         packageScript('test:reading-position'),
         script('scripts/test-font-size-viewport.ts'),

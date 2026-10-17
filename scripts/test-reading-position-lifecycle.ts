@@ -66,6 +66,14 @@ captured = { line: 80, lineOffset: 0 };
 lifecycle.viewportChanged();
 lifecycle.flush();
 assert.notDeepEqual(posted.at(-1), captured, 'disabled reporting must stay silent');
+lifecycle.start({ enabled: false, restore: null, transientRestore: { line: 125, lineOffset: 17 } });
+assert.equal(lifecycle.surfaceReady(), true, 'Save As must restore even when opening-position memory is disabled');
+assert.deepEqual(restored.at(-1), { line: 125, lineOffset: 17 });
+lifecycle.flush();
+assert.notDeepEqual(posted.at(-1), captured, 'a transient restore must not enable persistent reporting');
+lifecycle.start({ enabled: false, restore: null, transientRestore: { line: 126, lineOffset: 0 } });
+lifecycle.userInteracted();
+assert.equal(lifecycle.surfaceReady(), false, 'user input must cancel a pending Save As restore');
 lifecycle.dispose();
 
 console.log('Reading position lifecycle checks passed');

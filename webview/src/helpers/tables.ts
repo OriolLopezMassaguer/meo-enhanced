@@ -2558,21 +2558,27 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     this.tableData = tableData;
     if (!this.domRefs) return;
     const { shell, table, rowEntries, allRowInputs } = this.domRefs;
-    shell.dataset.meoRenderedBlockStartLine = String(tableData.startLine);
-    shell.dataset.meoRenderedBlockEndLine = String(tableData.endLine);
-    table.dataset.tableFrom = String(tableData.from);
-    table.dataset.tableTo = String(tableData.to);
-    table.dataset.tableSignature = tableWidthIdentity(tableData);
+    // Geometry-only viewport updates retain the same source coordinates. Even
+    // assigning an identical dataset value wakes column/header observers, which
+    // can otherwise turn one scroll receipt into another projection and layout.
+    const setSourceData = (element: HTMLElement, key: string, value: string) => {
+      if (element.dataset[key] !== value) element.dataset[key] = value;
+    };
+    setSourceData(shell, 'meoRenderedBlockStartLine', String(tableData.startLine));
+    setSourceData(shell, 'meoRenderedBlockEndLine', String(tableData.endLine));
+    setSourceData(table, 'tableFrom', String(tableData.from));
+    setSourceData(table, 'tableTo', String(tableData.to));
+    setSourceData(table, 'tableSignature', tableWidthIdentity(tableData));
     rowEntries.forEach(({ row }, index) => {
-      row.dataset.sourceLineNumber = String(tableData.startLine + (index === 0 ? 0 : index + 1));
+      setSourceData(row, 'sourceLineNumber', String(tableData.startLine + (index === 0 ? 0 : index + 1)));
     });
     for (let row = 0; row < allRowInputs.length; row += 1) {
       for (let col = 0; col < allRowInputs[row].length; col += 1) {
         const input = allRowInputs[row][col];
         const range = tableData.sourceRanges?.[row]?.[col];
         if (!range) continue;
-        input.dataset.tableCellFrom = String(range.from);
-        input.dataset.tableCellTo = String(range.to);
+        setSourceData(input, 'tableCellFrom', String(range.from));
+        setSourceData(input, 'tableCellTo', String(range.to));
       }
     }
     if (contentChanged) {
@@ -4927,7 +4933,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       if (this.searchState && (hadSearchMatch || shouldExpandTableCellForSearch(sourceValue, this.searchState))) {
         refreshPreview();
       }
-      // Grow the focused row in the input event's task. Deferring this mutation to
+      // Resize the focused row in the input event's task. Deferring this mutation to
       // CodeMirror's next measure lets the textarea scroll its caret for one paint,
       // then snap back after the row catches up.
       const resizeAndSchedule = () => {
@@ -5131,47 +5137,74 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
 
   resizeRow(row: HTMLTableRowElement, rowInputs: HTMLTextAreaElement[] | null = null) {
     if (!row) return;
-    const textareas = rowInputs ?? Array.from(row.querySelectorAll('textarea'));
-    const contents = Array.from(row.querySelectorAll('.meo-md-html-table-cell-content')) as HTMLElement[];
-    if (textareas.length === 0 || contents.length === 0) return;
+    this.resizeRows([{ row, inputs: rowInputs ?? Array.from(row.querySelectorAll('textarea')) }]);
+  }
 
-    let maxHeight = 0;
-    // A row shares one offscreen probe. Recreating and attaching a textarea for
-    // every cell forces a full layout on each mode switch, even when the table
-    // is only being prepared behind Preview.
-    const probe = textareas[0]!.cloneNode(false) as HTMLTextAreaElement;
-    probe.tabIndex = -1;
-    probe.setAttribute('aria-hidden', 'true');
-    probe.style.inset = 'auto';
-    probe.style.top = '0';
-    probe.style.left = '0';
-    probe.style.height = '0px';
-    probe.style.visibility = 'hidden';
-    probe.style.pointerEvents = 'none';
-    contents[0]!.appendChild(probe);
-    const widths = textareas.map((textarea) => textarea.getBoundingClientRect().width);
-    const previewHeights = contents.map((content) =>
-      content.querySelector<HTMLElement>('.meo-md-html-table-cell-preview')?.scrollHeight ?? 0
-    );
-    for (let index = 0; index < textareas.length; index += 1) {
-      const textarea = textareas[index];
-      probe.value = textarea.value;
-      probe.style.width = `${widths[index]}px`;
-      maxHeight = Math.max(maxHeight, probe.scrollHeight, previewHeights[index] ?? 0);
+  resizeRows(entries: readonly RowEntry[]) {
+    // Native content sizing keeps preview and source heights in the same layout
+    // as attachment and column projection, without a later probe-driven growth.
+    if (typeof CSS !== 'undefined' && CSS.supports('field-sizing', 'content')) {
+      const rows = entries.map(({ row }) => Array.from(
+        row.querySelectorAll<HTMLElement>('.meo-md-html-table-cell-content')
+      ));
+      for (const contents of rows) {
+        for (const content of contents) content.style.removeProperty('min-height');
+      }
+      // Retain full-row editing targets, but discard the previous minimum before
+      // reading natural CSS heights so input deletion and wider columns shrink.
+      const heights = rows.map(contents => Math.max(0, ...contents.map(content =>
+        Number.parseFloat(getComputedStyle(content).height) || 0
+      )));
+      rows.forEach((contents, index) => {
+        for (const content of contents) content.style.minHeight = `${heights[index]}px`;
+      });
+      return;
     }
-    probe.remove();
-
-    for (const content of contents) {
-      content.style.minHeight = `${maxHeight}px`;
+    const rows = entries.map(({ row, inputs }) => {
+      const contents = Array.from(row.querySelectorAll<HTMLElement>('.meo-md-html-table-cell-content'));
+      return {
+        contents,
+        inputs,
+        widths: inputs.map((input) => input.getBoundingClientRect().width),
+        // Editing keeps the previous preview DOM alive, but its stale height
+        // must not keep a row from shrinking as the user deletes text.
+        previewHeight: Math.max(0, ...contents.map((content) =>
+          content.classList.contains('is-editing') && !content.classList.contains('has-search-match')
+            ? 0
+            : content.querySelector<HTMLElement>('.meo-md-html-table-cell-preview')?.scrollHeight ?? 0
+        ))
+      };
+    }).filter(({ contents, inputs }) => contents.length > 0 && inputs.length > 0);
+    // A virtualized table can remount during a scroll. Attach all zero-height
+    // probes before measuring so layout work is bounded per table, not per cell.
+    const measurements = rows.map((row) => ({
+      ...row,
+      probes: row.inputs.map((input, index) => {
+        const probe = input.cloneNode(false) as HTMLTextAreaElement;
+        probe.value = input.value;
+        probe.tabIndex = -1;
+        probe.setAttribute('aria-hidden', 'true');
+        Object.assign(probe.style, {
+          inset: 'auto', top: '0', left: '0', height: '0px',
+          width: `${row.widths[index]}px`, visibility: 'hidden', pointerEvents: 'none'
+        });
+        (row.contents[index] ?? row.contents[0])!.appendChild(probe);
+        return probe;
+      })
+    }));
+    const heights = measurements.map(({ probes, previewHeight }) =>
+      Math.max(previewHeight, ...probes.map((probe) => probe.scrollHeight))
+    );
+    for (const [index, { probes, contents }] of measurements.entries()) {
+      for (const probe of probes) probe.remove();
+      for (const content of contents) content.style.minHeight = `${heights[index]}px`;
     }
   }
 
   resizeAllRows() {
     if (!this.domRefs) return;
     const { table, rowEntries } = this.domRefs;
-    const resize = () => {
-      for (const entry of rowEntries) this.resizeRow(entry.row, entry.inputs);
-    };
+    const resize = () => this.resizeRows(rowEntries);
     const active = table.ownerDocument.activeElement;
     const controller = this.view ? getViewportController(this.view) : null;
     if (
@@ -5192,7 +5225,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   }
 
   syncTableLineNumbers() {
-    if (!this.domRefs) return;
+    if (this.destroyed || !this.domRefs?.shell.isConnected) return;
     const { table, lineNumberLayer } = this.domRefs;
     const gutter = this.view?.dom.querySelector('.cm-lineNumbers');
     if (!(gutter instanceof HTMLElement)) return;
@@ -5201,14 +5234,18 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     }
 
     const gutterRect = gutter.getBoundingClientRect();
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('thead tr, tbody tr'))
+      .map((row, rowIndex) => ({ row, rowIndex, lineNumber: row.dataset.sourceLineNumber }))
+      .filter(({ lineNumber }) => Boolean(lineNumber))
+      .map(({ row, rowIndex, lineNumber }) => ({
+        rowIndex, lineNumber: lineNumber!, top: row.getBoundingClientRect().top - gutterRect.top
+      }));
     lineNumberLayer.style.left = '0';
     lineNumberLayer.style.width = `${gutterRect.width}px`;
 
     const activeRow = this.cellSelection.snapshot().anchor?.row;
     let itemIndex = 0;
-    for (const [rowIndex, row] of (Array.from(table.querySelectorAll('thead tr, tbody tr')) as HTMLTableRowElement[]).entries()) {
-      const lineNumber = row.dataset.sourceLineNumber;
-      if (!lineNumber) continue;
+    for (const { rowIndex, lineNumber, top } of rows) {
       const existingItem = lineNumberLayer.children.item(itemIndex);
       let item: HTMLElement;
       if (existingItem instanceof HTMLElement) {
@@ -5222,7 +5259,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       if (item.textContent !== lineNumber) {
         item.textContent = lineNumber;
       }
-      item.style.top = `${row.getBoundingClientRect().top - gutterRect.top}px`;
+      item.style.top = `${top}px`;
       itemIndex += 1;
     }
     while (lineNumberLayer.children.length > itemIndex) {
@@ -5242,21 +5279,25 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   }
 
   syncTableDiffMarkers() {
-    if (!this.domRefs) return;
+    if (this.destroyed || !this.domRefs?.shell.isConnected) return;
     const { table, diffMarkerLayer } = this.domRefs;
     const gutter = this.view?.dom.querySelector('.meo-git-gutter');
     if (!(gutter instanceof HTMLElement)) return;
     if (diffMarkerLayer.parentElement !== gutter) gutter.appendChild(diffMarkerLayer);
 
     const gutterRect = gutter.getBoundingClientRect();
+    const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>('thead tr, tbody tr'))
+      .flatMap((row) => {
+        const lineNumber = Number.parseInt(row.dataset.sourceLineNumber ?? '', 10);
+        const flags = this.tableData.diffFlagsByLine?.[lineNumber];
+        if (!flags || (!flags.added && !flags.modified && !flags.deleted)) return [];
+        const rect = row.getBoundingClientRect();
+        return [{ lineNumber, flags, top: rect.top - gutterRect.top, height: rect.height }];
+      });
     diffMarkerLayer.style.left = '0';
     diffMarkerLayer.style.width = `${gutterRect.width}px`;
     let itemIndex = 0;
-    for (const row of Array.from(table.querySelectorAll<HTMLTableRowElement>('thead tr, tbody tr'))) {
-      const lineNumber = Number.parseInt(row.dataset.sourceLineNumber ?? '', 10);
-      const flags = this.tableData.diffFlagsByLine?.[lineNumber];
-      if (!flags || (!flags.added && !flags.modified && !flags.deleted)) continue;
-
+    for (const { lineNumber, flags, top, height } of rows) {
       const existingItem = diffMarkerLayer.children.item(itemIndex);
       let item: HTMLElement;
       if (existingItem instanceof HTMLElement) {
@@ -5270,9 +5311,8 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         liveBlockStartLine: lineNumber,
         liveBlockEndLine: lineNumber
       }, 'meo-md-html-table-diff-marker');
-      const rowRect = row.getBoundingClientRect();
-      item.style.top = `${rowRect.top - gutterRect.top}px`;
-      item.style.height = `${rowRect.height}px`;
+      item.style.top = `${top}px`;
+      item.style.height = `${height}px`;
       itemIndex += 1;
     }
     while (diffMarkerLayer.children.length > itemIndex) diffMarkerLayer.lastElementChild?.remove();
@@ -5573,7 +5613,10 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   }
 
   updateContextControlsPosition() {
-    if (!this.domRefs) return;
+    // toDOM builds this shell before CodeMirror attaches it. Its scheduled
+    // layout will position controls; measuring here or during disposal only
+    // flushes unrelated document layout for geometry we cannot use.
+    if (this.destroyed || !this.domRefs?.shell.isConnected) return;
     const { shell, wrap, rowEntries, contextTrigger, contextMenu } = this.domRefs;
     const rowIndex = this.cellSelection.snapshot().anchor?.row ?? this.activeTarget.row;
     const row = rowEntries[Math.min(Math.max(rowIndex, 0), rowEntries.length - 1)]?.row;
@@ -5607,7 +5650,10 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     const targetInput = focusedInput instanceof HTMLTextAreaElement && row.contains(focusedInput)
       ? focusedInput
       : this.domRefs.allRowInputs[rowIndex]?.[this.activeTarget.col] ?? null;
+    // Passive reading has no native caret to follow. Creating its mirror here
+    // forces layout and also wakes floating chrome's body mutation observer.
     const caretBounds = !hasMultiCellSelection && targetInput
+      && (targetInput === focusedInput || !contextMenu.hidden)
       ? tableCellCaretViewportBounds(targetInput)
       : null;
     const anchorCenter = caretBounds

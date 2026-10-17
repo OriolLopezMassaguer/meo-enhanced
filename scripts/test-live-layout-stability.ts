@@ -37,6 +37,69 @@ async function waitForFrames(page: Page, count = 10): Promise<void> {
   }, count);
 }
 
+async function checkTableRowShrinking(page: Page): Promise<void> {
+  for (const long of [false, true]) for (const suffix of ['', '\n', '\n\nAfter']) {
+    const prefix = long ? Array.from({ length: 60 }, (_, index) => `Before ${index + 1}`).join('\n\n') + '\n\n' : '';
+    await page.evaluate((text) => {
+      const scope = window as any;
+      scope.__editor?.destroy();
+      document.getElementById('app')!.replaceChildren();
+      scope.__editor = scope.LiveLayoutStabilityHarness.createEditor({
+        parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {}
+      });
+    }, `${prefix}| A |\n| --- |\n| x |${suffix}`);
+    await waitForFrames(page);
+    await page.evaluate(() => {
+      const view = (window as any).__editor.view;
+      view.scrollDOM.scrollTop = view.scrollDOM.scrollHeight;
+    });
+    await waitForFrames(page);
+    const selector = '.meo-md-html-table:not(.meo-md-html-table-sticky-table) tbody textarea';
+    await page.click(selector);
+    const baselineHeight = await page.$eval(selector, input => input.closest('tr')!.getBoundingClientRect().height);
+    await page.$eval(selector, input => input.select());
+    await page.keyboard.sendCharacter('aaaaaaaaaaaaaa');
+    await page.waitForFunction(() => (window as any).__editor.view.state.doc.toString().includes('aaaaaaaaaaaaaa'));
+    await waitForFrames(page, 3);
+    const wrappedHeight = await page.$eval(selector, input => input.closest('tr')!.getBoundingClientRect().height);
+    if (wrappedHeight <= baselineHeight + GEOMETRY_EPSILON) throw new Error('Table shrink fixture must wrap before deletion');
+    await page.$eval(selector, input => {
+      const preview = input.parentElement!.querySelector('.meo-md-html-table-cell-preview')!;
+      const previewChild = preview.firstChild;
+      (window as any).__tableShrinkInput = new Promise(resolve => input.addEventListener('input', () => resolve({
+        value: input.value,
+        height: input.closest('tr')!.getBoundingClientRect().height,
+        previewRetained: input.parentElement!.querySelector('.meo-md-html-table-cell-preview') === preview && preview.firstChild === previewChild,
+        sourceStillWrapped: (window as any).__editor.view.state.doc.toString().includes('aaaaaaaaaaaaaa'),
+        focused: document.activeElement === input
+      }), { once: true }));
+      input.select();
+    });
+    await page.keyboard.sendCharacter('x');
+    const shrunk = await page.evaluate(() => (window as any).__tableShrinkInput as Promise<{
+      value: string; height: number; previewRetained: boolean; sourceStillWrapped: boolean; focused: boolean;
+    }>);
+    if (shrunk.value !== 'x' || Math.abs(shrunk.height - baselineHeight) > GEOMETRY_EPSILON ||
+      !shrunk.previewRetained || !shrunk.sourceStillWrapped || !shrunk.focused) {
+      throw new Error(`Table must shrink in the input event without waiting for commit or replacing its preview: ${JSON.stringify({ long, suffix, baselineHeight, wrappedHeight, ...shrunk })}`);
+    }
+    await page.waitForFunction(() => !(window as any).__editor.view.state.doc.toString().includes('aaaaaaaaaaaaaa'));
+    const committed = await page.$eval(selector, input => ({
+      height: input.closest('tr')!.getBoundingClientRect().height,
+      focused: document.activeElement === input, value: input.value, caret: input.selectionStart
+    }));
+    if (Math.abs(committed.height - baselineHeight) > GEOMETRY_EPSILON || !committed.focused || committed.value !== 'x' || committed.caret !== 1) {
+      throw new Error(`Table shrink commit changed height or caret: ${JSON.stringify(committed)}`);
+    }
+  }
+  await page.evaluate(() => {
+    (window as any).__editor.destroy();
+    (window as any).__editor = null;
+    document.getElementById('app')!.replaceChildren();
+  });
+  console.log('Table row shrink, retained preview and commit caret checks passed.');
+}
+
 async function main(): Promise<void> {
   const build = await Bun.build({
     entrypoints: [path.join(repoRoot, 'scripts', 'test-live-layout-stability-entry.ts')],
@@ -57,6 +120,9 @@ async function main(): Promise<void> {
       content: ':root { --meo-background:#24292e; --meo-foreground:#e6edf3; --meo-semantic-markdownSyntax:#8b949e; --meo-semantic-mutedForeground:#8b949e; --meo-semantic-tableBorder:#3e444d; --meo-font-live:Arial; --meo-font-live-weight:400; --meo-font-live-size:16px; --meo-font-source:monospace; --meo-font-source-weight:400; --meo-font-source-size:14px; }'
     });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+
+    await checkTableRowShrinking(page);
+    if (process.argv.includes('--table-shrink')) return;
 
     const tableSource = [
       ...Array.from({ length: 80 }, (_, index) => `before table ${index + 1}`),

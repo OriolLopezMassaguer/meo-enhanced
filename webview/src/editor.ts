@@ -2262,7 +2262,18 @@ export function createEditor({
   const tableHistoryFocusAdapter = createCodeMirrorTableHistoryFocusAdapter();
   const tableColumnWidthAdapter = createCodeMirrorDomTableColumnWidthAdapter({
     root: parent,
-    policy: tableColumnWidthPolicy
+    policy: tableColumnWidthPolicy,
+    preserveLayout(table, apply) {
+      const active = table.ownerDocument.activeElement;
+      if (viewportController && active instanceof HTMLTextAreaElement && table.contains(active)
+        && !table.closest('.is-context-menu-open') && !viewportController.isUserScrolling()) {
+        viewportController.retainElementTopWhileMutation(
+          active, () => active.isConnected && active === table.ownerDocument.activeElement ? active : null,
+          apply, () => currentMode === 'live' && active.isConnected
+            && active === table.ownerDocument.activeElement && !viewportController.isUserScrolling()
+        );
+      } else apply();
+    }
   });
   const tableStickyHeaderAdapterFactory: TableStickyHeaderAdapterFactory =
     createToggleableTableStickyHeaderAdapterFactory({
@@ -2803,7 +2814,8 @@ export function createEditor({
       if (!editorDestroyed && currentMode === 'live') {
         view.dispatch({ effects: refreshDecorationsEffect.of(null) });
       }
-    }
+    },
+    () => viewportController.isUserScrolling()
   );
   if (startMode === 'live') mermaidDocumentPreloader.schedule(view.state);
   interactionContinuity = createEditorInteractionContinuity({

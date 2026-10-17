@@ -26,6 +26,8 @@ export type CodeMirrorDomTableColumnWidthAdapter = {
 export type CodeMirrorDomTableColumnWidthAdapterOptions = {
   readonly root: HTMLElement;
   readonly policy?: TableColumnWidthPolicy;
+  /** Captures the active cell before column writes trigger intrinsic row reflow. */
+  readonly preserveLayout?: (table: HTMLTableElement, apply: () => void) => void;
 };
 
 type TableLayoutFacts = {
@@ -289,7 +291,12 @@ export function createCodeMirrorDomTableColumnWidthAdapter(
     });
   };
 
-  const render = (table: HTMLTableElement, widths: readonly number[], totalWidth: number): void => {
+  const preserveLayout = (table: HTMLTableElement, apply: () => void): void => {
+    if (options.preserveLayout) options.preserveLayout(table, apply);
+    else apply();
+  };
+
+  const render = (table: HTMLTableElement, widths: readonly number[], totalWidth: number): void => preserveLayout(table, () => {
     table.style.width = `${totalWidth}px`;
     table.style.maxWidth = 'none';
     table.style.minWidth = '0';
@@ -300,9 +307,9 @@ export function createCodeMirrorDomTableColumnWidthAdapter(
     });
     renderStickyColumns(table, widths);
     setOverflowState(table, availableWidth(table));
-  };
+  });
 
-  const reset = (table: HTMLTableElement): void => {
+  const reset = (table: HTMLTableElement): void => preserveLayout(table, () => {
     table.style.width = '';
     table.style.maxWidth = '';
     table.style.minWidth = '';
@@ -316,7 +323,7 @@ export function createCodeMirrorDomTableColumnWidthAdapter(
       Array.from(table.querySelectorAll<HTMLElement>('thead th'))
         .map((cell) => cell.getBoundingClientRect().width)
     );
-  };
+  });
 
   const project = (table: HTMLTableElement, epoch: LifecycleEpoch): void => {
     if (!isCurrentEpoch(epoch)) return;
@@ -821,8 +828,16 @@ export function createCodeMirrorDomTableColumnWidthAdapter(
       listensForColumnPermutation = true;
       const epoch = { alive: true, projectionConsumer: {} };
       currentEpoch = epoch;
-      mutationObserver = new MutationObserver(() => {
-        requestCurrentProjection(epoch);
+      mutationObserver = new MutationObserver(records => {
+        // Virtual scrolling also mounts text, gutters and passive sticky chrome.
+        // Only source-table content or table attachment changes invalidate widths;
+        // container size changes retain their ResizeObserver path.
+        const tableChanged = records.some(record => (
+          record.target instanceof Element && record.target.closest(tableSelector)
+        ) || [...record.addedNodes, ...record.removedNodes].some(node => (
+          node instanceof Element && (node.matches(tableSelector) || node.querySelector(tableSelector))
+        )));
+        if (tableChanged) requestCurrentProjection(epoch);
       });
       mutationObserver.observe(options.root, { childList: true, subtree: true });
       requestCurrentProjection(epoch);

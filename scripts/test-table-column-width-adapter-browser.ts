@@ -98,6 +98,37 @@ async function main(): Promise<void> {
     );
     const initialFirst = await widths('first');
     const initialSecond = await widths('second');
+    const mutationReads = await page.evaluate(async () => {
+      const root = document.querySelector<HTMLElement>('.table-column-width-candidate-root')!;
+      const original = Element.prototype.getBoundingClientRect;
+      let reads = 0;
+      Element.prototype.getBoundingClientRect = function() {
+        if (this.closest('table[data-table-column-width]')) reads++;
+        return original.call(this);
+      };
+      const settle = async () => {
+        for (let n = 0; n < 6; n++) await new Promise(requestAnimationFrame);
+      };
+      try {
+        const paragraph = document.createElement('p');
+        // Keep container geometry fixed to isolate the DOM invalidation path.
+        // ResizeObserver must retain font and container-size reconciliation.
+        paragraph.style.position = 'absolute';
+        paragraph.textContent = 'A newly mounted text line outside the tables';
+        root.append(paragraph);
+        await settle();
+        paragraph.remove();
+        await settle();
+        const unrelated = reads;
+        reads = 0;
+        root.querySelector('table')!.append(document.createElement('tbody'));
+        await settle();
+        return { unrelated, table: reads };
+      } finally { Element.prototype.getBoundingClientRect = original; }
+    });
+    assert.equal(mutationReads.unrelated, 0,
+      'Mounting or removing unrelated text must not remeasure retained table columns');
+    assert.ok(mutationReads.table > 0, 'Source table child changes must still reconcile column geometry');
 
     const startupWidthCap = await page.evaluate(async () => {
       const host = document.createElement('div');

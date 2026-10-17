@@ -7222,6 +7222,9 @@ html[data-editor-appearance='dark'] body.vscode-dark
 }
 
 .cm-editor .meo-md-html-table-cell-content.is-editing:not(.has-search-match) .meo-md-html-table-cell-preview {
+  /* Retain preview resources without letting stale content size the editing row. */
+  position: absolute;
+  inset: 0;
   visibility: hidden;
 }
 
@@ -7289,6 +7292,31 @@ html[data-editor-appearance='dark'] body.vscode-dark
 .cm-editor .meo-md-html-table-cell-content.is-editing textarea {
   opacity: 1;
   pointer-events: auto;
+}
+
+@supports (field-sizing: content) {
+  /* Both layers contribute their height before a virtual table is measured.
+     Only the preview contributes intrinsic column width; Markdown URLs must
+     wrap within those columns when the source textarea becomes editable. */
+  .cm-editor .meo-md-html-table-cell-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cm-editor .meo-md-html-table-cell-preview {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+
+  .cm-editor .meo-md-html-table textarea {
+    position: relative;
+    inset: auto;
+    grid-area: 1 / 1;
+    width: 100%;
+    align-self: stretch;
+    contain: inline-size;
+    field-sizing: content;
+  }
 }
 
 .cm-editor .meo-md-html-table-cell-content.is-editing.has-search-match textarea {

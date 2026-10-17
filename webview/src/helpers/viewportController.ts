@@ -358,6 +358,7 @@ export class ViewportController {
   private interactionsAttached = false;
   private lastWheelAt = Number.NEGATIVE_INFINITY;
   private lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+  private lastNativeScrollAt = Number.NEGATIVE_INFINITY;
   private lastScrollDirection: -1 | 0 | 1 = 0;
   private interactionGeneration = 0;
   private navigationGeneration = 0;
@@ -408,6 +409,12 @@ export class ViewportController {
       const documentTop = this.readLayoutAnchorDocumentTop(anchor.position);
       if (documentTop !== null && Math.abs(documentTop - anchor.readingDocumentTop) <= POSITION_EPSILON
         && this.readingLayoutUnchanged(anchor)) {
+        // A smooth/inertial tail can outlive its final wheel event. Only real
+        // movement beyond the adopted position extends the gesture; our own
+        // geometry corrections have already adopted their resulting scrollTop.
+        if (Math.abs(this.view.scrollDOM.scrollTop - (anchor.readingScrollTop ?? this.view.scrollDOM.scrollTop)) > POSITION_EPSILON) {
+          this.lastNativeScrollAt = performance.now();
+        }
         this.adoptReadingLayout(anchor, documentTop);
         anchor.readingNativeAdopted = true;
         anchor.revision += 1;
@@ -427,6 +434,7 @@ export class ViewportController {
     if (this.activeLayoutAnchor?.readingDocumentTop !== undefined) this.activeLayoutAnchor = null;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.claimLinkedViewport('editor');
     this.navigationGeneration += 1;
   };
@@ -443,7 +451,10 @@ export class ViewportController {
     controllerByDom.set(view.dom, this);
     if (options.attachInteractions !== false) {
       view.scrollDOM.addEventListener('wheel', this.onWheel, { passive: true });
-      view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
+      // CodeMirror's non-capture scroll observer may synchronously measure and
+      // reconcile layout. Adopt native progress first so that reconciliation
+      // cannot compensate from the previous scroll event's reading position.
+      view.scrollDOM.addEventListener('scroll', this.onScroll, { capture: true, passive: true });
       view.scrollDOM.addEventListener('touchstart', this.onTouchStart, { passive: true });
       view.scrollDOM.addEventListener('touchmove', this.onTouchMove, { passive: true });
       view.scrollDOM.addEventListener('touchend', this.onTouchEnd, { passive: true });
@@ -489,6 +500,7 @@ export class ViewportController {
     this.anchorStabilizationGeneration = null;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.lastTouchY = null;
   }
 
@@ -529,6 +541,7 @@ export class ViewportController {
     this.activeScrollLockCorrection = null;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.lastTouchY = null;
   }
 
@@ -1819,7 +1832,7 @@ export class ViewportController {
     controllerByDom.delete(this.view.dom);
     if (this.interactionsAttached) {
       this.view.scrollDOM.removeEventListener('wheel', this.onWheel);
-      this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
+      this.view.scrollDOM.removeEventListener('scroll', this.onScroll, true);
       this.view.scrollDOM.removeEventListener('touchstart', this.onTouchStart);
       this.view.scrollDOM.removeEventListener('touchmove', this.onTouchMove);
       this.view.scrollDOM.removeEventListener('touchend', this.onTouchEnd);
@@ -2322,6 +2335,7 @@ export class ViewportController {
     this.explicitNavigationGeneration += 1;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.lastTouchY = null;
     const navigationGeneration = ++this.navigationGeneration;
     this.pendingNavigationTarget = null;
@@ -3062,6 +3076,25 @@ export class ViewportController {
         (candidate.position < changedRange.from || candidate.position > changedRange.to) &&
         candidate.top >= scrollerRect.top && candidate.top < scrollerRect.bottom
       ));
+    if (candidates.length === 0) {
+      // A tall table or diagram can occupy the entire viewport. Its rendered
+      // geometry remains a reading witness even when no text line is mounted.
+      const seenPositions = new Set<number>();
+      for (const element of this.view.contentDOM.querySelectorAll<HTMLElement>(
+        '.meo-md-html-table-wrap tr[data-source-line-number], [data-meo-rendered-block-kind][data-meo-rendered-block-start-line]'
+      )) {
+        const position = this.readingBlockPosition(element);
+        if (position === null || seenPositions.has(position)
+          || (position >= changedRange.from && position <= changedRange.to)) continue;
+        // Mode shells and their nested previews can describe the same source
+        // position. Retention must read back the same outer geometry we capture.
+        seenPositions.add(position);
+        const rect = element.getBoundingClientRect();
+        if (rect.bottom > scrollerRect.top && rect.top < scrollerRect.bottom) {
+          candidates.push({ position, top: rect.top });
+        }
+      }
+    }
     if (candidates.length === 0) return null;
 
     const readingY = scrollerRect.top + scrollerRect.height * 0.25;
@@ -3124,7 +3157,10 @@ export class ViewportController {
             activeAnchor.stableFrames >= REQUIRED_STABLE_FRAMES ||
             activeAnchor.remainingFrames <= 0
           )) {
-            this.activeLayoutAnchor = null;
+            // Stop polling, but keep a proven reading anchor for deferred widget
+            // measurements. The next user intent retires it via markInteraction.
+            if (activeAnchor.readingNativeAdopted) activeAnchor.remainingFrames = 0;
+            else this.activeLayoutAnchor = null;
             return;
           }
           requestAnimationFrame(() => this.scheduleLayoutMeasure());
@@ -3150,11 +3186,21 @@ export class ViewportController {
     // Caret rectangles can move inside a stable line when fonts or tokens change.
     // Only the outer line box represents movement of the reading content.
     const line = Array.from(this.view.contentDOM.querySelectorAll<HTMLElement>(':scope > .cm-line'))
-      .find((element) => this.view.posAtDOM(element) === position);
+      .find((element) => this.view.posAtDOM(element) === position)
+      ?? Array.from(this.view.contentDOM.querySelectorAll<HTMLElement>(
+        '.meo-md-html-table-wrap tr[data-source-line-number], [data-meo-rendered-block-kind][data-meo-rendered-block-start-line]'
+      )).find((element) => this.readingBlockPosition(element) === position);
     return line
       ? line.getBoundingClientRect().top + this.view.scrollDOM.scrollTop
         - this.view.scrollDOM.getBoundingClientRect().top
       : null;
+  }
+
+  private readingBlockPosition(element: HTMLElement): number | null {
+    const line = Number(element.dataset?.sourceLineNumber ?? element.dataset?.meoRenderedBlockStartLine);
+    const doc = this.view.state?.doc;
+    return doc && Number.isSafeInteger(line) && line > 0 && line <= doc.lines
+      ? doc.line(line).from : null;
   }
 
   private resolveLayoutAnchorTarget(anchor: ActiveLayoutAnchor): {
@@ -3201,8 +3247,9 @@ export class ViewportController {
     return topChanged || leftChanged;
   }
 
-  private isUserScrolling(): boolean {
+  /** Includes native momentum so background rendering can wait beyond the last wheel event. */
+  isUserScrolling(): boolean {
     return this.scrollbarDragActive ||
-      performance.now() - Math.max(this.lastWheelAt, this.lastTouchMoveAt) <= WHEEL_GESTURE_IDLE_MS;
+      performance.now() - Math.max(this.lastWheelAt, this.lastTouchMoveAt, this.lastNativeScrollAt) <= WHEEL_GESTURE_IDLE_MS;
   }
 }
