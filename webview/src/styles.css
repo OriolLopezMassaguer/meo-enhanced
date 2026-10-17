@@ -4636,6 +4636,17 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   border: 1px solid var(--meo-semantic-tableBorder, var(--meo-border));
   color: var(--meo-foreground);
   text-align: left;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.cm-editor .meo-md-html-block table.meo-preview-table-compressed :is(th, td) {
+  padding-inline: var(--meo-preview-table-cell-inline-padding);
+}
+
+.cm-editor .meo-md-html-block :is(th, td) :is(code, kbd) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .cm-editor .meo-md-html-block th {
@@ -7158,6 +7169,7 @@ html[data-editor-appearance='dark'] body.vscode-dark
   box-sizing: border-box;
   min-height: 1lh;
   padding: 0.25em 0.5em;
+  padding-inline: var(--meo-table-cell-inline-padding, 0.5em);
   color: var(--meo-foreground);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -7286,6 +7298,7 @@ html[data-editor-appearance='dark'] body.vscode-dark
   font-style: inherit;
   line-height: inherit;
   padding: 0.25em 0.5em;
+  padding-inline: var(--meo-table-cell-inline-padding, 0.5em);
   resize: none;
   overflow: hidden;
   opacity: 0;
