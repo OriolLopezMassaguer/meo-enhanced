@@ -4797,23 +4797,17 @@ function insertHr(
   const lineText = state.doc.sliceString(line.from, line.to);
   const trimmed = lineText.trim();
 
-  if (!trimmed) {
-    const insert = '---';
-    const cursorPos = line.from + insert.length;
-    view.dispatch({
-      changes: { from: line.from, to: line.to, insert },
-      selection: { anchor: cursorPos },
-      annotations: userEvent
-    });
-  } else {
-    const insert = '\n---';
-    const cursorPos = line.to + insert.length;
-    view.dispatch({
-      changes: { from: line.to, insert },
-      selection: { anchor: cursorPos },
-      annotations: userEvent
-    });
-  }
+  // Blank lines keep this command unambiguous with Setext headings and frontmatter.
+  const before = trimmed ? '\n\n'
+    : line.number === 1 || state.doc.line(line.number - 1).text.trim() ? '\n' : '';
+  const after = line.to === state.doc.length ? '\n\n'
+    : state.doc.line(line.number + 1).text.trim() || line.number + 1 === state.doc.lines ? '\n' : '';
+  const from = trimmed ? line.to : line.from;
+  view.dispatch({
+    changes: { from, to: line.to, insert: before + '---' + after },
+    selection: { anchor: from + before.length + 3 },
+    annotations: userEvent
+  });
 }
 
 function insertLink(

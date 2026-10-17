@@ -30,7 +30,7 @@ import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
 import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
-import { currentSyntaxTree, getFencedCodeInfo, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
+import { currentSyntaxTree, getFencedCodeInfo, headingContentRange, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
 import { detailsBlockLiveExtensions, getDetailsBlocks, toggleDetailsBlock } from './helpers/detailsBlocks';
 import {
   addListMarkerDecoration,
@@ -793,6 +793,7 @@ function addThematicBreakDecorations(
 function addForcedThematicBreakDecorations(
   builder: DecorationCollector,
   state: EditorState,
+  tree: Tree,
   activeLines: Set<number>,
   frontmatter: FrontmatterInfo | null,
   codeBlockLines: Set<number> | null = null
@@ -806,6 +807,10 @@ function addForcedThematicBreakDecorations(
     ) {
       continue;
     }
+    // A dash-only line can belong to a heading; its parsed block owns the syntax.
+    let node = tree.resolveInner(line.to, -1);
+    while (node.parent && node.name !== 'HorizontalRule' && !node.name.startsWith('SetextHeading')) node = node.parent;
+    if (node.name === 'HorizontalRule' || node.name.startsWith('SetextHeading')) continue;
     addThematicBreakDecorations(builder, state, line.from, line.to, activeLines);
   }
 }
@@ -1714,11 +1719,7 @@ export function collectInlineMarkdownSyntaxRanges(text: string): SourceRange[] {
   return merged;
 }
 
-function addAtxHeadingContentColor(builder: DecorationCollector, state: EditorState, from: number, to: number): void {
-  const line = state.doc.lineAt(from);
-  const text = state.doc.sliceString(line.from, line.to);
-  const match = /^(#{1,6}[ \t]+)/.exec(text);
-  const contentFrom = match ? line.from + match[1].length : from;
+function addHeadingContentColor(builder: DecorationCollector, state: EditorState, contentFrom: number, to: number): void {
   if (contentFrom >= to) {
     return;
   }
@@ -1934,7 +1935,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       literalBlockLines.add(lineNo);
     }
   }
-  addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, literalBlockLines);
+  addForcedThematicBreakDecorations(ranges, state, tree, activeLines, frontmatter, literalBlockLines);
   const literalRanges = collectMarkdownLiteralRanges(state, tree);
   const htmlCodeBodies = literalRanges.flatMap(range => range.htmlCode ? [range.htmlCode] : []);
   for (const body of htmlCodeBodies) addRange(ranges, body.from, body.to, inlineStyleDecos.inlineCode);
@@ -1975,12 +1976,23 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       if (node.name === 'Table') {
         tableDepth += 1;
       }
+      if (node.name === 'HorizontalRule' && !isInsideFrontmatter(frontmatter, node.from)) {
+        addThematicBreakDecorations(ranges, state, node.from, node.to, activeLines);
+        return;
+      }
 
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel !== null) {
         if (tableDepth === 0 && !isInsideFrontmatter(frontmatter, node.from)) {
-          addAtxHeadingPrefixMarkers(ranges, state, node.from, activeLines);
-          addAtxHeadingContentColor(ranges, state, node.from, node.to);
+          const content = headingContentRange(state, node.node);
+          if (node.name.startsWith('SetextHeading')) {
+            const underline = node.node.lastChild!;
+            const active = rangeTouchesActiveLine(state, node.from, node.to, activeLines);
+            addRange(ranges, underline.from, underline.to, active ? activeLineMarkerDeco : markerDeco);
+          } else {
+            addAtxHeadingPrefixMarkers(ranges, state, node.from, activeLines);
+          }
+          addHeadingContentColor(ranges, state, content.from, content.to);
           const headingDecoration = [
             lineStyleDecos.h1,
             lineStyleDecos.h2,
@@ -1989,7 +2001,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
             lineStyleDecos.h5,
             lineStyleDecos.h6
           ][headingLevel - 1];
-          addLineClass(ranges, state, node.from, node.to, headingDecoration);
+          addLineClass(ranges, state, node.from, content.to, headingDecoration);
         }
       }
 
@@ -2250,6 +2262,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       if (tableDepth > 0 && node.name === 'HeaderMark') {
         return;
       }
+      if (node.name === 'HeaderMark' && node.node.parent?.name.startsWith('SetextHeading')) return;
       if (isFenceMarker(state, node.from, node.to)) {
         // Show fence markers on all lines (not just active)
         addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, fenceMarkerDeco, activeLineMarkerDeco);
@@ -3700,6 +3713,7 @@ const liveLineNumberMarkerField = StateField.define<RangeSet<GutterMarker>>({
 
 function buildStyledLineNumberMarkers(state: EditorState): RangeSet<GutterMarker> {
   const builder = new RangeSetBuilder<GutterMarker>();
+  const frontmatter = parseFrontmatter(state);
   resolvedSyntaxTree(state).iterate({
     enter(node) {
       if (node.name === 'CodeBlock' && !hasCodeBlockAncestor(node)) {
@@ -3708,7 +3722,7 @@ function buildStyledLineNumberMarkers(state: EditorState): RangeSet<GutterMarker
         return false;
       }
       const level = headingLevelFromName(node.name);
-      if (level === null) return;
+      if (level === null || isInsideFrontmatter(frontmatter, node.from)) return;
       const line = state.doc.lineAt(node.from);
       builder.add(line.from, line.from, headingGutterLineClassMarkers[level - 1]);
     }
@@ -3732,7 +3746,7 @@ export const editorMarkdownLanguage = markdown({
   addKeymap: false,
   codeLanguages: resolveCodeLanguage,
   extensions: [...inlineMarkdownExtensions,
-    { props: [sourceMarkdownHighlightProps] }, { remove: ['SetextHeading', 'Emoji'] }]
+    { props: [sourceMarkdownHighlightProps] }, { remove: ['Emoji'] }]
 });
 
 export function liveModeExtensions(options: { readonly largeDocument?: boolean } = {}): Extension[] {

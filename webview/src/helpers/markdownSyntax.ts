@@ -1,6 +1,7 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import { EditorState, type Transaction } from '@codemirror/state';
-import type { Tree } from '@lezer/common';
+import type { SyntaxNode, Tree } from '@lezer/common';
+import { isInsideFrontmatter, parseFrontmatter } from './frontmatter';
 
 /** Returns CodeMirror's published, possibly partial tree without extending the parse synchronously. */
 export function currentSyntaxTree(state: EditorState): ReturnType<typeof syntaxTree> {
@@ -26,12 +27,21 @@ export function resolvedSyntaxTree(state: EditorState, timeout: number = 50): Tr
   return ensureSyntaxTree(state, state.doc.length, timeout) ?? syntaxTree(state);
 }
 export function headingLevelFromName(name: string): number | null {
-  if (!name.startsWith('ATXHeading')) {
-    return null;
-  }
+  const match = /^(?:ATXHeading([1-6])|SetextHeading([12]))$/.exec(name);
+  return match ? Number(match[1] ?? match[2]) : null;
+}
 
-  const level = Number.parseInt(name.slice('ATXHeading'.length), 10);
-  return Number.isInteger(level) && level >= 1 && level <= 6 ? level : null;
+/** Content bounds exclude heading markers, including the entire Setext underline line. */
+export function headingContentRange(state: EditorState, node: SyntaxNode): { from: number; to: number } {
+  if (node.name.startsWith('SetextHeading')) {
+    return { from: node.from, to: state.doc.lineAt(node.lastChild!.from).from - 1 };
+  }
+  const raw = state.doc.sliceString(node.from, node.to);
+  const from = node.from + (raw.match(/^#{1,6}\s+/)?.[0].length ?? 0);
+  return {
+    from,
+    to: Math.max(from, node.to - (raw.match(/\s+#+\s*$/)?.[0].length ?? 0))
+  };
 }
 
 export interface HeadingInfo {
@@ -73,11 +83,7 @@ const detailsCloseTagPattern = /<\/details\s*>/i;
 const summaryTagPattern = /<summary\b[^>]*>([\s\S]*?)<\/summary\s*>/i;
 
 function extractHeadingInlineSegments(state: EditorState, headingNode: any): HeadingInlineSegment[] {
-  const raw = state.doc.sliceString(headingNode.from, headingNode.to);
-  const prefixLength = raw.match(/^#{1,6}\s+/)?.[0].length ?? 0;
-  const suffixLength = raw.match(/\s+#+\s*$/)?.[0].length ?? 0;
-  const contentFrom = headingNode.from + prefixLength;
-  const contentTo = Math.max(contentFrom, headingNode.to - suffixLength);
+  const { from: contentFrom, to: contentTo } = headingContentRange(state, headingNode);
   const hiddenRanges: Array<{ from: number; to: number }> = [];
   const styleRanges: Array<{
     from: number;
@@ -97,6 +103,7 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any): Hea
       node.name === 'CodeMark' ||
       node.name === 'LinkMark' ||
       node.name === 'LinkLabel' ||
+      node.name === 'QuoteMark' ||
       (node.name === 'URL' && (parentName === 'Link' || parentName === 'Image'))
     ) {
       hiddenRanges.push({ from: node.from, to: node.to });
@@ -122,7 +129,8 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any): Hea
       strikethrough: styleRanges.some((range) => range.style === 'strikethrough' && from >= range.from && from < range.to),
       highlight: styleRanges.some((range) => range.style === 'highlight' && from >= range.from && from < range.to)
     };
-    segments.push({ text: state.doc.sliceString(from, to), ...styles });
+    const text = state.doc.sliceString(from, to);
+    segments.push({ text: headingNode.name.startsWith('SetextHeading') ? text.replace(/\s+/g, ' ') : text, ...styles });
   }
   return segments;
 }
@@ -130,14 +138,16 @@ function extractHeadingInlineSegments(state: EditorState, headingNode: any): Hea
 export function extractHeadings(state: EditorState): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
   const tree = resolvedSyntaxTree(state);
+  const frontmatter = parseFrontmatter(state);
 
   tree.iterate({
     enter(node: any) {
       const headingLevel = headingLevelFromName(node.name);
-      if (headingLevel !== null) {
+      if (headingLevel !== null && !isInsideFrontmatter(frontmatter, node.from)) {
         const line = state.doc.lineAt(node.from);
         const inlineSegments = extractHeadingInlineSegments(state, node.node);
-        const text = inlineSegments.map((segment) => segment.text).join('').trim();
+        const rawText = inlineSegments.map((segment) => segment.text).join('');
+        const text = (node.name.startsWith('SetextHeading') ? rawText.replace(/\s+/g, ' ') : rawText).trim();
         headings.push({
           level: headingLevel,
           text,
