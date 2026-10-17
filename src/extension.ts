@@ -36,6 +36,7 @@ import {
   LARGE_DOCUMENT_OPTIMIZATION_SETTING_KEY,
   TABLE_STICKY_HEADER_SETTING_KEY,
   BOLD_HEADINGS_SETTING_KEY,
+  CRITIC_MARKUP_SETTING_KEY,
   RESTORE_READING_POSITION_SETTING_KEY,
   OUTLINE_VISIBLE_KEY,
   getCurrentVscodeCodeTheme,
@@ -45,6 +46,7 @@ import {
   getLargeDocumentOptimizationEnabled,
   getTableStickyHeaderEnabled,
   getBoldHeadingsEnabled,
+  getCriticMarkupEnabled,
   getRestoreReadingPositionOnOpen,
   isMarkdownDocumentPath,
   migrateLegacyToggleSettings
@@ -536,6 +538,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${BOLD_HEADINGS_SETTING_KEY}`)) {
       this.broadcast({ type: 'boldHeadingsChanged', enabled: getBoldHeadingsEnabled() });
+    }
+
+    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${CRITIC_MARKUP_SETTING_KEY}`)) {
+      this.broadcast({ type: 'criticMarkupChanged', enabled: getCriticMarkupEnabled() });
     }
 
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${RESTORE_READING_POSITION_SETTING_KEY}`)) {

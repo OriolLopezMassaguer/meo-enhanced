@@ -71,6 +71,8 @@ try {
   await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
   await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
   await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+  // The setting defaults to off; the editor toggles this class (see setCriticMarkupEnabled).
+  await page.evaluate(() => document.documentElement.classList.add('meo-critic-markup'));
 
   const source = [
     '# Title',
@@ -151,6 +153,37 @@ try {
   }
   assert(crossBlock.live.markers.every((display) => display === 'none'), 'Live hides cross-block delimiters off the active mark');
   assert(crossBlock.source.markers.every((display) => display !== 'none'), 'Source keeps cross-block delimiters visible');
+
+  // The checkbox off: delimiters visible, no color, no strike-through, identical to plain Markdown text.
+  const off = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    document.getElementById('app')!.replaceChildren();
+    const text = ['Line {++added++} and {--removed--} here.', '', 'Last paragraph.'].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: text.length } });
+    const probe = () => {
+      const added = document.querySelector<HTMLElement>('.meo-md-critic-add')!;
+      const removed = document.querySelector<HTMLElement>('.meo-md-critic-del')!;
+      const body = getComputedStyle(document.querySelector('.cm-content')!).color;
+      return {
+        addColored: getComputedStyle(added).color !== body,
+        delStruck: getComputedStyle(removed).textDecorationLine.includes('line-through'),
+        markers: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-critic-marker')).map((node) => getComputedStyle(node).display)
+      };
+    };
+    await settle();
+    const on = probe();
+    document.documentElement.classList.remove('meo-critic-markup');
+    await settle();
+    const disabled = probe();
+    document.documentElement.classList.add('meo-critic-markup');
+    editor.destroy();
+    return { on, disabled };
+  });
+  assert(off.on.addColored && off.on.delStruck && off.on.markers.every((display) => display === 'none'), `enabled state: ${JSON.stringify(off.on)}`);
+  assert(!off.disabled.addColored && !off.disabled.delStruck && off.disabled.markers.every((display) => display !== 'none'),
+    `disabled state must read as plain text: ${JSON.stringify(off.disabled)}`);
 
   console.log('CriticMarkup test passed');
 } finally {

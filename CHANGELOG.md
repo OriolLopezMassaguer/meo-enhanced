@@ -5,6 +5,7 @@ Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
 ## Unreleased
 - Added CriticMarkup support for `{++add++}`, `{--delete--}`, `{~~old~>new~~}`, `{==mark==}` and `{>>note<<}` in Live, Source and Preview/export. Live hides the delimiters off the active line; Source tints the marks and keeps every character visible; Preview renders `critic-*` spans with a light/dark palette. A substitution is consumed as one unit, so its `~~` never pairs with Strikethrough. Marks inside code spans, fenced code and backslash escapes stay literal. A mark that opens in one block and closes in another (for example `{==` before a list and `==}` after it) is styled in Live and Source from the document text; Preview/export still render marks within a single block only. Marks inside headings and nested marks are not styled yet.
+- Added the `meoEnhanced.appearance.criticMarkup` setting (off by default) with a checkbox in More tools and a switch in Settings > General. Off shows CriticMarkup as plain Markdown text in Live and Source; Preview is not affected.
 
 ## 0.3.33
 - Preserved Preview and Source split Preview reading positions when switching to native VS Code editor tabs with the outline open, including hidden Webview resizing and normal visible panel resizing.

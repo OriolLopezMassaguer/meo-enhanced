@@ -13,7 +13,7 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info, Highlighter } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -258,6 +258,7 @@ let changesReviewMode: 'live' | 'source' | 'preview' = 'live';
 let contentMaxWidthEnabled = false;
 let liveStrongColoring = false;
 let boldHeadingsEnabled = true;
+let criticMarkupEnabled = false;
 let largeDocumentOptimizationEnabled = true;
 let tableStickyHeaderEnabled = true;
 let restoreReadingPositionOnOpen = true;
@@ -344,6 +345,14 @@ boldHeadingsBtn.dataset.action = 'boldHeadings';
 boldHeadingsBtn.setAttribute('role', 'menuitemcheckbox');
 boldHeadingsBtn.setAttribute('aria-checked', 'true');
 appendMoreToolsOptionContent(boldHeadingsBtn, Heading, activeUiStrings.boldHeadings);
+
+const criticMarkupBtn = document.createElement('button');
+criticMarkupBtn.type = 'button';
+criticMarkupBtn.className = 'more-tools-option more-tools-toggle-option';
+criticMarkupBtn.dataset.action = 'criticMarkup';
+criticMarkupBtn.setAttribute('role', 'menuitemcheckbox');
+criticMarkupBtn.setAttribute('aria-checked', 'false');
+appendMoreToolsOptionContent(criticMarkupBtn, Highlighter, activeUiStrings.criticMarkup);
 
 const sourceLineNumbersBtn = document.createElement('button');
 sourceLineNumbersBtn.type = 'button';
@@ -514,6 +523,17 @@ const setBoldHeadingsEnabled = (enabled: boolean, { post = true }: PostUpdateOpt
   boldHeadingsBtn.classList.toggle('is-active', nextEnabled);
   boldHeadingsBtn.setAttribute('aria-checked', nextEnabled ? 'true' : 'false');
   if (post && changed) vscode.postMessage({ type: 'setBoldHeadings', enabled: nextEnabled });
+};
+
+const setCriticMarkupEnabled = (enabled: boolean, { post = true }: PostUpdateOptions = {}) => {
+  const nextEnabled = enabled === true;
+  const changed = nextEnabled !== criticMarkupEnabled;
+  criticMarkupEnabled = nextEnabled;
+  // Presentation only: the decorations stay in the document and CSS reveals or mutes them.
+  document.documentElement.classList.toggle('meo-critic-markup', nextEnabled);
+  criticMarkupBtn.classList.toggle('is-active', nextEnabled);
+  criticMarkupBtn.setAttribute('aria-checked', nextEnabled ? 'true' : 'false');
+  if (post && changed) vscode.postMessage({ type: 'setCriticMarkup', enabled: nextEnabled });
 };
 
 const setLargeDocumentOptimizationEnabled = (
@@ -1207,6 +1227,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   sourceLineNumbersBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.showLineNumbers;
   liveStrongColoringBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.strongColoring;
   boldHeadingsBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.boldHeadings;
+  criticMarkupBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.criticMarkup;
   longCodeBlockFoldingBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.foldLongCodeBlocks;
   largeDocumentOptimizationBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.largeDocumentStartup;
   largeDocumentTooltip?.setContent({ text: strings.largeDocumentStartupHint, kind: 'description' });
@@ -1317,6 +1338,7 @@ moreToolsPanel.append(
   contentMaxWidthBtn,
   liveStrongColoringBtn,
   boldHeadingsBtn,
+  criticMarkupBtn,
   tableStickyHeaderBtn,
   interfaceSettingsHeading,
   editorAppearanceRow,
@@ -3174,6 +3196,7 @@ const handleInit = (message: InitMessage) => {
   setTableStickyHeaderEnabled(message.tableStickyHeaderEnabled, { post: false });
   setLiveStrongColoring(message.liveStrongColoring, { post: false });
   setBoldHeadingsEnabled(message.boldHeadingsEnabled, { post: false });
+  setCriticMarkupEnabled(message.criticMarkupEnabled, { post: false });
   setLargeDocumentOptimizationEnabled(message.largeDocumentOptimizationEnabled, { post: false });
   setRestoreReadingPositionOnOpen(message.restoreReadingPositionOnOpen, { post: false });
   readingPositionLifecycle?.start({
@@ -3342,6 +3365,7 @@ settingsWindow = createSettingsWindow({
       switchItem('width', 'display', strings.constrainWidth, () => contentMaxWidthEnabled, setContentMaxWidthEnabled),
       switchItem('strongColor', 'display', strings.strongColoring, () => liveStrongColoring, setLiveStrongColoring),
       switchItem('boldHeadings', 'display', strings.boldHeadings, () => boldHeadingsEnabled, setBoldHeadingsEnabled),
+      switchItem('criticMarkup', 'display', strings.criticMarkup, () => criticMarkupEnabled, setCriticMarkupEnabled, strings.criticMarkupDescription),
       switchItem('stickyHeader', 'display', strings.stickyTableHeader, () => tableStickyHeaderEnabled, setTableStickyHeaderEnabled),
       switchItem('restorePosition', 'opening', strings.resumeReadingPositionLabel, () => restoreReadingPositionOnOpen, setRestoreReadingPositionOnOpen),
       switchItem('largeDocument', 'opening', strings.largeDocumentStartup, () => largeDocumentOptimizationEnabled, setLargeDocumentOptimizationEnabled, strings.largeDocumentStartupDescription),
@@ -3579,6 +3603,11 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'boldHeadingsChanged') {
     setBoldHeadingsEnabled(message.enabled, { post: false });
+    return;
+  }
+
+  if (message.type === 'criticMarkupChanged') {
+    setCriticMarkupEnabled(message.enabled, { post: false });
     return;
   }
 
@@ -4005,6 +4034,9 @@ liveStrongColoringBtn.addEventListener('click', () => {
 });
 boldHeadingsBtn.addEventListener('click', () => {
   setBoldHeadingsEnabled(!boldHeadingsEnabled);
+});
+criticMarkupBtn.addEventListener('click', () => {
+  setCriticMarkupEnabled(!criticMarkupEnabled);
 });
 sourceLineNumbersBtn.addEventListener('click', () => {
   const nextMode = pendingSourceLineNumbers === 'off' ? previousVisibleSourceLineNumbers : 'off';

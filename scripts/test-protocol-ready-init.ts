@@ -43,6 +43,7 @@ const completeInit = {
   previewShowComments: false,
   liveStrongColoring: false,
   boldHeadingsEnabled: true,
+  criticMarkupEnabled: false,
   editorAppearance: 'dark' as const,
   editorFontSizeMode: 'auto' as const,
   editorFontSize: 14,
@@ -100,6 +101,9 @@ assert.equal(decodeInitMessage({ ...completeInit, liveStrongColoring: 'yes' }), 
 assert.equal(decodeInitMessage({ ...completeInit, boldHeadingsEnabled: undefined })?.boldHeadingsEnabled, true);
 assert.equal(decodeInitMessage({ ...completeInit, boldHeadingsEnabled: false })?.boldHeadingsEnabled, false);
 assert.equal(decodeInitMessage({ ...completeInit, boldHeadingsEnabled: 'yes' }), null);
+assert.equal(decodeInitMessage({ ...completeInit, criticMarkupEnabled: undefined })?.criticMarkupEnabled, false);
+assert.equal(decodeInitMessage({ ...completeInit, criticMarkupEnabled: true })?.criticMarkupEnabled, true);
+assert.equal(decodeInitMessage({ ...completeInit, criticMarkupEnabled: 'yes' }), null);
 assert.equal(decodeInitMessage({ ...completeInit, previewShowComments: undefined })?.previewShowComments, false);
 assert.equal(decodeInitMessage({ ...completeInit, previewShowComments: 'yes' }), null);
 assert.equal(decodeInitMessage({ ...completeInit, editorFontSizeMode: 'invalid' }), null);

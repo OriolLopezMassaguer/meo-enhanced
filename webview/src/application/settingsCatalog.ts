@@ -91,6 +91,7 @@ export const generalSearchKeywords = {
   width: ['内容宽度 页面宽度 最大宽度 限宽 版心 阅读宽度', 'content width page width max width reading width wrap'],
   strongColor: ['粗体颜色 加粗颜色 强调色 粗体着色', 'bold color strong emphasis coloring'],
   boldHeadings: ['标题加粗 标题字重 标题粗细', 'heading bold weight title thickness'],
+  criticMarkup: ['修订标记 批注 审阅 高亮 增加 删除 替换', 'CriticMarkup revision review comment track changes addition deletion substitution highlight'],
   stickyHeader: ['表头固定 冻结表头 表头吸顶 表格滚动', 'sticky header freeze pin table header scrolling'],
   restorePosition: ['恢复位置 记住位置 继续阅读 阅读进度 上次位置', 'restore remember position resume reading progress last location'],
   largeDocument: ['大文件 长文档 启动速度 打开速度 性能 源码优先', 'large file long document startup performance speed source first'],

@@ -1,9 +1,9 @@
 {
-  "name": "meo-critic",
+  "name": "meo-enhanced",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "version": "0.3.33",
-  "publisher": "oriol",
+  "publisher": "huangko555",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "icon": "logo.png",
@@ -436,6 +436,12 @@
           "default": true,
           "order": 7,
           "description": "%config.appearance.boldHeadings%"
+        },
+        "meoEnhanced.appearance.criticMarkup": {
+          "type": "boolean",
+          "default": false,
+          "order": 8,
+          "description": "%config.appearance.criticMarkup%"
         },
         "meoEnhanced.appearance.fontSizeMode": {
           "type": "string",

@@ -28,6 +28,7 @@ export type EditorCommand =
   | { readonly type: 'setLargeDocumentOptimization'; readonly enabled: boolean }
   | { readonly type: 'setTableStickyHeader'; readonly enabled: boolean }
   | { readonly type: 'setBoldHeadings'; readonly enabled: boolean }
+  | { readonly type: 'setCriticMarkup'; readonly enabled: boolean }
   | { readonly type: 'setRestoreReadingPositionOnOpen'; readonly enabled: boolean }
   | {
       readonly type: 'setFindOptions';
@@ -89,6 +90,7 @@ export function decodeEditorCommand(value: unknown): EditorCommand | null {
     case 'setLargeDocumentOptimization':
     case 'setTableStickyHeader':
     case 'setBoldHeadings':
+    case 'setCriticMarkup':
     case 'setRestoreReadingPositionOnOpen':
       return isBoolean(value.enabled) ? value as EditorCommand : null;
     case 'setDiffBaselineMode':

@@ -134,11 +134,11 @@ try {
   await page.waitForSelector('.cm-editor.meo-mode-source');
   await page.click('.more-tools-wrapper > .format-button');
   assert.equal(await page.$eval('.more-tools-panel', element => element.getBoundingClientRect().width), 288);
-  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 6);
+  assert.equal(await page.$$eval('.more-tools-panel .more-tools-option', elements => elements.length), 7);
   assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置']);
   await page.click('.more-tools-settings-button');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
-  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 10);
+  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 11);
   assert.equal(await page.$eval('.settings-footer', element => (element as HTMLElement).hidden), true);
   const height = await page.$eval('.settings-window', element => element.getBoundingClientRect().height);
   await page.click('.settings-jump[data-section="interface"]');
@@ -605,7 +605,7 @@ try {
         query: element.querySelector('.settings-item-title')!.textContent!,
         values: [...element.querySelectorAll('.settings-key, .image-location-mode-title, .image-location-field-label, .image-location-picker, .image-location-token')].map(control => control.getAttribute('aria-label') ?? control.textContent!)
       })));
-      assert.equal(items.length, tab === 'general' ? 10 : tab === 'appearance' ? 9 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
+      assert.equal(items.length, tab === 'general' ? 11 : tab === 'appearance' ? 9 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
       searchCases.push(...items.flatMap(item => [item.query, ...item.values].map(query => ({tab, id: item.id, query}))));
     }
     await page.click('.settings-close');
@@ -613,7 +613,7 @@ try {
   const synonymCases: readonly [SearchTab, string, string, string][] = [
     ['general', 'lineNumbers', '边栏', 'gutter'], ['general', 'foldCode', '收起代码', 'collapse'],
     ['general', 'width', '版心', 'reading width'], ['general', 'strongColor', '加粗颜色', 'bold color'],
-    ['general', 'boldHeadings', '标题字重', 'heading weight'], ['general', 'stickyHeader', '冻结表头', 'freeze header'],
+    ['general', 'boldHeadings', '标题字重', 'heading weight'], ['general', 'criticMarkup', '修订标记', 'track changes'], ['general', 'stickyHeader', '冻结表头', 'freeze header'],
     ['general', 'restorePosition', '上次位置', 'remember position'], ['general', 'largeDocument', '启动速度', 'large file'],
     ['appearance', 'mode', '夜间', 'night'], ['appearance', 'surface', '底色', 'surface'], ['appearance', 'documentBackground', '画布', 'canvas'], ['appearance', 'textEmphasis', '脚注', 'footnote'], ['general', 'language', '本地化', 'locale'], ['general', 'fontSize', '文字大小', 'zoom'],
     ['typing', 'selectionToolbar', '浮动工具栏', 'floating toolbar'], ['typing', 'wrapSelection', '环绕选区', 'surround selection'],
