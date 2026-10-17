@@ -3,6 +3,9 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## Unreleased
+- Added CriticMarkup support for `{++add++}`, `{--delete--}`, `{~~old~>new~~}`, `{==mark==}` and `{>>note<<}` in Live, Source and Preview/export. Live hides the delimiters off the active line; Source tints the marks and keeps every character visible; Preview renders `critic-*` spans with a light/dark palette. A substitution is consumed as one unit, so its `~~` never pairs with Strikethrough. Marks inside code spans, fenced code and backslash escapes stay literal. Marks inside headings and nested marks are not styled yet.
+
 ## 0.3.33
 - Preserved Preview and Source split Preview reading positions when switching to native VS Code editor tabs with the outline open, including hidden Webview resizing and normal visible panel resizing.
 - Added Whitey dark mode using Typora Whitey Deep's palette, with Auto/Light/Dark choices, per-document appearance memory, and matching custom preset examples and HTML/PDF exports.

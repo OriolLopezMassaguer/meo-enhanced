@@ -15,6 +15,7 @@ import { installMathTransform } from './mathTransform';
 import { collectMarkdownCodeLines } from './markdownCodeLines';
 import { renderLatexMathToHtml } from './math';
 import { isMathFenceLanguage, mathFenceBodyRange, mathFenceContent } from '../shared/mathFence';
+import { installCriticMarkupTransform } from './criticMarkupTransform';
 import { installHighlightTransform } from './highlightTransform';
 import { installInlineScriptTransform } from './inlineScriptTransform';
 import { installPunctuationInlineTransform } from './punctuationInlineTransform';
@@ -149,6 +150,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
   });
   if (!github) {
     installWikiReferenceTransform(md, options.deferImages === true, options.wikiResources);
+    installCriticMarkupTransform(md);
     installHighlightTransform(md);
     installInlineScriptTransform(md);
     installPunctuationInlineTransform(md);
