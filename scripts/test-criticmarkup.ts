@@ -127,6 +127,31 @@ try {
   assert.equal(result.sourceText, source, 'Mode switches must preserve Markdown source');
   assert.deepEqual(content(result.restored), content(result.live), 'Live/Source roundtrip');
 
+  // A mark that opens before a list and closes after it spans several blocks.
+  const crossBlock = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    (window as any).__highlightEditor?.destroy();
+    document.getElementById('app')!.replaceChildren();
+    const text = ['{==- first item', '- second item==}{>>#c2 @Oriol: spans a list<<}', '', '```', '{==in code==}', '```', '', 'Last paragraph.'].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: text.length } });
+    await settle();
+    const joined = (selector: string) => Array.from(document.querySelectorAll(selector)).map((node) => node.textContent).join('|');
+    const live = { hl: joined('.meo-md-critic-hl'), markers: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-critic-marker')).map((node) => getComputedStyle(node).display) };
+    editor.setMode('source');
+    await settle();
+    const source = { hl: joined('.meo-md-critic-hl'), markers: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-critic-marker')).map((node) => getComputedStyle(node).display) };
+    editor.destroy();
+    return { live, source };
+  });
+  for (const mode of ['live', 'source'] as const) {
+    assert(crossBlock[mode].hl.includes('first item') && crossBlock[mode].hl.includes('second item'), `${mode}: cross-block highlight: ${JSON.stringify(crossBlock[mode])}`);
+    assert(!crossBlock[mode].hl.includes('in code'), `${mode}: fenced code must stay literal`);
+  }
+  assert(crossBlock.live.markers.every((display) => display === 'none'), 'Live hides cross-block delimiters off the active mark');
+  assert(crossBlock.source.markers.every((display) => display !== 'none'), 'Source keeps cross-block delimiters visible');
+
   console.log('CriticMarkup test passed');
 } finally {
   await browser.close();

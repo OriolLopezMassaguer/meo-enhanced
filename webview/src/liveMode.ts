@@ -28,7 +28,7 @@ import {
 import { ImageGroupWidget, ImageWidget, getImageData, isImageUrl, type ImageGroupItem } from './helpers/images';
 import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
-import { criticContentClass, criticContentRanges, criticMarkDecoration } from './helpers/criticMarkupSyntax';
+import { criticContentClass, criticContentRanges, criticMarkDecoration, crossBlockCriticField } from './helpers/criticMarkupSyntax';
 import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
 import { currentSyntaxTree, getFencedCodeInfo, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
@@ -3761,6 +3761,7 @@ export function liveModeExtensions(options: { readonly largeDocument?: boolean }
     editorMarkdownLanguage,
     syntaxHighlighting(liveHighlightStyle),
     markdownTagField,
+    crossBlockCriticField,
     livePointerSelectionActiveField,
     liveDocumentIdleField,
     mermaidEditingStateField,

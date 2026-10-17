@@ -110,3 +110,56 @@ export const sourceCriticField = StateField.define<DecorationSet>({
   },
   provide: (field) => EditorView.decorations.from(field)
 });
+
+// A mark can open in one block and close in another ({== before a list, ==} after it).
+// Lezer parses inline syntax one block at a time, so those marks are found here, on the
+// document text, and decorated for both Live and Source.
+const CROSS_BLOCK_MAX_LENGTH = 20000;
+const nonProseAncestors = new Set(['FencedCode', 'CodeBlock', 'InlineCode', 'CodeText', 'HTMLBlock', 'Comment', 'CommentBlock']);
+const crossBlockMarker = Decoration.mark({ class: 'meo-md-marker meo-md-critic-marker' });
+const crossBlockMarkerActive = Decoration.mark({ class: 'meo-md-marker-active meo-md-critic-marker-active' });
+
+function buildCrossBlockCriticDecorations(state: EditorState): DecorationSet {
+  const text = state.doc.toString();
+  const tree = currentSyntaxTree(state);
+  const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
+  for (let from = text.indexOf('{'); from >= 0; from = text.indexOf('{', from + 1)) {
+    const match = matchCriticMarkup(text, from);
+    if (!match || match.to - from > CROSS_BLOCK_MAX_LENGTH) continue;
+    const start = tree.resolveInner(from, 1);
+    if (start.name.startsWith('Critic')) continue;
+    let prose = true;
+    for (let node: typeof start | null = start; node; node = node.parent) {
+      if (nonProseAncestors.has(node.name)) { prose = false; break; }
+    }
+    if (!prose) continue;
+    const active = state.selection.ranges.some((range) => range.from <= match.to && range.to >= from);
+    const marker = active ? crossBlockMarkerActive : crossBlockMarker;
+    const contentFrom = from + match.openLength;
+    const contentTo = match.to - match.closeLength;
+    ranges.push({ from, to: contentFrom, decoration: marker }, { from: contentTo, to: match.to, decoration: marker });
+    if (match.kind === 'sub' && match.separator) {
+      ranges.push({ from: match.separator.from, to: match.separator.to, decoration: marker });
+      if (match.separator.from > contentFrom) ranges.push({ from: contentFrom, to: match.separator.from, decoration: criticMarkDecoration('meo-md-critic-del') });
+      if (contentTo > match.separator.to) ranges.push({ from: match.separator.to, to: contentTo, decoration: criticMarkDecoration('meo-md-critic-add') });
+    } else {
+      const className = { add: 'meo-md-critic-add', del: 'meo-md-critic-del', hl: 'meo-md-critic-hl', comment: 'meo-md-critic-comment' }[match.kind as 'add'];
+      if (className && contentTo > contentFrom) ranges.push({ from: contentFrom, to: contentTo, decoration: criticMarkDecoration(className) });
+    }
+    from = match.to - 1;
+  }
+  ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const range of ranges) builder.add(range.from, range.to, range.decoration);
+  return builder.finish();
+}
+
+export const crossBlockCriticField = StateField.define<DecorationSet>({
+  create: buildCrossBlockCriticDecorations,
+  update(decorations, transaction) {
+    return transaction.docChanged || transaction.selection || syntaxTreeChanged(transaction)
+      ? buildCrossBlockCriticDecorations(transaction.state)
+      : decorations;
+  },
+  provide: (field) => EditorView.decorations.from(field)
+});

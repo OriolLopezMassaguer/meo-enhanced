@@ -20,7 +20,7 @@ import { editorMarkdownLanguage } from './liveMode';
 import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
 import { prepareSourceSyntax, sourceSyntax, sourceSyntaxPreparation } from './helpers/sourceSyntax';
 import { shikiCodeHighlight } from './helpers/shikiDecorations';
-import { sourceCriticField } from './helpers/criticMarkupSyntax';
+import { crossBlockCriticField, sourceCriticField } from './helpers/criticMarkupSyntax';
 import type { UiLanguage } from '../../src/foundation/uiLanguage';
 import { longCodeBlockEnabledFacet } from './helpers/longCodeBlocks';
 import type { SourceLineNumberMode } from '../../src/protocol/readyInit';
@@ -4874,6 +4874,7 @@ function sourceMode(): Extension[] {
     editorMarkdownLanguage,
     sourceSyntax,
     sourceCriticField,
+    crossBlockCriticField,
     sourceCodeBlockField,
     gitDiffLineHighlightsField,
     ...gitDiffDetailsExtensions(),
