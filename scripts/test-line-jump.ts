@@ -17,8 +17,16 @@ for (const value of rejectedInputs) {
 if (parseLineJumpTarget('1', 20) !== 1 || parseLineJumpTarget('20', 20) !== 20) {
   throw new Error('Valid line target was rejected');
 }
-if (parseLineJumpTarget('21', 20) !== null || parseLineJumpTarget('0', 20) !== null) {
-  throw new Error('Out-of-range line target was accepted');
+for (const value of ['21', '9999', '9007199254740993', '9'.repeat(400)]) {
+  if (parseLineJumpTarget(value, 20) !== 20) {
+    throw new Error(`Expected an oversized line target to jump to the final line: ${value}`);
+  }
+}
+if (parseLineJumpTarget('2', 1) !== 1) {
+  throw new Error('An oversized target in a single-line document did not jump to line 1');
+}
+if (parseLineJumpTarget('0', 20) !== null || parseLineJumpTarget('21', 0) !== null) {
+  throw new Error('Invalid line target or unavailable document was accepted');
 }
 
 console.log('line jump checks passed');

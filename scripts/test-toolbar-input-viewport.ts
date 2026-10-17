@@ -617,6 +617,16 @@ async function runPassiveControls(browser: Browser, mode: 'live' | 'source'): Pr
     assert.ok(await page.$eval('.cm-scroller', element => element.scrollTop) > 0,
       `${mode} line-jump focus recovery undid navigation`);
 
+    await page.click('.line-jump-input');
+    await page.keyboard.type('9999');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement === document.querySelector('.cm-content'), { timeout: 3000 });
+    assert.equal(await page.evaluate(() => document.getSelection()?.anchorNode?.parentElement?.closest('.cm-line')?.textContent),
+      'line 40 ordinary content', `${mode} an oversized line number did not jump to the final line`);
+    assert.deepEqual(await page.$eval('.line-jump-input', element => ({
+      value: (element as HTMLInputElement).value, invalid: element.getAttribute('aria-invalid')
+    })), { value: '', invalid: null }, `${mode} an oversized line number left an error in the toolbar`);
+
     await page.click('[data-action="outline-right"]');
     await page.click('.outline-header-button[data-action="expand-all"]');
     assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('.cm-content')), true,
