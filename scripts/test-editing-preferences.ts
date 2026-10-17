@@ -13,8 +13,8 @@ import { createEditingPreferencesTransport } from '../webview/src/adapters/editi
 import type { EditingPreferences } from '../src/foundation/editingPreferences';
 import type { UpdateEditingPreferencesRequest } from '../src/protocol/editingPreferences';
 
-assert.deepEqual(Object.keys(generalSearchKeywords).sort(), ['lineNumbers', 'foldCode', 'width', 'strongColor', 'boldHeadings', 'stickyHeader', 'restorePosition', 'largeDocument', 'language', 'fontSize'].sort());
-assert.deepEqual(appearanceCatalog.map(item => item.id).sort(), ['mode', 'surface', 'documentBackground', 'text', 'accent', 'textEmphasis', 'success', 'warning', 'danger'].sort());
+assert.deepEqual(Object.keys(generalSearchKeywords).sort(), ['lineNumbers', 'foldCode', 'width', 'strongColor', 'boldHeadings', 'stickyHeader', 'restorePosition', 'largeDocument', 'language'].sort());
+assert.deepEqual(appearanceCatalog.map(item => item.id).sort(), ['mode', 'fontSize', 'lineHeight', 'surface', 'documentBackground', 'text', 'accent', 'textEmphasis', 'success', 'warning', 'danger'].sort());
 assert.deepEqual(Object.keys(typingSearchKeywords).sort(), Object.keys(defaultInputAssistance).sort(), 'every input setting has search aliases');
 assert.deepEqual(Object.keys(shortcutSearchKeywords).sort(), [...editorCommandIds].sort(), 'every shortcut has search aliases');
 for (const [zh, en] of [...Object.values(generalSearchKeywords), ...appearanceCatalog.map(item => item.keywords), ...Object.values(typingSearchKeywords), imageLocationSearchKeywords, ...Object.values(shortcutSearchKeywords)]) {

@@ -3,6 +3,8 @@ import type { UiLanguage } from '../../../src/foundation/uiLanguage';
 export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts';
 
 export const appearanceCatalog = [
+  { id: 'fontSize', title: ['字号大小', 'Font size'], description: ['自动跟随 VS Code 字号，或设置自定义大小。修改后立即保存。', 'Follow the VS Code font size or choose a custom size. Changes save immediately.'], keywords: ['字号 字体大小 文字大小 放大 缩小 缩放 自动字号 自定义字号 排版', 'font size text size zoom scale larger smaller auto custom typography'], advanced: false },
+  { id: 'lineHeight', title: ['行间距', 'Line spacing'], description: ['默认 1.5 倍，每次调整 0.1。用于 Live、Source 和默认预览；独立预设保留自身排版。', 'Default: 1.5×, in steps of 0.1. Applies to Live, Source and Default preview; independent presets retain their typography.'], keywords: ['行距 行间距 行高 疏密 紧凑 宽松 排版 倍数', 'line height line-height spacing leading density compact loose typography multiplier'], advanced: false },
   { id: 'mode', title: ['模式', 'Mode'], description: ['自动跟随 VS Code 主题，切换后立即保存。', 'Auto follows the VS Code theme. Mode changes save immediately.'], keywords: ['主题 深色 暗色 夜间 浅色 亮色 自动 跟随 外观', 'theme dark night light auto appearance'], advanced: false },
   { id: 'surface', title: ['界面背景', 'UI background'], description: ['菜单栏、面板与弹出菜单的背景来源。', 'Base surface for toolbars, panels and menus.'], keywords: ['背景 底色 面板 菜单', 'background surface panel menu'], advanced: false },
   { id: 'documentBackground', title: ['文档背景', 'Document background'], description: ['Live、Source、目录及默认预览的背景颜色。', 'Background for Live, Source, outline and default preview.'], keywords: ['正文 文档 背景 底色 画布', 'document content background canvas live source'], advanced: false },
@@ -22,7 +24,7 @@ export const settingsText = (language: UiLanguage, chinese: string, english: str
 export const typingSections = ['symbols', 'structure', 'paste', 'candidates'] as const;
 export type TypingSection = typeof typingSections[number];
 export const sectionTitles = {
-  appearanceMode: ['界面模式', 'Interface mode'], appearanceColors: ['基础颜色', 'Basic colors'], appearanceAdvanced: ['高级颜色', 'Advanced colors'],
+  appearanceMode: ['界面模式', 'Interface mode'], appearanceTypography: ['文档排版', 'Document typography'], appearanceColors: ['基础颜色', 'Basic colors'], appearanceAdvanced: ['高级颜色', 'Advanced colors'],
   display: ['文档显示', 'Document display'], opening: ['打开文档时', 'Opening documents'], interface: ['界面设置', 'Interface'],
   presetList: ['预设列表', 'Preset list'], presetFiles: ['导入与制作', 'Import and authoring'],
   symbols: ['符号与选区', 'Symbols and selections'], structure: ['列表与结构', 'Lists and structure'], paste: ['粘贴', 'Pasting'], candidates: ['输入候选', 'Suggestions'],
@@ -95,7 +97,6 @@ export const generalSearchKeywords = {
   restorePosition: ['恢复位置 记住位置 继续阅读 阅读进度 上次位置', 'restore remember position resume reading progress last location'],
   largeDocument: ['大文件 长文档 启动速度 打开速度 性能 源码优先', 'large file long document startup performance speed source first'],
   language: ['语言 中文 英文 英语 简体 翻译 本地化 自动', 'language Chinese English translation localization locale automatic'],
-  fontSize: ['字号 字体大小 文字大小 放大 缩小 缩放 自动字号 自定义字号', 'font size text size zoom scale larger smaller auto custom']
 } as const satisfies Record<string, SearchKeywords>;
 export const typingSearchKeywords: Readonly<Record<keyof InputAssistance, SearchKeywords>> = {
   selectionToolbar: ['浮动工具栏 选中工具条 格式工具栏 选区菜单', 'floating toolbar selection menu formatting popover'],

@@ -1,3 +1,4 @@
+import { DEFAULT_EDITOR_LINE_HEIGHT } from '../foundation/editorLineHeight';
 import { runEditorService } from '../host/editorServices';
 import { onDidChangeWikiResources } from '../host/wikiResources';
 import { collectWikiReferences } from '../foundation/wikiReference';
@@ -181,6 +182,8 @@ type PanelSessionControllerParams = {
   setEditorAppearance: (appearance: EditorAppearance) => Promise<void>;
   getUiColors?: () => UiColors;
   setUiColors?: (colors: UiColors) => Promise<UiColors>;
+  getEditorLineHeight?: () => number;
+  setEditorLineHeight?: (value: number) => Promise<void>;
   getEditorFontSizePreference: () => EditorFontSizePreference;
   setEditorFontSizePreference: (preference: EditorFontSizePreference) => Promise<void>;
   setOutlineVisible: (visible: boolean) => Promise<void>;
@@ -498,6 +501,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       editorAppearance: getEditorAppearance(),
       uiColors: params.getUiColors?.() ?? { light: {}, dark: {} },
       editorFontSizeMode: editorFontSizePreference.mode,
+      editorLineHeight: params.getEditorLineHeight?.() ?? DEFAULT_EDITOR_LINE_HEIGHT,
       editorFontSize: editorFontSizePreference.value,
       gitChangesGutter: getGitChangesGutterEnabled(context),
       gitDiffLineHighlights: getGitDiffLineHighlightsEnabled(),
@@ -851,6 +855,14 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       case 'setEditorAppearance':
         await setEditorAppearance(raw.appearance);
+        return;
+      case 'setEditorLineHeight':
+        try {
+          await params.setEditorLineHeight?.(raw.value);
+        } catch (error) {
+          await postToWebview({ type: 'editorLineHeightChanged', value: params.getEditorLineHeight?.() ?? DEFAULT_EDITOR_LINE_HEIGHT });
+          void vscode.window.showErrorMessage((getUiLanguage() === 'zh-CN' ? '行间距保存失败：' : 'Unable to save line spacing: ') + (error instanceof Error ? error.message : String(error)));
+        }
         return;
       case 'setEditorFontSize':
         await setEditorFontSizePreference({ mode: raw.mode, value: raw.value });

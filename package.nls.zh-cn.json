@@ -1,4 +1,5 @@
 {
+  "config.appearance.lineHeight": "按字号倍数设置行间距（默认 1.5 倍）。用于 Live、Source 和默认预览；独立预览预设保留自身排版。",
   "extension.displayName": "MEO Enhanced - Markdown 编辑器",
   "extension.description": "适用于 VS Code、支持实时编辑模式的增强型 Markdown 编辑器。",
   "command.open": "使用 MEO Enhanced 打开",

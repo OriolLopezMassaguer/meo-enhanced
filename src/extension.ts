@@ -513,6 +513,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   async handleConfigurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
+    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.appearance.lineHeight`)) {
+      this.broadcast({ type: 'editorLineHeightChanged', value: this.appearanceSettings.getEditorLineHeight() });
+    }
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${UI_COLORS_SETTING_KEY}`)) {
       this.broadcast({ type: 'uiColorsChanged', colors: this.appearanceSettings.getUiColors() });
     }
@@ -706,6 +709,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       getUiColors: this.appearanceSettings.getUiColors,
       setUiColors: this.appearanceSettings.setUiColors,
       setEditorAppearance: this.appearanceSettings.setEditorAppearance,
+      getEditorLineHeight: this.appearanceSettings.getEditorLineHeight,
+      setEditorLineHeight: this.appearanceSettings.setEditorLineHeight,
       getEditorFontSizePreference: this.appearanceSettings.getEditorFontSizePreference,
       setEditorFontSizePreference: this.appearanceSettings.setEditorFontSizePreference,
       setOutlineVisible: (visible) => this.setOutlineVisible(visible),

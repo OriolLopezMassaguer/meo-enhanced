@@ -452,6 +452,15 @@
           "order": 8,
           "description": "%config.fontSize.mode%"
         },
+        "meoEnhanced.appearance.lineHeight": {
+          "type": "number",
+          "default": 1.5,
+          "minimum": 1,
+          "maximum": 2.5,
+          "multipleOf": 0.1,
+          "order": 10,
+          "description": "%config.appearance.lineHeight%"
+        },
         "meoEnhanced.appearance.fontSize": {
           "type": "number",
           "default": 14,

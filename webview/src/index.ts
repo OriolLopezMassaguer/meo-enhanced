@@ -2,6 +2,7 @@ import { effectiveShortcuts } from '../../src/application/editingPreferences';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
 import { createSettingsWindow, type GeneralSetting } from './adapters/settingsWindow';
+import { DEFAULT_EDITOR_LINE_HEIGHT, normalizeEditorLineHeight } from '../../src/foundation/editorLineHeight';
 import { createUiColorsTransport } from './adapters/uiColorsTransport';
 import type { UiColors } from '../../src/foundation/uiColors';
 import { createPreviewPresetSettings } from './adapters/previewPresetSettings';
@@ -2109,6 +2110,7 @@ let pendingRevealDocumentFragment: string | null = null;
 let pendingEditorSurfaceRecoveryRaf: number | null = null;
 let createEditorFactoryPromise: Promise<CreateEditorFactory> | null = null;
 let editorFontSizePreference: EditorFontSizePreference = { mode: 'auto', value: 14 };
+let editorLineHeight = DEFAULT_EDITOR_LINE_HEIGHT;
 const INITIAL_EDITOR_MOUNT_FALLBACK_MS = 120;
 const LIVE_PRESENTATION_REVEAL_WAIT_MS = 500;
 
@@ -2159,6 +2161,15 @@ const switchToSourceAction = (emphasis: 'primary' | 'secondary' = 'secondary'): 
   run: () => requestModeFromNotice('source')
 });
 
+const applyEditorLineHeight = (value: number, { post = false, refreshPreview = true } = {}): void => {
+  editorLineHeight = normalizeEditorLineHeight(value);
+  const mutate = () => document.documentElement.style.setProperty('--meo-user-editor-line-height', String(editorLineHeight));
+  if (editor?.preserveViewport) editor.preserveViewport(mutate, true); else mutate();
+  if (refreshPreview) previewAdapter.refreshVisible(getCurrentEditorText(), { preserveViewport: true, preserveFrame: true });
+  if (post) vscode.postMessage({ type: 'setEditorLineHeight', value: editorLineHeight });
+  settingsWindow?.present();
+};
+
 const syncEditorFontSizeControls = (): void => {
   const custom = editorFontSizePreference.mode === 'custom';
   editorFontSizeModeControl.setActive(editorFontSizePreference.mode);
@@ -2166,6 +2177,7 @@ const syncEditorFontSizeControls = (): void => {
   editorFontSizeStepper.classList.toggle('is-disabled', !custom);
   decreaseEditorFontSizeBtn.disabled = !custom || editorFontSizePreference.value <= EDITOR_FONT_SIZE_MIN;
   increaseEditorFontSizeBtn.disabled = !custom || editorFontSizePreference.value >= EDITOR_FONT_SIZE_MAX;
+  settingsWindow?.present();
 };
 
 const applyEditorFontSizePreference = (
@@ -3269,6 +3281,7 @@ editorModeRuntime = createEditorModeRuntime(
 );
 
 const handleInit = (message: InitMessage) => {
+  applyEditorLineHeight(message.editorLineHeight ?? DEFAULT_EDITOR_LINE_HEIGHT, { refreshPreview: false });
   acceptEditingPreferences(message.editingPreferences, message.editingPreferencesRevision ?? 0);
   activeUiLanguagePreference = message.uiLanguagePreference;
   automaticUiLanguage = message.automaticUiLanguage;
@@ -3439,6 +3452,12 @@ const previewPresetSettings = createPreviewPresetSettings({
 settingsWindow = createSettingsWindow({
   appearance: {
     getColors: () => uiColors, getMode: () => themeAdapter.getPreference(), getScheme: () => themeAdapter.getAppearance(),
+    getFontSize: () => editorFontSizePreference,
+    setFontSize: value => applyEditorFontSizePreference(value, { post: true }),
+    getLineHeight: () => editorLineHeight,
+    setLineHeight: value => applyEditorLineHeight(value, { post: true }),
+    reportSaveError: message => failureNotice.setFailureNotice(() => ({ title: activeUiLanguage === 'zh-CN' ? '外观设置保存失败' : 'Unable to save appearance settings', message }), 'error', 'appearance-settings'),
+    clearSaveError: () => failureNotice.clearFailureNotice('appearance-settings'),
     setMode: mode => themeAdapter.setAppearance(mode, { post: true }),
     preview: colors => { uiColorsPreview = colors; refreshUiColors(); },
     update: colors => uiColorsTransport.update(colors)
@@ -3461,7 +3480,6 @@ settingsWindow = createSettingsWindow({
       switchItem('restorePosition', 'opening', strings.resumeReadingPositionLabel, () => restoreReadingPositionOnOpen, setRestoreReadingPositionOnOpen),
       switchItem('largeDocument', 'opening', strings.largeDocumentStartup, () => largeDocumentOptimizationEnabled, setLargeDocumentOptimizationEnabled, strings.largeDocumentStartupDescription),
       { id: 'language', section: 'interface', title: strings.interfaceLanguage, control: { kind: 'choice', get: () => activeUiLanguagePreference, set: value => { activeUiLanguagePreference = value as UiLanguagePreference; uiLanguageControl.setActive(activeUiLanguagePreference); applyUiLanguage(value === 'auto' ? automaticUiLanguage : value as UiLanguage); vscode.postMessage({ type: 'setUiLanguagePreference', language: activeUiLanguagePreference }); }, options: [{ value: 'auto', label: strings.auto }, { value: 'zh-CN', label: '简体中文' }, { value: 'en', label: 'English' }] } },
-      { id: 'fontSize', section: 'interface', title: strings.editorFontSize, control: { kind: 'font', get: () => editorFontSizePreference, set: value => applyEditorFontSizePreference(value, { post: true }) } }
     ];
   }
 });
@@ -3493,6 +3511,7 @@ window.addEventListener('message', (event) => {
   queueMicrotask(() => { if (settingsWindow?.isOpen()) settingsWindow.present(); });
   if (message.type === 'webviewVisibilityResult') { readingLayout.accept(message); return; }
   if (message.type === 'webviewVisibilityChanged') { readingLayout.refresh(); return; }
+  if (message.type === 'editorLineHeightChanged') { applyEditorLineHeight(message.value); return; }
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }

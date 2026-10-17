@@ -25,6 +25,7 @@ The toolbar and its settings panel provide the following options:
 - **Interface language**: Simplified Chinese, English, or the current VS Code display language.
 - **Editor appearance**: Light, Dark, or the current VS Code theme.
 - **Content font size**: Follow the VS Code editor font size or use a custom size from `10` to `32`.
+- **Document typography**: Adjust font size and line spacing in More Settings > Appearance. Line spacing defaults to `1.5×`; changes save automatically.
 - **Preview settings**: Choose a preset and adjust its supported appearance, font, and code-coloring options.
 
 ![MEO Enhanced settings panel with interface language, editor appearance, and font size options](docs/readme/en/settings-panel.png)

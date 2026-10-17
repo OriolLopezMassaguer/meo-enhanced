@@ -1,4 +1,4 @@
-import { createElement, Minus, Plus, X } from 'lucide';
+import { createElement, X } from 'lucide';
 import { createMenuSwitch } from './menuSwitch';
 import { createSegmentedControl } from './segmentedControl';
 import { createAppearanceSettings, type AppearanceSettingsOptions } from './appearanceSettings';
@@ -6,15 +6,13 @@ import type { createPreviewPresetSettings } from './previewPresetSettings';
 import { canBindCommand, commandContext, effectiveShortcuts, shortcutConflicts, shortcutFromStroke, type ShortcutPlatform } from '../../../src/application/editingPreferences';
 import type { EditingPreferences, EditingPreferencesChange, EditorCommandId } from '../../../src/foundation/editingPreferences';
 import type { UiLanguage } from '../../../src/foundation/uiLanguage';
-import { EDITOR_FONT_SIZE_MIN, EDITOR_FONT_SIZE_MAX, type EditorFontSizePreference } from '../../../src/foundation/editorFontSize';
 import { commandTitle, commandTitles, generalSearchKeywords, imageLocationSearchKeywords, modeOptions, nativeShortcutLabels, normalizeSettingsSearch, sectionTitles, settingsSearchMatches, settingsText, shortcutSearchKeywords, shortcutSections, shortcutDescriptions, tablePasteContexts, typingCatalog, typingSearchKeywords, typingSections, type SettingsTab } from '../application/settingsCatalog';
 
 type Section = keyof typeof sectionTitles;
 export type GeneralSetting = {
   readonly id: keyof typeof generalSearchKeywords; readonly section: 'display' | 'opening' | 'interface'; readonly title: string; readonly description?: string;
   readonly control: { kind: 'switch'; get: () => boolean; set: (value: boolean) => void }
-    | { kind: 'choice'; get: () => string; set: (value: string) => void; options: readonly { value: string; label: string }[] }
-    | { kind: 'font'; get: () => EditorFontSizePreference; set: (value: EditorFontSizePreference) => void };
+    | { kind: 'choice'; get: () => string; set: (value: string) => void; options: readonly { value: string; label: string }[] };
 };
 const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) => {
   const node = document.createElement(tag); node.className = className; if (text !== undefined) node.textContent = text; return node;
@@ -122,29 +120,11 @@ export function createSettingsWindow(options: {
     if (control.kind === 'switch') row.append(makeSwitch(control.get, item.title, value => { control.set(value); renderContent(); }));
     else {
       const slot = element('div', 'settings-choice');
-      const choices = control.kind === 'font' ? [{ value: 'auto', label: t('自动', 'Auto') }, { value: 'custom', label: t('自定义', 'Custom') }] : control.options;
+      const choices = control.options;
       const segmented = createSegmentedControl({ ariaLabel: item.title, className: 'settings-segmented', buttonClassName: 'settings-choice-button', datasetKey: 'value', role: 'group', options: choices, buttonTitles: false });
-      const presentChoice = () => segmented.setActive(control.kind === 'font' ? control.get().mode : control.get());
+      const presentChoice = () => segmented.setActive(control.get());
       valuePresenters.push(presentChoice); presentChoice(); slot.append(segmented.element); row.append(slot);
-      for (const choice of choices) segmented.getButton(choice.value).addEventListener('click', () => {
-        if (control.kind === 'font') control.set({ ...control.get(), mode: choice.value as 'auto' | 'custom' }); else control.set(choice.value);
-        presentChoice(); if (control.kind === 'font') presentFont();
-      });
-      const stepper = element('div', 'editor-font-size-stepper');
-      const decrease = button('', 'editor-font-size-stepper-button'); const output = element('output', 'editor-font-size-value'); const increase = button('', 'editor-font-size-stepper-button');
-      const presentFont = () => {
-        if (control.kind !== 'font') return;
-        const value = control.get(); const custom = value.mode === 'custom';
-        output.textContent = String(value.value); stepper.classList.toggle('is-disabled', !custom); stepper.setAttribute('aria-disabled', String(!custom));
-        decrease.disabled = !custom || value.value <= EDITOR_FONT_SIZE_MIN; increase.disabled = !custom || value.value >= EDITOR_FONT_SIZE_MAX;
-      };
-      if (control.kind === 'font') {
-        decrease.append(createElement(Minus, { width: 13, height: 13, 'aria-hidden': 'true' })); increase.append(createElement(Plus, { width: 13, height: 13, 'aria-hidden': 'true' }));
-        decrease.setAttribute('aria-label', t('减小字号', 'Decrease font size')); increase.setAttribute('aria-label', t('增大字号', 'Increase font size'));
-        const adjust = (delta: number) => { const value = control.get(); if (value.mode !== 'custom') return; control.set({ ...value, value: Math.max(EDITOR_FONT_SIZE_MIN, Math.min(EDITOR_FONT_SIZE_MAX, value.value + delta)) }); presentFont(); };
-        decrease.addEventListener('click', () => adjust(-1)); increase.addEventListener('click', () => adjust(1));
-        stepper.append(decrease, output, increase); slot.append(stepper); valuePresenters.push(presentFont); presentFont();
-      }
+      for (const choice of choices) segmented.getButton(choice.value).addEventListener('click', () => { control.set(choice.value); presentChoice(); });
     }
     return row;
   }

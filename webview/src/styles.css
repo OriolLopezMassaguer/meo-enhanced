@@ -8139,6 +8139,7 @@ html[data-meo-ui-contrast='high'] .cm-editor :is(.meo-md-html-table-context-trig
 .appearance-note { margin-bottom: 14px; }
 .appearance-item .settings-item-text { flex: 1 1 220px; }
 .appearance-item { padding-block: 12px; }
+.appearance-typography-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .appearance-mode-control { flex: 0 1 240px; height: 32px; margin-left: auto; }
 .appearance-mode-control .segmented-control-button { height: 100%; font-size: 12px; }
 .appearance-color-controls { display: flex; align-items: center; gap: 8px; flex: 0 1 240px; width: 240px; max-width: 100%; min-width: 0; margin-left: auto; }
@@ -8160,6 +8161,7 @@ html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not
 .appearance-color-reset > svg { display: block; flex: none; }
 .appearance-color-reset:hover:not(:disabled) { color: var(--meo-ui-text); }
 .appearance-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.appearance-footer [hidden] { display: none; }
 .appearance-status { margin: 0 0 12px; color: var(--meo-ui-danger); font-size: 12px; }
 .appearance-background-warning {
   display: flex;
@@ -8196,6 +8198,7 @@ html[data-meo-ui-contrast='high'] .appearance-color-field:not(:focus-within):not
 .settings-choice-button { flex: 1 1 0; height: 100%; font-size: 13px; font-weight: 400; padding-inline: 8px; }
 .settings-choice .editor-font-size-stepper { flex: 0 0 76px; width: 76px; height: 30px; grid-template-columns: 24px 24px 24px; }
 .settings-choice .editor-font-size-stepper-button, .settings-choice .editor-font-size-value { font-size: 13px; line-height: 1; }
+[data-setting='lineHeight'] .editor-font-size-stepper { flex-basis: 104px; width: 104px; grid-template-columns: 24px 52px 24px; }
 .settings-shortcut-controls { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; flex: 0 1 auto; }
 .settings-shortcut-keys { display: flex; flex-wrap: wrap; gap: 5px; }
 .settings-key { border: 1px solid var(--meo-ui-border-control); padding: 3px 6px; border-radius: 4px; background: var(--meo-ui-surface-field); color: inherit; font: 11px var(--meo-ui-editor-font-family, monospace); }
