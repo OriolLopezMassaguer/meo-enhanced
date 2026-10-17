@@ -822,6 +822,35 @@ export class ViewportController {
     this.linkedProjectionGeneration += 1;
   }
 
+  /** Aligns only the follower once; independent scrolling and the Source selection remain unchanged. */
+  alignLinkedViewport(owner: ViewportAnchorOwner): boolean {
+    if (this.destroyed || this.linkedPreviewEnabled || !this.previewSurface) return false;
+    this.markInteraction(owner);
+    const linkedMap = this.measureLinkedViewportMap();
+    if (linkedMap && this.previewSurface.readScrollTop && this.previewSurface.writeScrollTop) {
+      if (owner === 'editor') {
+        this.previewSurface.writeScrollTop(linkedMap.sourceToPreview(this.view.scrollDOM.scrollTop));
+      } else {
+        this.writeScrollPosition({
+          top: linkedMap.previewToSource(this.previewSurface.readScrollTop()),
+          left: this.view.scrollDOM.scrollLeft
+        });
+      }
+      return true;
+    }
+    const generation = this.navigationGeneration;
+    const isCurrent = () => !this.destroyed && generation === this.navigationGeneration
+      && !this.linkedPreviewEnabled;
+    if (owner === 'editor') {
+      this.previewSurface.restoreTopVisiblePosition(this.getTopVisiblePosition(), isCurrent);
+    } else {
+      const position = this.previewSurface.captureTopVisiblePosition();
+      if (!position) return false;
+      this.restoreLinkedEditorPosition(position.line, position.editorLineOffset ?? position.lineOffset, isCurrent);
+    }
+    return true;
+  }
+
   /** Treats back-to-top as one explicit navigation across the linked surfaces. */
   navigateLinkedToTop(owner: ViewportAnchorOwner): boolean {
     if (
@@ -1030,10 +1059,9 @@ export class ViewportController {
     }, delay);
   }
 
-  private rebuildLinkedViewportMap(project: boolean): void {
-    if (this.destroyed || !this.linkedPreviewEnabled || !this.linkedViewportMapDirty) return;
+  private measureLinkedViewportMap(pinnedPoint?: LinkedViewportPoint): LinkedViewportMap | null {
     const geometry = this.previewSurface?.captureLinkedGeometry?.();
-    if (!geometry) return;
+    if (!geometry) return null;
     const sourceMaximum = Math.max(0, this.view.scrollDOM.scrollHeight - this.view.scrollDOM.clientHeight);
     const points: LinkedViewportPoint[] = [];
     for (const region of geometry.regions) {
@@ -1054,6 +1082,14 @@ export class ViewportController {
         { source: endBlock.bottom, preview: region.bottom }
       );
     }
+    return createLinkedViewportMap(points, {
+      sourceMaximum,
+      previewMaximum: Math.max(0, geometry.maximumScrollTop)
+    }, pinnedPoint);
+  }
+
+  private rebuildLinkedViewportMap(project: boolean): void {
+    if (this.destroyed || !this.linkedPreviewEnabled || !this.linkedViewportMapDirty) return;
     const currentPosition = this.previewSurface?.readScrollTop ? {
       source: this.view.scrollDOM.scrollTop,
       preview: this.previewSurface.readScrollTop()
@@ -1068,10 +1104,9 @@ export class ViewportController {
     const pinnedPoint = project && this.linkedViewportMap && driverPositionUnchanged
       ? currentPosition ?? undefined
       : undefined;
-    this.linkedViewportMap = createLinkedViewportMap(points, {
-      sourceMaximum,
-      previewMaximum: Math.max(0, geometry.maximumScrollTop)
-    }, pinnedPoint);
+    const linkedMap = this.measureLinkedViewportMap(pinnedPoint);
+    if (!linkedMap) return;
+    this.linkedViewportMap = linkedMap;
     this.linkedViewportMapDirty = false;
     if (project) this.projectLinkedViewport(this.linkedViewportDriver);
   }

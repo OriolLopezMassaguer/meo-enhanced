@@ -439,21 +439,20 @@ menu avoidance. It also verifies clipped outline and completion text outside the
 list on the right/left, row alignment, explicit direction precedence and fallback
 when neither side fits. It runs in the targeted appearance and release browser gates.
 The production tooltip check also reveals a clipped heading beside the real outline.
-Production source locator and floating table header checks also verify the
-button-anchored source hint, pointer-positioned table hint and click behavior.
-`scripts/test-source-position-marker.ts` covers the divider's circular source
-locator, stable block targeting across the iframe boundary, tall-block visible
-centering, nearest available placement around top tools and viewport edges,
-nested-list bottom-edge placement with at most half the button outside the block,
-unavailable-position button hiding with retained block highlighting, hint stability and dismissal,
-focus/leave dismissal, and explicit navigation with linked and independent panes.
-Both directions share one control. The contract also checks Source-to-Preview
-centering with scroll sync on/off, wrapped visual-row placement, direction/target
-locking, Source selection/focus/viewport retention, offscreen caret hiding and
-hidden-comment targets, keyboard return focus, asynchronous Preview updates and
-inner-line navigation in tall code blocks. Layout-only notifications must not take navigation ownership
-or cancel a newly requested Source control.
-The old paragraph-height gutter must remain non-clickable.
+Production split-view alignment and floating table header checks verify ordinary
+button-anchored alignment hints and pointer-positioned table hints respectively.
+`scripts/test-source-position-marker.ts` retains the existing editing-position
+marker coverage and checks the fixed divider pair while synchronized scrolling is off:
+26px buttons with 22px arrows, stable centering independent of caret and hover,
+semantic viewport alignment in both directions, unchanged origin viewport, Source
+selection/text/focus and horizontal position, independent subsequent scrolling,
+repeated activation, document boundaries, keyboard activation and anchored hints.
+Stale Preview content disables alignment until the current render is ready;
+automatic sync resumes from the last explicit origin. Automatic sync and full
+Preview hide the pair. The previous moving locator and hover-block overlay are absent.
+`scripts/test-viewport-controller.ts` also checks one-shot semantic mapping with
+unequal content heights, fresh geometry, origin ownership, selection preservation
+and no background work or continuous projection while sync remains off.
 
 `scripts/test-tooltip-hover-sequence.ts` checks the 500ms continuation window
 with native button and Preview frame crossings in both themes, including hover

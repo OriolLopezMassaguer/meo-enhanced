@@ -6903,10 +6903,24 @@ body.outline-resizing .preview-frame {
   pointer-events: none;
 }
 
-.format-button.meo-preview-source-navigation {
+.meo-preview-viewport-alignment {
   position: absolute;
   z-index: calc(var(--meo-layer-document-floating) + 11);
   left: -1px;
+  top: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.meo-preview-viewport-alignment[hidden] {
+  display: none;
+}
+
+.format-button.meo-preview-viewport-align-button {
+  pointer-events: auto;
   width: 26px;
   height: 26px;
   box-sizing: border-box;
@@ -6914,31 +6928,26 @@ body.outline-resizing .preview-frame {
   border-radius: 50%;
   color: var(--meo-ui-text-muted);
   background: var(--meo-ui-surface-raised);
-  transform: translate(-50%, -50%);
 }
 
-.meo-preview-source-navigation:hover:not(:disabled) {
+.meo-preview-viewport-align-button:hover:not(:disabled) {
   background: var(--meo-ui-surface-hover);
 }
 
-.meo-preview-source-navigation:active:not(:disabled) {
+.meo-preview-viewport-align-button:active:not(:disabled) {
   background: var(--meo-ui-surface-pressed);
 }
 
-.meo-preview-source-navigation[hidden] {
-  display: none;
-}
-
-.meo-preview-source-navigation svg {
+.meo-preview-viewport-align-button svg {
   pointer-events: none;
   stroke-width: 1.8;
 }
 
-.meo-preview-source-navigation[data-meo-source-navigation-direction='preview'] svg {
+.meo-preview-viewport-align-button[data-meo-align-viewport='preview'] svg {
   transform: scaleX(-1);
 }
 
-html[data-meo-ui-contrast='high'] .meo-preview-source-navigation {
+html[data-meo-ui-contrast='high'] .meo-preview-viewport-align-button {
   border-color: var(--meo-ui-text);
 }
 
@@ -8514,7 +8523,7 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .preview-preset-info.has-error:not(:disabled) { color: var(--meo-ui-danger); }
 /* Only Source preview chrome uses the document palette; toolbar popups opt in after portaling. */
 .source-preview-tools,
-.meo-preview-source-navigation,
+.meo-preview-viewport-align-button,
 .preview-options-panel.source-preview-more-panel,
 .preview-dropdown-panel[data-source-preview-theme] {
   --meo-ui-text: var(--meo-preview-foreground);

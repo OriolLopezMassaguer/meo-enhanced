@@ -1766,13 +1766,10 @@ const previewController = createPreviewController({
     readingPositionLifecycle?.userInteracted();
     return true;
   },
-  onNavigateToSource: (line) => {
-    if (!isSidePreviewVisible() || !editor) return;
-    editor.holdLinkedPreviewAttention?.();
-    editor.scrollToLine(line, 'center');
-    readingPositionLifecycle?.userInteracted();
+  onAlignViewport: owner => {
+    if (!isSidePreviewVisible() || sourcePreviewScrollSyncEnabled) return;
+    editor?.alignLinkedViewport(owner === 'source' ? 'editor' : 'preview');
   },
-  getSourceNavigationPosition: () => editor?.getSourceNavigationPosition() ?? null,
   onPaintReady: () => {
     previewPaintReady = true;
     resolveInitialPreviewPaint?.();
@@ -1796,8 +1793,6 @@ const previewController = createPreviewController({
     previewViewportInteractionGeneration += 1;
     if (owner === 'source') {
       editor?.markViewportInteraction();
-      editor?.holdLinkedPreviewAttention();
-      editor?.focus();
     } else {
       editor?.markPreviewViewportInteraction?.();
       sourcePreviewPosition = { ...sourcePreviewPosition, active: false };
@@ -1959,15 +1954,16 @@ const isSidePreviewVisible = (): boolean => (
 const isPreviewSurfaceVisible = (): boolean => (
   getActiveEditorMode() === 'preview' || isSidePreviewVisible()
 );
-const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false, activateNavigation = false): boolean => (
+const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = false): boolean => (
   previewController.setSourcePositionMarker({
     visible: isSidePreviewVisible(),
     line: sourcePreviewPosition.line,
     active: sourcePreviewPosition.active
-  }, { revealIfOutside, deferLayout, activateNavigation }) === true
+  }, { revealIfOutside, deferLayout }) === true
 );
 function presentSourcePreviewControls(): void {
   const split = isSidePreviewVisible();
+  previewController.setSourcePreviewControls(split, sourcePreviewScrollSyncEnabled);
   const sourcePreviewLabel = split
     ? activeUiStrings.hideSidePreview
     : activeUiStrings.showSidePreview;
@@ -2080,7 +2076,6 @@ const presentPreviewSurface = (
     previewFormatGroup.insertBefore(previewController.presetControl, previewOptionsControl);
     previewFormatGroup.insertBefore(previewController.appearanceControl, previewOptionsControl);
   }
-  previewController.setSourcePreviewControls(split);
   if (atomicSplit && split) {
     const generation = ++sourcePreviewRevealGeneration;
     pendingSourcePreviewReveal = { generation, editorReady: false, previewReady: false };
@@ -2949,7 +2944,7 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
       const canReveal = change.revealIfOutside
         && isSidePreviewVisible()
         && sourcePreviewScrollSyncEnabled;
-      if (presentSourcePreviewPosition(canReveal, false, change.activateNavigation)) {
+      if (presentSourcePreviewPosition(canReveal)) {
         editor?.holdLinkedPreviewAttention?.();
       }
     },

@@ -63,17 +63,7 @@ type PreviewControllerOptions = {
   onShortcut?: (event: KeyboardEvent) => boolean;
   onSearchResultsChanged?: () => void;
   onNavigateToTop?: () => boolean;
-  onNavigateToSource?: (line: number) => void;
-  /** The editor owns caret geometry, including wrapped visual rows and clipping. */
-  getSourceNavigationPosition?: () => {
-    readonly line: number;
-    readonly top: number;
-    readonly bottom: number;
-    readonly viewportTop: number;
-    readonly viewportBottom: number;
-    readonly background: string;
-    readonly foreground: string;
-  } | null;
+  onAlignViewport?: (owner: 'source' | 'preview') => void;
   onViewportInteraction?: (owner: 'source' | 'preview') => void;
   onViewportChange?: () => void;
   onGeometryChanged?: () => void;
@@ -375,7 +365,7 @@ function morphPreviewMain(
           if (node.nodeType !== 1) return undefined;
           const element = node as Element;
           // Cached overlay references must never be repurposed as document blocks.
-          const overlay = ['meo-preview-source-position-marker', 'meo-preview-source-navigation-highlight']
+          const overlay = ['meo-preview-source-position-marker']
             .find(className => element.classList.contains(className));
           if (overlay) return overlay;
           return element.getAttribute(previewPresentationMorphKeyAttribute) ?? (element.id || undefined);
@@ -628,20 +618,6 @@ const previewSourcePositionMarkerStyles = `
   display: none;
 }
 
-.meo-preview-source-navigation-highlight {
-  position: absolute;
-  z-index: -1;
-  left: 0;
-  width: 100%;
-  min-height: 1px;
-  background: color-mix(in srgb, var(--meo-preview-foreground, var(--meo-fg)) 10%, var(--meo-preview-background, var(--meo-bg)));
-  pointer-events: none;
-}
-
-.meo-preview-source-navigation-highlight[hidden] {
-  display: none;
-}
-
 .meo-preview-source-position-rail {
   display: none;
 }
@@ -658,8 +634,7 @@ const previewSourcePositionMarkerStyles = `
 }
 
 @media (forced-colors: active) {
-  .meo-preview-source-position-marker,
-  .meo-preview-source-navigation-highlight {
+  .meo-preview-source-position-marker {
     background: Highlight;
     opacity: 0.18;
     forced-color-adjust: none;
@@ -761,8 +736,7 @@ export function createPreviewController({
   onShortcut,
   onSearchResultsChanged,
   onNavigateToTop,
-  onNavigateToSource,
-  getSourceNavigationPosition,
+  onAlignViewport,
   onViewportInteraction,
   onViewportChange,
   onGeometryChanged,
@@ -1031,11 +1005,10 @@ export function createPreviewController({
     defaultFontOption.textContent = presetPreference === 'default' ? uiStrings.previewFontPlaceholder : uiStrings.previewPresetFont;
     fontFamilySelectControl.refreshOptions();
     updatePresetControls();
-    if (sourceNavigation) {
-      const label = sourceNavigationDirection === 'preview' ? uiStrings.revealInPreview : uiStrings.editInSource;
-      sourceNavigation.dataset.tooltip = label;
-      sourceNavigation.setAttribute('aria-label', label);
-    }
+    alignPreviewButton.dataset.tooltip = uiStrings.alignPreviewToSource;
+    alignPreviewButton.setAttribute('aria-label', uiStrings.alignPreviewToSource);
+    alignSourceButton.dataset.tooltip = uiStrings.alignSourceToPreview;
+    alignSourceButton.setAttribute('aria-label', uiStrings.alignSourceToPreview);
     scrollToTopController.setUiLanguage(language);
     if (frame.contentDocument) addPreviewCodeCopyControls(frame.contentDocument, language);
   };
@@ -1049,6 +1022,7 @@ export function createPreviewController({
   let appearancePreference: PreviewAppearance = 'auto';
   let appearance: 'light' | 'dark' = 'dark';
   let sourcePreviewControls = false;
+  let synchronizedScrolling = true;
   let sourceColoring = true;
   let showComments = false;
   let fontFamilyPreference = '';
@@ -1220,22 +1194,11 @@ export function createPreviewController({
   let sourceMap: PreviewSourceMapEntry[] = [];
   let visualSourceMap: PreviewSourceMapEntry[] = [];
   let sourceMapByElement = new WeakMap<HTMLElement, PreviewSourceMapEntry>();
-  let sourceNavigationCandidatesByRoot = new WeakMap<HTMLElement, PreviewSourceMapEntry[]>();
   let sourceMapDirty = true;
   let sourceMapResizeObserver: ResizeObserver | null = null;
   let sourceMapMeasureFrame: number | null = null;
   let sourcePositionMarker: HTMLElement | null = null;
   let sourcePositionMarkerDocument: Document | null = null;
-  let sourceNavigationHighlight: HTMLElement | null = null;
-  let sourceNavigationHighlightDocument: Document | null = null;
-  let sourceNavigation: HTMLButtonElement | null = null;
-  let sourceNavigationLine: number | null = null;
-  let sourceNavigationDirection: 'source' | 'preview' = 'source';
-  let pendingSourceNavigationLine: number | null = null;
-  let pendingSourceNavigationDirection: 'source' | 'preview' = 'source';
-  let sourceNavigationFrame: number | null = null;
-  let sourceNavigationHideTimer: number | null = null;
-  let sourceNavigationHovered = false;
   let sourcePositionMarkerState: PreviewSourcePositionMarkerState = {
     visible: false,
     line: 1,
@@ -1688,7 +1651,6 @@ export function createPreviewController({
     const reusableDocument = activeFrameDocument === frame.contentDocument ? activeFrameDocument : null;
     const reusableMain = reusableDocument?.querySelector<HTMLElement>('main.meo-export-doc');
     const previousRenderedText = frameRenderedText;
-    hideSourceNavigation();
     frameEvents?.abort();
     frameEvents = null;
     search.invalidate();
@@ -1699,6 +1661,7 @@ export function createPreviewController({
     retainedViewportProjection = null;
     pendingPresentationScroll = null;
     frameRenderedText = null;
+    updateViewportAlignment();
     disposeDeferredImages();
     const katexHref = document.body.dataset.meoKatexSrc ?? '';
     const katexInlineStyles = collectPreviewKatexStyles(katexHref).replace(/<\/style/gi, '<\\/style');
@@ -1722,7 +1685,6 @@ export function createPreviewController({
       sourceMap = [];
       visualSourceMap = [];
       sourceMapByElement = new WeakMap();
-      sourceNavigationCandidatesByRoot = new WeakMap();
       sourceMapDirty = true;
       frameEvents = new AbortController();
       const signal = frameEvents.signal;
@@ -1741,7 +1703,6 @@ export function createPreviewController({
             if (!disposed && activeFrameDocument === frameDocument) {
               getSourceMap();
               refreshSourcePositionMarker();
-              refreshSourceNavigation();
               onGeometryChanged?.();
             }
           });
@@ -1776,7 +1737,6 @@ export function createPreviewController({
       frameDocument.addEventListener('scroll', () => {
         if (!disposed && activeFrameDocument === frameDocument && isSourceColoringEnabled()) scheduleViewportHighlight(frameDocument);
         if (!disposed && activeFrameDocument === frameDocument) {
-          refreshSourceNavigation();
           onViewportChange?.();
         }
       }, { passive: true, signal });
@@ -1807,7 +1767,6 @@ export function createPreviewController({
         }));
       }, { capture: true, signal });
       bindPreviewLinks(frameDocument, vscode, notifyViewportInteraction, signal);
-      bindSourceNavigation(frameDocument, mappedRoot, signal);
       bindPreviewWheelFallback(frameDocument, signal);
       bindPreviewShortcuts(frame, onShortcut, signal);
       const keepPosition = () => {
@@ -1829,6 +1788,7 @@ export function createPreviewController({
       const finishRender = () => {
         keepPosition();
         refreshSourcePositionMarker();
+        updateViewportAlignment();
         frame.style.removeProperty('visibility');
         scrollToTopController.sync();
         onRendered?.({ skipLinkedViewportProjection: preserveViewport });
@@ -2052,6 +2012,7 @@ export function createPreviewController({
     } else {
       layoutObserver?.disconnect();
     }
+    updateViewportAlignment();
     onRendered?.({ skipLinkedViewportProjection: true });
     if (payload.hasMermaid) {
       void previewMermaidRenderer.render(
@@ -2158,6 +2119,7 @@ export function createPreviewController({
     }
     hasPendingRequest = true;
     pendingText = text;
+    updateViewportAlignment();
     setPendingStatus(background);
     return previewRenderTransport.render({
       text,
@@ -2335,7 +2297,6 @@ export function createPreviewController({
         .sort((left, right) => left.top - right.top || left.bottom - right.bottom || left.start - right.start);
       sourceMapByElement = new WeakMap();
       for (const entry of sourceMap) sourceMapByElement.set(entry.element, entry);
-      sourceNavigationCandidatesByRoot = new WeakMap();
     }
     return sourceMap;
   };
@@ -2542,225 +2503,42 @@ export function createPreviewController({
       kind: entry.start === entry.end ? 'line' : 'block'
     };
   };
-  const clearSourceNavigationFrame = (): void => {
-    if (sourceNavigationFrame !== null) window.cancelAnimationFrame(sourceNavigationFrame);
-    sourceNavigationFrame = null;
-  };
-  const clearSourceNavigationHide = (): void => {
-    if (sourceNavigationHideTimer !== null) window.clearTimeout(sourceNavigationHideTimer);
-    sourceNavigationHideTimer = null;
-  };
-  const hideSourceNavigationButton = (): void => {
-    sourceNavigationHovered = false;
-    sourceNavigation?.classList.remove('is-visible');
-    if (sourceNavigation) sourceNavigation.hidden = true;
-  };
-  const hideSourceNavigation = (): void => {
-    clearSourceNavigationFrame();
-    clearSourceNavigationHide();
-    pendingSourceNavigationLine = null;
-    sourceNavigationLine = null;
-    if (sourceNavigationHighlight) sourceNavigationHighlight.hidden = true;
-    hideSourceNavigationButton();
-  };
-  const scheduleSourceNavigationHide = (): void => {
-    clearSourceNavigationFrame();
-    pendingSourceNavigationLine = null;
-    clearSourceNavigationHide();
-    if (disposed || sourceNavigationLine === null) return;
-    if (sourceNavigationHovered || document.activeElement === sourceNavigation) return;
-    // The pointer crosses the iframe boundary before it enters the divider button.
-    sourceNavigationHideTimer = window.setTimeout(hideSourceNavigation, 180);
-  };
-  const getSourceNavigationHighlight = (frameDocument: Document): HTMLElement => {
-    if (
-      sourceNavigationHighlightDocument === frameDocument
-      && sourceNavigationHighlight?.isConnected
-    ) {
-      return sourceNavigationHighlight;
-    }
-    const highlight = frameDocument.createElement('div');
-    highlight.className = 'meo-preview-source-navigation-highlight';
-    highlight.hidden = true;
-    highlight.setAttribute('aria-hidden', 'true');
-    (frameDocument.querySelector('main.meo-export-doc') ?? frameDocument.body).appendChild(highlight);
-    sourceNavigationHighlight = highlight;
-    sourceNavigationHighlightDocument = frameDocument;
-    return highlight;
-  };
-  const getSourceNavigation = (): HTMLButtonElement => {
-    if (sourceNavigation?.isConnected) return sourceNavigation;
-    const navigation = document.createElement('button');
-    navigation.type = 'button';
-    navigation.className = 'format-button meo-preview-source-navigation';
-    navigation.hidden = true;
-    navigation.dataset.tooltip = uiStrings.editInSource;
-    navigation.setAttribute('aria-label', uiStrings.editInSource);
-    // Center the upper arrow from ArrowLeftRight in its standalone viewBox.
-    navigation.appendChild(createIconElement([
+  const viewportAlignment = document.createElement('div');
+  viewportAlignment.className = 'meo-preview-viewport-alignment';
+  viewportAlignment.hidden = true;
+  const createAlignmentButton = (owner: 'source' | 'preview'): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'format-button meo-preview-viewport-align-button';
+    button.dataset.meoAlignViewport = owner === 'source' ? 'preview' : 'source';
+    button.appendChild(createIconElement([
       ['path', { d: 'm8 8-4 4 4 4' }],
       ['path', { d: 'M4 12h16' }]
-    ], {
-      width: 22,
-      height: 22,
-      class: 'lucide lucide-arrow-left',
-      'aria-hidden': 'true'
-    }));
-    navigation.addEventListener('pointerenter', () => {
-      sourceNavigationHovered = true;
-      clearSourceNavigationHide();
-    });
-    navigation.addEventListener('pointerleave', () => {
-      sourceNavigationHovered = false;
-      scheduleSourceNavigationHide();
-    });
-    navigation.addEventListener('focus', clearSourceNavigationHide);
-    navigation.addEventListener('blur', scheduleSourceNavigationHide);
-    navigation.addEventListener('pointerdown', event => {
-      // A mouse navigation must preserve the Source caret and selection.
+    ], { width: 22, height: 22, class: 'lucide lucide-arrow-left', 'aria-hidden': 'true' }));
+    button.addEventListener('pointerdown', event => {
+      // Pointer activation scrolls a view without stealing its focus or selection.
       if (event.button === 0) event.preventDefault();
+      event.stopPropagation();
     });
-    navigation.addEventListener('click', (event) => {
-      const line = sourceNavigationLine;
-      if (line === null || !sourcePositionMarkerState.visible) return;
+    button.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
-      if (sourceNavigationDirection === 'preview') {
-        if (frameRenderedText !== null && isCurrentText && !isCurrentText(frameRenderedText)) {
-          hideSourceNavigation();
-          return;
-        }
-        const doc = getFrameDocument();
-        const scroll = doc?.scrollingElement;
-        const projection = projectSourcePositionMarker(line);
-        if (!scroll || !projection) { hideSourceNavigation(); return; }
-        let center = (projection.top + projection.bottom) / 2;
-        if (projection.bottom - projection.top > scroll.clientHeight) {
-          const entry = findSourceProjection(line)?.exact;
-          if (entry) center = entry.top + (entry.bottom - entry.top)
-            * (line - entry.start + 0.5) / Math.max(1, entry.end - entry.start + 1);
-        }
-        notifyViewportInteraction('source');
-        hideSourceNavigation();
-        scroll.scrollTop = Math.max(0, Math.min(scroll.scrollHeight - scroll.clientHeight, center - scroll.clientHeight / 2));
-        refreshSourcePositionMarker();
-        return;
-      }
-      hideSourceNavigation();
-      onNavigateToSource?.(line);
+      updateViewportAlignment();
+      if (button.disabled || viewportAlignment.hidden) return;
+      notifyViewportInteraction(owner);
+      onAlignViewport?.(owner);
     });
-    host.appendChild(navigation);
-    sourceNavigation = navigation;
-    return navigation;
+    return button;
   };
-  const showSourceNavigation = (line: number, direction: 'source' | 'preview'): void => {
-    const frameDocument = getFrameDocument();
-    const scrollElement = frameDocument?.scrollingElement;
-    if (!frameDocument || !scrollElement || !sourcePreviewControls || !sourcePositionMarkerState.visible || !onNavigateToSource) {
-      hideSourceNavigation();
-      return;
-    }
-    if (direction === 'preview' && frameRenderedText !== null && isCurrentText && !isCurrentText(frameRenderedText)) {
-      hideSourceNavigation();
-      return;
-    }
-    const projection = projectSourcePositionMarker(line);
-    if (!projection) {
-      hideSourceNavigation();
-      return;
-    }
-    const highlight = getSourceNavigationHighlight(frameDocument);
-    const height = Math.max(1, projection.bottom - projection.top);
-    const editingProjection = projectSourcePositionMarker(sourcePositionMarkerState.line);
-    const matchesEditingTarget = Boolean(
-      editingProjection
-      && Math.abs(editingProjection.top - projection.top) <= 0.5
-      && Math.abs(editingProjection.bottom - projection.bottom) <= 0.5
-    );
-    highlight.style.top = `${projection.top}px`;
-    highlight.style.height = `${height}px`;
-    highlight.hidden = matchesEditingTarget;
-    sourceNavigationLine = line;
-    sourceNavigationDirection = direction;
-    const frameRect = frame.getBoundingClientRect();
-    const sourcePosition = direction === 'preview' ? getSourceNavigationPosition?.() : null;
-    if (direction === 'preview' && (!sourcePosition || sourcePosition.line !== line)) {
-      hideSourceNavigation();
-      return;
-    }
-    const viewportTop = sourcePosition ? Math.max(0, sourcePosition.viewportTop - frameRect.top) : 0;
-    const viewportBottom = sourcePosition
-      ? Math.min(scrollElement.clientHeight, sourcePosition.viewportBottom - frameRect.top)
-      : scrollElement.clientHeight;
-    const visibleTop = Math.max(viewportTop, sourcePosition ? sourcePosition.top - frameRect.top : projection.top - scrollElement.scrollTop);
-    const visibleBottom = Math.min(viewportBottom, sourcePosition ? sourcePosition.bottom - frameRect.top : projection.bottom - scrollElement.scrollTop);
-    const radius = 13;
-    const minimumCenter = Math.max(viewportTop + radius, visibleTop);
-    const maximumCenter = Math.min(viewportBottom - radius, visibleBottom);
-    if (visibleBottom <= visibleTop || minimumCenter > maximumCenter) {
-      hideSourceNavigationButton();
-      return;
-    }
-    const preferredCenter = Math.max(minimumCenter, Math.min(maximumCenter, (visibleTop + visibleBottom) / 2));
-    const left = frameRect.left - 1 - radius;
-    const toolBounds = Array.from(host.querySelectorAll<HTMLElement>('.source-preview-tool-button'))
-      .map(tool => tool.getBoundingClientRect())
-      .filter(rect => rect.width > 0 && rect.height > 0
-        && left < rect.right + 4 && left + radius * 2 > rect.left - 4);
-    // Keep the center inside the visible block, allowing at most half the
-    // button outside it. Prefer the midpoint, then the nearest unobstructed edge.
-    const center = [preferredCenter, ...toolBounds.flatMap(rect => [
-      rect.top - frameRect.top - radius - 4,
-      rect.bottom - frameRect.top + radius + 4
-    ])].filter(candidate => candidate >= minimumCenter && candidate <= maximumCenter
-      && toolBounds.every(rect => candidate + radius <= rect.top - frameRect.top - 4
-        || candidate - radius >= rect.bottom - frameRect.top + 4))
-      .sort((a, b) => Math.abs(a - preferredCenter) - Math.abs(b - preferredCenter))[0];
-    if (center === undefined) {
-      hideSourceNavigationButton();
-      return;
-    }
-    const navigation = getSourceNavigation();
-    navigation.dataset.meoSourceNavigationLine = String(line);
-    navigation.dataset.meoSourceNavigationDirection = direction;
-    const label = direction === 'preview' ? uiStrings.revealInPreview : uiStrings.editInSource;
-    navigation.dataset.tooltip = label;
-    navigation.setAttribute('aria-label', label);
-    if (sourcePosition) {
-      navigation.style.setProperty('--meo-preview-background', sourcePosition.background);
-      navigation.style.setProperty('--meo-preview-foreground', sourcePosition.foreground);
-    } else {
-      navigation.style.removeProperty('--meo-preview-background');
-      navigation.style.removeProperty('--meo-preview-foreground');
-    }
-    navigation.style.top = `${frame.offsetTop + center}px`;
-    navigation.hidden = false;
-    navigation.classList.add('is-visible');
-  };
-  const refreshSourceNavigation = (): void => {
-    // A queued pointer/caret intent is newer than this layout refresh.
-    if (pendingSourceNavigationLine !== null) return;
-    if (sourceNavigationLine !== null) showSourceNavigation(sourceNavigationLine, sourceNavigationDirection);
-    else if (sourcePositionMarkerState.active && getSourceNavigationPosition && pendingSourceNavigationDirection === 'preview') {
-      requestSourceNavigation(sourcePositionMarkerState.line, 'preview');
-    }
-  };
-  const requestSourceNavigation = (line: number, direction: 'source' | 'preview' = 'source', explicitSourceAction = false): void => {
-    clearSourceNavigationHide();
-    // Mouse crossings keep their target; a new caret/edit intent supersedes it.
-    if (!explicitSourceAction && (sourceNavigationHovered || document.activeElement === sourceNavigation)
-      && (sourceNavigationDirection !== direction || sourceNavigationLine !== line)) return;
-    if (direction === 'source' && sourceNavigationDirection === direction
-      && sourceNavigationLine === line && sourceNavigation?.classList.contains('is-visible')) return;
-    pendingSourceNavigationLine = line;
-    pendingSourceNavigationDirection = direction;
-    if (sourceNavigationFrame !== null) return;
-    sourceNavigationFrame = window.requestAnimationFrame(() => {
-      sourceNavigationFrame = null;
-      const pendingLine = pendingSourceNavigationLine;
-      pendingSourceNavigationLine = null;
-      if (pendingLine !== null) showSourceNavigation(pendingLine, pendingSourceNavigationDirection);
-    });
+  const alignPreviewButton = createAlignmentButton('source');
+  const alignSourceButton = createAlignmentButton('preview');
+  viewportAlignment.append(alignPreviewButton, alignSourceButton);
+  host.appendChild(viewportAlignment);
+  const updateViewportAlignment = (): void => {
+    viewportAlignment.hidden = disposed || host.hidden || !sourcePreviewControls || synchronizedScrolling;
+    const ready = !viewportAlignment.hidden && frameRenderedText !== null && Boolean(getFrameDocument()?.scrollingElement)
+      && isCurrentText?.(frameRenderedText) !== false && getSourceMap().length > 0;
+    alignPreviewButton.disabled = alignSourceButton.disabled = !ready;
   };
 
   const refreshTheme = (): void => {
@@ -2771,138 +2549,6 @@ export function createPreviewController({
       preserveViewport: true,
       preserveFrame: true
     });
-  };
-  const isSourceNavigationGutterPoint = (
-    frameDocument: Document,
-    clientX: number
-  ): boolean => {
-    const scrollElement = frameDocument.scrollingElement;
-    if (!scrollElement) return false;
-    const contentLeft = getPreviewContentLeft(frameDocument, scrollElement);
-    if (contentLeft === null) return false;
-    const documentX = clientX + scrollElement.scrollLeft;
-    return documentX >= Math.max(0, contentLeft - 28) && documentX <= contentLeft;
-  };
-  const getSourceNavigationCandidates = (
-    root: HTMLElement
-  ): PreviewSourceMapEntry[] => {
-    getSourceMap();
-    const cached = sourceNavigationCandidatesByRoot.get(root);
-    if (cached) return cached;
-
-    const descendants = Array.from(root.querySelectorAll<HTMLElement>('[data-source-line]'))
-      .map(element => sourceMapByElement.get(element) ?? null)
-      .filter((entry): entry is PreviewSourceMapEntry => entry !== null);
-    if (descendants.length === 0) {
-      const direct = sourceMapByElement.get(root);
-      const candidates = direct ? [direct] : [];
-      sourceNavigationCandidatesByRoot.set(root, candidates);
-      return candidates;
-    }
-
-    // Containers such as lists and block quotes span all of their children and
-    // map to the container's first source line. In their whitespace, use the
-    // nearest concrete descendant instead of jumping back to that first line.
-    const mappedElements = new Set(descendants.map(entry => entry.element));
-    const containers = new Set<HTMLElement>();
-    for (const entry of descendants) {
-      let ancestor = entry.element.parentElement;
-      while (ancestor && ancestor !== root) {
-        if (mappedElements.has(ancestor)) {
-          containers.add(ancestor);
-          break;
-        }
-        ancestor = ancestor.parentElement;
-      }
-    }
-    const candidates = descendants
-      .filter(entry => !containers.has(entry.element))
-      .sort((left, right) => left.top - right.top || left.bottom - right.bottom || left.start - right.start);
-    sourceNavigationCandidatesByRoot.set(root, candidates);
-    return candidates;
-  };
-  const findNearestSourceNavigationEntry = (
-    candidates: readonly PreviewSourceMapEntry[],
-    documentY: number
-  ): PreviewSourceMapEntry | null => {
-    let best: PreviewSourceMapEntry | null = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    let current: PreviewSourceMapEntry | null = null;
-    let currentDistance = Number.POSITIVE_INFINITY;
-    for (const entry of candidates) {
-      const distance = documentY < entry.top
-        ? entry.top - documentY
-        : documentY > entry.bottom
-          ? documentY - entry.bottom
-          : 0;
-      const height = entry.bottom - entry.top;
-      const bestHeight = best ? best.bottom - best.top : Number.POSITIVE_INFINITY;
-      if (distance < bestDistance || (distance === bestDistance && height < bestHeight)) {
-        best = entry;
-        bestDistance = distance;
-      }
-      if (entry.start === sourceNavigationLine && distance < currentDistance) {
-        current = entry;
-        currentDistance = distance;
-      }
-      if (entry.top > documentY && distance > bestDistance + 3) break;
-    }
-    // A small dead band prevents two neighbouring blocks from alternating when
-    // the pointer sits on their midpoint without making deliberate motion lag.
-    return current && currentDistance <= bestDistance + 3 ? current : best;
-  };
-  const findSourceNavigationEntry = (
-    frameDocument: Document,
-    mappedRoot: HTMLElement,
-    event: MouseEvent
-  ): PreviewSourceMapEntry | null => {
-    const mappedTarget = typeof (event.target as Element | null)?.closest === 'function'
-      ? (event.target as Element).closest<HTMLElement>('[data-source-line]')
-      : null;
-    if (mappedTarget && mappedRoot.contains(mappedTarget)) {
-      getSourceMap();
-      const direct = sourceMapByElement.get(mappedTarget) ?? null;
-      const candidates = getSourceNavigationCandidates(mappedTarget);
-      if (candidates.length <= 1) return candidates[0] ?? direct;
-      const scrollElement = frameDocument.scrollingElement;
-      if (!scrollElement) return direct;
-      return findNearestSourceNavigationEntry(
-        candidates,
-        event.clientY + scrollElement.scrollTop
-      ) ?? direct;
-    }
-    const scrollElement = frameDocument.scrollingElement;
-    if (!scrollElement) return null;
-    const eventTarget = event.target as Node | null;
-    const isInsideMappedRoot = eventTarget ? mappedRoot.contains(eventTarget) : false;
-    if (!isInsideMappedRoot && !isSourceNavigationGutterPoint(frameDocument, event.clientX)) return null;
-    const rootRect = mappedRoot.getBoundingClientRect();
-    if (event.clientY < rootRect.top || event.clientY > rootRect.bottom) return null;
-    const documentY = event.clientY + scrollElement.scrollTop;
-    return findNearestSourceNavigationEntry(
-      getSourceNavigationCandidates(mappedRoot),
-      documentY
-    );
-  };
-  const bindSourceNavigation = (
-    frameDocument: Document,
-    mappedRoot: HTMLElement | null,
-    signal: AbortSignal
-  ): void => {
-    if (!mappedRoot || !onNavigateToSource) return;
-    frameDocument.addEventListener('pointermove', (event) => {
-      if (event.pointerType !== 'mouse' || !sourcePositionMarkerState.visible) {
-        hideSourceNavigation();
-        return;
-      }
-      const entry = findSourceNavigationEntry(frameDocument, mappedRoot, event);
-      if (!entry) {
-        scheduleSourceNavigationHide();
-        return;
-      }
-      requestSourceNavigation(entry.start);
-    }, { capture: true, passive: true, signal });
-    frameDocument.addEventListener('pointerleave', scheduleSourceNavigationHide, { signal });
   };
   const refreshSourcePositionMarker = (revealIfOutside = false): boolean => {
     const frameDocument = getFrameDocument();
@@ -3222,31 +2868,21 @@ export function createPreviewController({
       state: PreviewSourcePositionMarkerState,
       {
         revealIfOutside = false,
-        deferLayout = false,
-        activateNavigation = false
-      }: { readonly revealIfOutside?: boolean; readonly deferLayout?: boolean; readonly activateNavigation?: boolean } = {}
+        deferLayout = false
+      }: { readonly revealIfOutside?: boolean; readonly deferLayout?: boolean } = {}
     ) => {
       sourcePositionMarkerState = {
         visible: state.visible,
         line: Math.max(1, Math.round(state.line)),
         active: state.active
       };
+      updateViewportAlignment();
       if (deferLayout) {
         if (!sourcePositionMarkerState.visible) {
           if (sourcePositionMarker) sourcePositionMarker.hidden = true;
-          hideSourceNavigation();
         }
         return false;
       }
-      if (!sourcePositionMarkerState.visible) hideSourceNavigation();
-      else if (getSourceNavigationPosition && (
-        (sourcePositionMarkerState.active && activateNavigation)
-        || (sourceNavigationDirection === 'preview' && sourceNavigationLine !== null
-          && (pendingSourceNavigationLine === null || pendingSourceNavigationDirection === 'preview')
-          && (sourcePositionMarkerState.active || sourceNavigationHovered || document.activeElement === sourceNavigation))
-      )) {
-        requestSourceNavigation(sourcePositionMarkerState.line, 'preview', activateNavigation);
-      } else if (!sourcePositionMarkerState.active && sourceNavigationDirection === 'preview') scheduleSourceNavigationHide();
       return refreshSourcePositionMarker(revealIfOutside);
     },
     syncAutoAppearance: () => {
@@ -3258,16 +2894,16 @@ export function createPreviewController({
       refreshTheme();
     },
     refreshTheme,
-    setSourcePreviewControls: (active: boolean) => {
+    setSourcePreviewControls: (active: boolean, scrollSyncEnabled = true) => {
       sourcePreviewControls = active;
-      if (!active) hideSourceNavigation();
+      synchronizedScrolling = scrollSyncEnabled;
+      updateViewportAlignment();
       updateThemeToggle();
     },
     refreshDocumentBackground: (refreshMermaid = false) => {
       const frameDocument = getFrameDocument();
       if (!frameDocument) return;
       syncDocumentBackground(frameDocument);
-      refreshSourceNavigation();
       if (refreshMermaid && presetPreference === 'default' && appearance === getEditorAppearance()) {
         for (const block of frameDocument.querySelectorAll<HTMLElement>('.meo-export-mermaid[data-source-b64]')) delete block.dataset.meoPreviewMermaidAppearance;
         void previewMermaidRenderer.render(frameDocument, appearance, () => { sourceMapDirty = true; },
@@ -3283,12 +2919,12 @@ export function createPreviewController({
     setVisible: (visible: boolean) => {
       host.hidden = !visible;
       host.inert = !visible;
+      updateViewportAlignment();
       if (!visible) {
         appearanceRetentionGeneration += 1;
         appearanceRetention?.release();
         cancelPaintReady();
         search.surfaceHidden();
-        hideSourceNavigation();
       }
       else if (activeFrameDocument && !hasPendingRequest) schedulePaintReady();
     },
@@ -3333,7 +2969,6 @@ export function createPreviewController({
       search.refreshLayout();
       sourceMapDirty = true;
       refreshSourcePositionMarker();
-      refreshSourceNavigation();
     },
     getSelectedText: () => frame.contentWindow?.getSelection()?.toString() ?? '',
     getSearchAdapter: () => search.adapter,
@@ -3358,7 +2993,6 @@ export function createPreviewController({
       sourceMap = [];
       visualSourceMap = [];
       sourceMapByElement = new WeakMap();
-      sourceNavigationCandidatesByRoot = new WeakMap();
       sourceMapDirty = true;
       sourceMapResizeObserver?.disconnect();
       sourceMapResizeObserver = null;
@@ -3367,12 +3001,7 @@ export function createPreviewController({
       sourcePositionMarker?.remove();
       sourcePositionMarker = null;
       sourcePositionMarkerDocument = null;
-      hideSourceNavigation();
-      sourceNavigationHighlight?.remove();
-      sourceNavigationHighlight = null;
-      sourceNavigationHighlightDocument = null;
-      sourceNavigation?.remove();
-      sourceNavigation = null;
+      viewportAlignment.remove();
       frameRenderedText = null;
       loadingFrameText = null;
       frame.style.removeProperty('visibility');

@@ -2809,4 +2809,52 @@ for (const interpolatedWhitespace of [undefined, true]) {
   } finally { controller.destroy(); }
 }
 
+// Independent alignment measures current semantic geometry only on explicit activation.
+{
+  const doc = Text.of(Array.from({ length: 100 }, () => 'line'));
+  const selection = { main: { anchor: 5, head: 9 } };
+  const scrollDOM = { scrollTop: 300, scrollLeft: 27, scrollHeight: 2000, scrollWidth: 900, clientHeight: 400, clientWidth: 800 };
+  let previewTop = 1800;
+  let geometryShift = 0;
+  let measurements = 0;
+  const view = {
+    dom: {}, scrollDOM, state: { doc, selection },
+    dispatch: () => { throw new Error('View alignment must not dispatch a selection or document change'); },
+    lineBlockAt: (position: number) => {
+      const line = doc.lineAt(position);
+      return { from: line.from, to: line.to, top: (line.number - 1) * 20, bottom: line.number * 20 };
+    }
+  };
+  const controller = new ViewportController(view as any, {
+    attachInteractions: false, getMode: () => 'source',
+    previewSurface: {
+      captureTopVisiblePosition: () => null, restoreTopVisiblePosition: () => { throw new Error('Measured map should own alignment'); },
+      readScrollTop: () => previewTop, writeScrollTop: top => { previewTop = top; },
+      captureLinkedGeometry: () => {
+        measurements++;
+        return { regions: [{ startLine: 11, endLine: 20, top: 500 + geometryShift, bottom: 600 + geometryShift }], maximumScrollTop: 2800 };
+      }
+    }
+  });
+  try {
+    if (!controller.alignLinkedViewport('editor') || previewTop !== 550 || scrollDOM.scrollTop !== 300) throw new Error('Manual Source alignment ignored semantic geometry');
+    if (controller.getLastViewportInteractionOwner() !== 'editor') throw new Error('Manual alignment lost its origin owner');
+    scrollDOM.scrollTop = 1200;
+    if (!controller.alignLinkedViewport('preview') || scrollDOM.scrollTop !== 300 || previewTop !== 550 || scrollDOM.scrollLeft !== 27) throw new Error('Manual Preview alignment changed its origin or Source horizontal position');
+    if (controller.getLastViewportInteractionOwner() !== 'preview' || view.state.selection !== selection) throw new Error('Manual alignment changed Source selection');
+    geometryShift = 120;
+    controller.alignLinkedViewport('editor');
+    if (previewTop !== 670 || measurements !== 3) throw new Error('Manual alignment reused stale geometry');
+    scrollDOM.scrollTop = 1000;
+    controller.editorViewportChanged();
+    controller.previewViewportChanged();
+    controller.linkedPreviewReady();
+    if (previewTop !== 670 || measurements !== 3) throw new Error('One-shot alignment enabled continuous sync or background measurements');
+    controller.setLinkedPreviewEnabled(true, 'last-interaction');
+    if (controller.alignLinkedViewport('editor')) throw new Error('Automatic sync must own linked alignment');
+    controller.setLinkedPreviewEnabled(false);
+  } finally { controller.destroy(); }
+  if (controller.alignLinkedViewport('editor')) throw new Error('Disposed alignment must be inert');
+}
+
 console.log('viewport controller checks passed');

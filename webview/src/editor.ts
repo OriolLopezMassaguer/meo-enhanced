@@ -218,8 +218,6 @@ type SourcePositionChange = {
   readonly line: number;
   readonly active: boolean;
   readonly revealIfOutside: boolean;
-  /** Layout notifications update geometry without taking navigation ownership. */
-  readonly activateNavigation: boolean;
 };
 
 type CreateEditorOptions = {
@@ -463,7 +461,6 @@ export function createEditor({
   let onBlockActionPointerMove: ((event: PointerEvent) => void) | null = null;
   let onBlockActionPointerLeave: (() => void) | null = null;
   let onSourcePositionPointerDown: ((event: PointerEvent) => void) | null = null;
-  let onSourcePositionLayoutChange: (() => void) | null = null;
   let editorHistoryRuntime: EditorHistoryRuntime | null = null;
   let historyScrollGuard: EditorHistoryViewport | null = null;
   let pendingTableHistoryFocus: { replayId: number; semanticTarget: string; stableChecks: number } | null = null;
@@ -491,13 +488,12 @@ export function createEditor({
   const tablePositionDerivedConsumer = {};
   const bootstrapDerivedConsumer = {};
   let editorDestroyed = false;
-  const emitSourcePositionChange = (active: boolean, revealIfOutside = false, activateNavigation = true): void => {
+  const emitSourcePositionChange = (active: boolean, revealIfOutside = false): void => {
     if (!view || currentMode !== 'source') return;
     onSourcePositionChange?.({
       line: view.state.doc.lineAt(view.state.selection.main.head).number,
       active,
-      revealIfOutside,
-      activateNavigation
+      revealIfOutside
     });
   };
   const startImeComposition = () => {
@@ -2667,9 +2663,6 @@ export function createEditor({
         } else if (update.viewportChanged) {
           emitSelectionChange();
         }
-        if (update.geometryChanged && !update.selectionSet && !update.docChanged) {
-          emitSourcePositionChange(update.view.hasFocus, false, false);
-        }
 
         if (update.docChanged) {
           if (currentMode === 'live') mermaidDocumentPreloader?.schedule(update.state);
@@ -2770,13 +2763,10 @@ export function createEditor({
     onSourcePositionChange?.({
       line: view.state.doc.lineAt(position).number,
       active: true,
-      revealIfOutside: true,
-      activateNavigation: true
+      revealIfOutside: true
     });
   };
   view.dom.addEventListener('pointerdown', onSourcePositionPointerDown);
-  onSourcePositionLayoutChange = () => emitSourcePositionChange(view.hasFocus, false, false);
-  view.scrollDOM.addEventListener('scroll', onSourcePositionLayoutChange, { passive: true });
   // CodeMirror filters events owned by embedded editors. Their projected
   // changes still belong to this document and must share its IME save boundary.
   const onNestedComposition = (event: Event) => {
@@ -3557,22 +3547,8 @@ export function createEditor({
     holdLinkedPreviewAttention(): void {
       viewportController.holdLinkedPreviewAttention();
     },
-    /** Read after editor updates; positions use the outer document's client coordinates. */
-    getSourceNavigationPosition() {
-      if (currentMode !== 'source') return null;
-      const head = view.state.selection.main.head;
-      const caret = view.coordsAtPos(head);
-      if (!caret) return null;
-      const viewport = view.scrollDOM.getBoundingClientRect();
-      return {
-        line: view.state.doc.lineAt(head).number,
-        top: caret.top,
-        bottom: caret.bottom,
-        viewportTop: viewport.top + view.scrollDOM.clientTop,
-        viewportBottom: viewport.top + view.scrollDOM.clientTop + view.scrollDOM.clientHeight,
-        background: getComputedStyle(document.body).backgroundColor,
-        foreground: getComputedStyle(view.contentDOM).color
-      };
+    alignLinkedViewport(owner: ViewportAnchorOwner): boolean {
+      return viewportController.alignLinkedViewport(owner);
     },
     navigateLinkedViewportToTop(owner: ViewportAnchorOwner): boolean {
       return viewportController.navigateLinkedToTop(owner);
@@ -3672,10 +3648,6 @@ export function createEditor({
       if (onSourcePositionPointerDown) {
         view.dom.removeEventListener('pointerdown', onSourcePositionPointerDown);
         onSourcePositionPointerDown = null;
-      }
-      if (onSourcePositionLayoutChange) {
-        view.scrollDOM.removeEventListener('scroll', onSourcePositionLayoutChange);
-        onSourcePositionLayoutChange = null;
       }
       if (blockActionToolbarReconcileFrame !== null) {
         window.cancelAnimationFrame(blockActionToolbarReconcileFrame);
