@@ -5,7 +5,7 @@ import previewPresetBrandIcons from './previewPresetBrandIcons.json';
 import { getExportStyleEnvironment } from './export';
 import { documentSurfaceVariables } from '../../../src/shared/documentSurfaceRoles';
 import { createPreviewMermaidRenderer } from './previewMermaid';
-import { createCopyCodeButton } from './codeBlockControls';
+import { addPreviewCodeCopyControls, closePreviewBlockFullscreen } from './previewBlockActions';
 import { logWebviewRenderError } from './errors';
 import { normalizeDocumentText } from '../../../src/foundation/documentText';
 import { createDocumentScrollToTopController } from './scrollToTop';
@@ -253,52 +253,6 @@ function preserveLoadedPreviewImage(fromImage: HTMLImageElement, toImage: HTMLIm
   return true;
 }
 
-// These reading controls are added only to the iframe DOM, never to shared export HTML.
-const previewCopyBlockSelector = '.meo-export-code-block-wrap, .meo-export-mermaid, .meo-export-math-display';
-
-function addPreviewCodeCopyControls(root: ParentNode, language: UiLanguage): void {
-  const strings = getUiStrings(language);
-  for (const block of root.querySelectorAll<HTMLElement>(previewCopyBlockSelector)) {
-    if (block.classList.contains('meo-export-mermaid')
-      && !block.querySelector(':scope > .meo-export-code-language-label')) {
-      const label = block.ownerDocument.createElement('div');
-      label.className = 'meo-export-code-language-label';
-      label.textContent = 'mermaid';
-      block.prepend(label);
-    }
-    const code = block.querySelector<HTMLElement>(':scope > pre > code');
-    if (!code && block.dataset.sourceB64 === undefined) continue;
-    let button = block.querySelector<HTMLElement>(':scope > .meo-preview-code-actions > .meo-copy-code-btn');
-    if (!button) {
-      const copyButton = createCopyCodeButton(() => {
-        // Resolve the live DOM after incremental updates and Shiki token projection.
-        const currentBlock = copyButton.closest<HTMLElement>(previewCopyBlockSelector);
-        if (currentBlock?.dataset.sourceB64 !== undefined) {
-          const binary = window.atob(currentBlock.dataset.sourceB64);
-          const source = new TextDecoder().decode(Uint8Array.from(binary, character => character.charCodeAt(0)));
-          // Mermaid's render payload includes the structural newline before its fence.
-          return currentBlock.classList.contains('meo-export-mermaid') ? source.replace(/\n$/, '') : source;
-        }
-        const currentCode = currentBlock?.querySelector(':scope > pre > code');
-        if (!currentCode) return '';
-        const lines = Array.from(currentCode.querySelectorAll('.meo-export-code-line-source'));
-        return lines.map(line => line.textContent ?? '').join('\n');
-      }, language, block.ownerDocument);
-      // A mouse click must not collapse the reader's existing text selection.
-      copyButton.addEventListener('mousedown', event => {
-        if (event.button === 0) event.preventDefault();
-      });
-      const actions = block.ownerDocument.createElement('span');
-      actions.className = 'meo-preview-code-actions';
-      actions.append(copyButton);
-      block.append(actions);
-      button = copyButton;
-    }
-    button.dataset.tooltip = strings.copyCode;
-    button.setAttribute('aria-label', strings.copyCode);
-  }
-}
-
 const previewCodeCopyStyles = `
 .meo-export-mermaid, .meo-export-math-display { position: relative; }
 .meo-export-mermaid { padding-block: 24px; }
@@ -308,20 +262,24 @@ const previewCodeCopyStyles = `
   opacity: 0; pointer-events: none;
 }
 :is(.meo-export-code-block-wrap, .meo-export-mermaid, .meo-export-math-display):hover > .meo-preview-code-actions,
-.meo-preview-code-actions:focus-within { opacity: 1; pointer-events: auto; }
-.meo-preview-code-actions > .meo-copy-code-btn {
+.meo-preview-code-actions:has(:focus-visible:not([data-meo-pointer-focus])) { opacity: 1; pointer-events: auto; }
+.meo-preview-code-actions > [role="button"] {
   display: inline-flex; align-items: center; justify-content: center;
   box-sizing: border-box; width: 22px; height: 20px; padding: 0; border: 0; border-radius: 6px;
+  outline: none;
   cursor: pointer; color: var(--meo-preview-code-copy-fg, var(--meo-fg)); background: var(--meo-preview-code-copy-bg, transparent);
 }
-.meo-preview-code-actions > .meo-copy-code-btn:is(:hover, :focus-visible) {
+.meo-preview-code-actions > [role="button"]:is(:hover, :focus-visible:not([data-meo-pointer-focus])) {
   color: var(--meo-preview-code-copy-hover-fg, var(--meo-fg));
   background: var(--meo-preview-code-copy-hover-bg, color-mix(in srgb, var(--meo-fg) 12%, var(--meo-bg)));
 }
-.meo-preview-code-actions > .meo-copy-code-btn:focus-visible {
+.meo-preview-code-actions > [role="button"]:focus-visible:not([data-meo-pointer-focus]) {
   outline: 1px solid var(--meo-preview-code-copy-hover-fg, var(--meo-fg)); outline-offset: 1px;
 }
 .meo-preview-code-actions svg { display: block; }
+.meo-preview-code-actions > [aria-disabled="true"] { opacity: .4; cursor: default; }
+.meo-preview-action-status { position: absolute; top: 25px; right: 0; width: max-content; max-width: 240px; padding: 4px 8px; border-radius: 6px; background: var(--meo-bg); color: var(--meo-fg); font-size: 12px; white-space: normal; }
+
 @media print { .meo-preview-code-actions { display: none; } }
 `;
 
@@ -977,6 +935,7 @@ export function createPreviewController({
   status.hidden = true;
 
   const applyUiLanguage = (language: UiLanguage): void => {
+    if (language !== uiLanguage) closePreviewBlockFullscreen(frame.contentDocument);
     uiLanguage = language;
     uiStrings = getUiStrings(language);
     frame.title = uiStrings.previewTitle;
@@ -1867,6 +1826,7 @@ export function createPreviewController({
       else commit(null);
       return;
     }
+    closePreviewBlockFullscreen(frame.contentDocument);
     disposePreviewMathViewports();
     previewTableLayout?.dispose();
     previewTableLayout = null;
@@ -2921,6 +2881,7 @@ export function createPreviewController({
       host.inert = !visible;
       updateViewportAlignment();
       if (!visible) {
+        closePreviewBlockFullscreen(frame.contentDocument);
         appearanceRetentionGeneration += 1;
         appearanceRetention?.release();
         cancelPaintReady();
@@ -2976,6 +2937,7 @@ export function createPreviewController({
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      closePreviewBlockFullscreen(frame.contentDocument);
       appearanceRetention?.release();
       cancelPaintReady();
       cancelHighlightFrame();

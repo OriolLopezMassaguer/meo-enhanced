@@ -1,5 +1,5 @@
 import { WidgetType, type EditorView } from '@codemirror/view';
-import { createElement, ZoomIn, ZoomOut, RotateCcw, Maximize2, X } from 'lucide';
+import { createElement, ZoomIn, ZoomOut, RotateCcw, Maximize2 } from 'lucide';
 import type { EditorState } from '@codemirror/state';
 import type { SyntaxNodeRef } from '@lezer/common';
 import type { MermaidConfig } from 'mermaid';
@@ -12,6 +12,8 @@ import type {
   MermaidDiagramPresentationHandle
 } from '../editor/mermaidDiagramPresentation';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
+import { openMermaidFullscreen, type MermaidFullscreenViewer, type MermaidFullscreenExitCause } from './mermaidFullscreen';
+import { focusRenderedBlockAction } from './renderedBlockActionFocus';
 import { mountMermaidPreviewControls } from './renderedBlockModeControls';
 import { estimateBlockWidgetHeight } from '../editor/blockWidgetHeight';
 
@@ -50,19 +52,9 @@ export function createMermaidViewportState(): MermaidViewportState {
   return { zoom: 1, panX: 0, panY: 0, diagramType: null };
 }
 
-type MermaidFullscreenExitCause =
-  | 'user-close'
-  | 'escape'
-  | 'dispose'
-  | 'replacement'
-  | 'mode'
-  | 'external'
-  | 'theme';
-
 type MermaidFullscreenSession = {
-  readonly overlay: HTMLElement;
-  readonly container: HTMLElement;
-  readonly svgWrapper: HTMLElement;
+  readonly viewer: MermaidFullscreenViewer;
+  readonly pointerDriven: boolean;
   readonly embedded: {
     readonly wrapper: HTMLElement;
     readonly transform: string;
@@ -74,13 +66,7 @@ type MermaidFullscreenSession = {
     readonly focus: HTMLElement | null;
     readonly presentation: MermaidDiagramPresentationHandle | null;
   };
-  zoom: number;
-  panX: number;
-  panY: number;
-  baseScale: number;
-  pointerId: number | null;
-  cleanup: () => void;
-  keydown: (event: KeyboardEvent) => void;
+
 };
 
 export const MERMAID_EDITOR_CONFIG_KEY = 'editor-v1';
@@ -907,8 +893,7 @@ export class MermaidDiagramWidget extends WidgetType {
       applyMermaidThemeClass(container);
       for (const controls of container.querySelectorAll<HTMLElement>('.meo-mermaid-zoom-controls')) applyMermaidThemeClass(controls);
       if (this.fullscreenSession) {
-        applyMermaidThemeClass(this.fullscreenSession.container);
-        for (const controls of this.fullscreenSession.container.querySelectorAll<HTMLElement>('.meo-mermaid-zoom-controls')) applyMermaidThemeClass(controls);
+        this.fullscreenSession.viewer.refreshTheme();
       }
       const refreshedIdentity = getMermaidEditorPresentationIdentity();
       this.themeSignature = refreshedIdentity.themeKey;
@@ -926,7 +911,7 @@ export class MermaidDiagramWidget extends WidgetType {
     if (currentPresentation && this.fullscreenSession) {
       // Replace only the SVG; the modal controls, focus and camera remain owned
       // by the same session throughout a successful presentation refresh.
-      this.fullscreenSession.svgWrapper.innerHTML = svgContent;
+      this.fullscreenSession.viewer.update(svgContent);
     }
     this.embeddedControlsCleanup();
     const svgWrapper = document.createElement('div');
@@ -1273,7 +1258,7 @@ export class MermaidDiagramWidget extends WidgetType {
     fullscreen.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.toggleFullscreen(svgContainer);
+      this.toggleFullscreen(svgContainer, e.detail > 0);
     });
 
     controls.addEventListener('pointerdown', (event) => {
@@ -1291,36 +1276,21 @@ export class MermaidDiagramWidget extends WidgetType {
     return controls;
   }
 
-  toggleFullscreen(svgContainer: HTMLElement): void {
+  toggleFullscreen(svgContainer: HTMLElement, pointerDriven = false): void {
     if (this.fullscreenSession) {
       this.exitFullscreen('user-close');
     } else {
-      this.enterFullscreen(svgContainer);
+      this.enterFullscreen(svgContainer, pointerDriven);
     }
   }
 
-  enterFullscreen(svgContainer: HTMLElement): void {
+  enterFullscreen(svgContainer: HTMLElement, pointerDriven = false): void {
     if (this.fullscreenSession) {
       return;
     }
-    const svgContent = svgContainer.innerHTML;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'meo-mermaid-fullscreen-scrim';
-
-    const fullscreenContainer = document.createElement('div');
-    fullscreenContainer.className = 'meo-mermaid-fullscreen';
-    applyMermaidThemeClass(fullscreenContainer);
-
-    const svgWrapper = document.createElement('div');
-    svgWrapper.className = 'meo-mermaid-svg-wrapper';
-    svgWrapper.innerHTML = svgContent;
-
     const scroller = svgContainer.closest<HTMLElement>('.cm-scroller');
     const session: MermaidFullscreenSession = {
-      overlay,
-      container: fullscreenContainer,
-      svgWrapper,
+      pointerDriven,
       embedded: {
         wrapper: svgContainer,
         transform: svgContainer.style.transform,
@@ -1332,251 +1302,21 @@ export class MermaidDiagramWidget extends WidgetType {
         focus: document.activeElement instanceof HTMLElement ? document.activeElement : null,
         presentation: this.presentationHandle
       },
-      zoom: 1,
-      panX: 0,
-      panY: 0,
-      baseScale: 1,
-      pointerId: null,
-      cleanup: () => {},
-      keydown: () => {}
+      viewer: openMermaidFullscreen({
+        svg: svgContainer.innerHTML,
+        uiLanguage: this.uiLanguage,
+        pointerDriven,
+        decorate: applyMermaidThemeClass,
+        onClose: (cause, pointerExit) => this.exitFullscreen(cause, session, pointerExit)
+      }),
     };
     this.fullscreenSession = session;
-
-    fullscreenContainer.appendChild(svgWrapper);
-
-    const controls = this.createFullscreenControls(session);
-    fullscreenContainer.appendChild(controls);
-
-    this.attachFullscreenInteractions(session);
-
-    overlay.appendChild(fullscreenContainer);
-    document.body.appendChild(overlay);
-
-    requestAnimationFrame(() => {
-      if (this.fullscreenSession !== session) return;
-      const svg = svgWrapper.querySelector('svg');
-      if (svg) {
-        const containerRect = fullscreenContainer.getBoundingClientRect();
-        const padding = 80;
-        const availableWidth = containerRect.width - padding;
-        const availableHeight = containerRect.height - padding;
-
-        const svgWidth = svg.getBoundingClientRect().width || svg.viewBox.baseVal.width;
-        const svgHeight = svg.getBoundingClientRect().height || svg.viewBox.baseVal.height;
-
-        if (svgWidth > 0 && svgHeight > 0) {
-          const scaleX = availableWidth / svgWidth;
-          const scaleY = availableHeight / svgHeight;
-          session.baseScale = Math.min(scaleX, scaleY);
-        } else {
-          session.baseScale = 1;
-        }
-
-        this.applyFullscreenTransform(session);
-      }
-    });
-
-    session.keydown = (event) => {
-      if (event.key === 'Escape') {
-        this.exitFullscreen('escape', session);
-      }
-    };
-    document.addEventListener('keydown', session.keydown);
-  }
-
-  createFullscreenControls(session: MermaidFullscreenSession): HTMLElement {
-    const strings = getUiStrings(this.uiLanguage);
-    const svgContainer = session.svgWrapper;
-    const controls = document.createElement('div');
-    controls.className = 'meo-visual-controls meo-mermaid-zoom-controls meo-mermaid-fullscreen-controls';
-    applyMermaidThemeClass(controls);
-
-    const zoomIn = document.createElement('button');
-    zoomIn.type = 'button';
-    zoomIn.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
-    zoomIn.appendChild(createElement(ZoomIn, { width: 16, height: 16 }));
-    zoomIn.setAttribute('aria-label', strings.zoomIn);
-
-    const zoomOut = document.createElement('button');
-    zoomOut.type = 'button';
-    zoomOut.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
-    zoomOut.appendChild(createElement(ZoomOut, { width: 16, height: 16 }));
-    zoomOut.setAttribute('aria-label', strings.zoomOut);
-
-    const reset = document.createElement('button');
-    reset.type = 'button';
-    reset.className = 'meo-visual-control-btn meo-mermaid-zoom-btn';
-    reset.appendChild(createElement(RotateCcw, { width: 16, height: 16 }));
-    reset.setAttribute('aria-label', strings.resetZoom);
-
-    const exitBtn = document.createElement('button');
-    exitBtn.type = 'button';
-    exitBtn.className = 'meo-visual-control-btn meo-mermaid-zoom-btn meo-mermaid-exit-btn';
-    exitBtn.appendChild(createElement(X, { width: 16, height: 16 }));
-    exitBtn.setAttribute('aria-label', strings.exitFullscreen);
-
-    for (const button of [zoomIn, zoomOut, reset, exitBtn]) {
-      button.dataset.tooltip = button.getAttribute('aria-label')!;
-    }
-
-    zoomIn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (this.fullscreenSession !== session) return;
-      session.zoom = Math.min(4, session.zoom + 0.5);
-      this.applyFullscreenTransform(session);
-    });
-
-    zoomOut.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (this.fullscreenSession !== session) return;
-      session.zoom = Math.max(0.25, session.zoom - 0.5);
-      this.applyFullscreenTransform(session);
-    });
-
-    reset.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (this.fullscreenSession !== session) return;
-      session.zoom = 1;
-      session.panX = 0;
-      session.panY = 0;
-      this.applyFullscreenTransform(session);
-    });
-
-    exitBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.exitFullscreen('user-close', session);
-    });
-
-    controls.appendChild(zoomIn);
-    controls.appendChild(zoomOut);
-    controls.appendChild(reset);
-    controls.appendChild(exitBtn);
-
-    return controls;
-  }
-
-  applyFullscreenTransform(session: MermaidFullscreenSession): void {
-    if (this.fullscreenSession !== session) return;
-    const { svgWrapper, container } = session;
-    const scale = (session.baseScale || 1) * session.zoom;
-    svgWrapper.style.transform = `translate(${session.panX}px, ${session.panY}px) scale(${scale})`;
-
-    const svg = svgWrapper.querySelector<SVGSVGElement>('svg');
-    if (!svg) return;
-    const viewport = container.getBoundingClientRect();
-    const diagram = svg.getBoundingClientRect();
-    let correctionX = 0;
-    let correctionY = 0;
-
-    if (diagram.width >= viewport.width) {
-      if (diagram.left > viewport.left) correctionX = viewport.left - diagram.left;
-      else if (diagram.right < viewport.right) correctionX = viewport.right - diagram.right;
-    } else {
-      if (diagram.left < viewport.left) correctionX = viewport.left - diagram.left;
-      else if (diagram.right > viewport.right) correctionX = viewport.right - diagram.right;
-    }
-    if (diagram.height >= viewport.height) {
-      if (diagram.top > viewport.top) correctionY = viewport.top - diagram.top;
-      else if (diagram.bottom < viewport.bottom) correctionY = viewport.bottom - diagram.bottom;
-    } else {
-      if (diagram.top < viewport.top) correctionY = viewport.top - diagram.top;
-      else if (diagram.bottom > viewport.bottom) correctionY = viewport.bottom - diagram.bottom;
-    }
-
-    if (correctionX !== 0 || correctionY !== 0) {
-      session.panX += correctionX;
-      session.panY += correctionY;
-      svgWrapper.style.transform = `translate(${session.panX}px, ${session.panY}px) scale(${scale})`;
-    }
-  }
-
-  attachFullscreenInteractions(session: MermaidFullscreenSession): void {
-    const { svgWrapper, container } = session;
-    let lastMouseX = 0;
-    let lastMouseY = 0;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (this.fullscreenSession !== session) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('.meo-mermaid-zoom-controls')) return;
-      if (target?.closest('.meo-mermaid-zoom-btn')) return;
-      if (event.button !== 0) return;
-
-      container.style.cursor = 'grabbing';
-      session.pointerId = event.pointerId;
-      container.setPointerCapture(event.pointerId);
-      lastMouseX = event.clientX;
-      lastMouseY = event.clientY;
-    };
-
-    const onPointerMove = (event: PointerEvent) => {
-      if (this.fullscreenSession !== session || session.pointerId !== event.pointerId) return;
-      const dx = event.clientX - lastMouseX;
-      const dy = event.clientY - lastMouseY;
-      session.panX += dx;
-      session.panY += dy;
-      lastMouseX = event.clientX;
-      lastMouseY = event.clientY;
-      this.applyFullscreenTransform(session);
-    };
-
-    const onPointerUp = (event: PointerEvent) => {
-      if (session.pointerId !== event.pointerId) return;
-      if (container.hasPointerCapture(event.pointerId)) {
-        container.releasePointerCapture(event.pointerId);
-      }
-      session.pointerId = null;
-      container.style.cursor = 'grab';
-    };
-
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      if (this.fullscreenSession !== session) return;
-      const delta = event.deltaY > 0 ? -0.25 : 0.25;
-      const newZoom = Math.max(0.25, Math.min(4, session.zoom + delta));
-      const scaleRatio = newZoom / session.zoom;
-      const rect = container.getBoundingClientRect();
-      const pointX = event.clientX - (rect.left + rect.width / 2);
-      const pointY = event.clientY - (rect.top + rect.height / 2);
-      session.panX = pointX - (pointX - session.panX) * scaleRatio;
-      session.panY = pointY - (pointY - session.panY) * scaleRatio;
-      session.zoom = newZoom;
-      this.applyFullscreenTransform(session);
-    };
-
-    container.addEventListener('pointerdown', onPointerDown);
-    container.addEventListener('pointermove', onPointerMove);
-    container.addEventListener('pointerup', onPointerUp);
-    container.addEventListener('pointercancel', onPointerUp);
-    container.addEventListener('wheel', onWheel, { passive: false });
-
-    session.cleanup = () => {
-      let pointerCaptureError: unknown = null;
-      try {
-        if (session.pointerId !== null && container.hasPointerCapture(session.pointerId)) {
-          container.releasePointerCapture(session.pointerId);
-        }
-      } catch (error) {
-        pointerCaptureError = error;
-      } finally {
-        session.pointerId = null;
-      }
-      container.removeEventListener('pointerdown', onPointerDown);
-      container.removeEventListener('pointermove', onPointerMove);
-      container.removeEventListener('pointerup', onPointerUp);
-      container.removeEventListener('pointercancel', onPointerUp);
-      container.removeEventListener('wheel', onWheel);
-      if (pointerCaptureError) throw pointerCaptureError;
-    };
   }
 
   exitFullscreen(
     cause: MermaidFullscreenExitCause,
-    expectedSession: MermaidFullscreenSession | null = this.fullscreenSession
+    expectedSession: MermaidFullscreenSession | null = this.fullscreenSession,
+    pointerDriven = expectedSession?.pointerDriven ?? false
   ): void {
     const session = this.fullscreenSession;
     if (!session || session !== expectedSession) return;
@@ -1584,19 +1324,10 @@ export class MermaidDiagramWidget extends WidgetType {
 
     const cleanupErrors: unknown[] = [];
     try {
-      session.cleanup();
+      session.viewer.close(cause);
     } catch (error) {
-      cleanupErrors.push(error);
-    }
-    try {
-      document.removeEventListener('keydown', session.keydown);
-    } catch (error) {
-      cleanupErrors.push(error);
-    }
-    try {
-      session.overlay.remove();
-    } catch (error) {
-      cleanupErrors.push(error);
+      if (error instanceof AggregateError) cleanupErrors.push(...error.errors);
+      else cleanupErrors.push(error);
     }
 
     const isUserExit = cause === 'user-close' || cause === 'escape';
@@ -1623,7 +1354,7 @@ export class MermaidDiagramWidget extends WidgetType {
           : session.embedded.focus?.classList.contains('meo-mermaid-fullscreen-btn')
             ? this.container?.querySelector<HTMLElement>('.meo-mermaid-fullscreen-btn') : null;
         if (target?.isConnected) {
-          target.focus({ preventScroll: true });
+          focusRenderedBlockAction(target, pointerDriven);
           if (document.activeElement !== target) {
             // Preview controls become visible after their layout measurement
             // observes the removed modal. Do not override a newer interaction.
@@ -1631,7 +1362,7 @@ export class MermaidDiagramWidget extends WidgetType {
             requestAnimationFrame(() => requestAnimationFrame(() => {
               if (!this.fullscreenSession && this.presentationHandle === session.embedded.presentation
                 && target.isConnected && document.activeElement === exitFocus) {
-                target.focus({ preventScroll: true });
+                focusRenderedBlockAction(target, pointerDriven);
               }
             }));
           }

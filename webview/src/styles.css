@@ -2307,7 +2307,7 @@ html[data-meo-ui-contrast='high'] :is(.format-button, .preview-toolbar-action, .
 }
 
 .meo-code-block-actions.is-block-hovered,
-.meo-code-block-actions:has(:focus-visible) {
+.meo-code-block-actions:has(:focus-visible:not([data-meo-pointer-focus])) {
   opacity: 1;
 }
 
@@ -4018,15 +4018,15 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .meo-md-math-fenced-display:hover > .meo-math-copy-actions,
-.meo-md-math-fenced-display:focus-within > .meo-math-copy-actions,
+.meo-md-math-fenced-display:has(:focus-visible:not([data-meo-pointer-focus])) > .meo-math-copy-actions,
 .meo-math-source-start:hover .meo-math-copy-actions,
-.meo-math-source-actions:focus-within,
+.meo-math-source-actions:has(:focus-visible:not([data-meo-pointer-focus])),
 .cm-focused .meo-math-source-actions {
   opacity: 1;
   pointer-events: auto;
 }
 
-.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn) {
+.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn, .meo-copy-image-btn) {
   position: static;
   display: inline-flex;
   align-items: center;
@@ -4040,8 +4040,8 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   color: var(--meo-code-action-foreground);
 }
 
-.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn):hover,
-.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn):focus-visible {
+.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn, .meo-copy-image-btn):hover,
+.meo-math-copy-actions :is(.meo-copy-code-btn, .meo-select-all-code-btn, .meo-copy-image-btn):focus-visible:not([data-meo-pointer-focus]) {
   background: var(--meo-semantic-codeCopyHoverBackground);
   color: var(--meo-code-action-hover-foreground);
 }
@@ -4227,7 +4227,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .meo-mermaid-toolbar.is-block-hovered,
 .meo-latex-math-toolbar.is-block-hovered,
-.meo-mermaid-toolbar:has(:focus-visible),
+.meo-mermaid-toolbar:has(:focus-visible:not([data-meo-pointer-focus])),
 .meo-latex-math-toolbar:has(:focus-visible) {
   opacity: 1;
   pointer-events: auto;
@@ -4242,7 +4242,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   }
 }
 
-.meo-mermaid-toolbar .meo-copy-code-btn,
+.meo-mermaid-toolbar :is(.meo-copy-code-btn, .meo-copy-image-btn),
 .meo-latex-math-toolbar .meo-copy-code-btn {
   position: static;
 }
@@ -4697,13 +4697,13 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   background: var(--meo-document-block-pressed);
 }
 
-.cm-editor :is(.meo-copy-code-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
+.cm-editor :is(.meo-copy-code-btn, .meo-copy-image-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
   .meo-latex-math-mode-btn, .meo-md-html-mode-btn, .meo-long-code-action):active {
   background: var(--meo-document-block-pressed);
 }
 
-.cm-editor :is(.meo-copy-code-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
-  .meo-latex-math-mode-btn, .meo-md-html-mode-btn, .meo-long-code-action):focus-visible {
+.cm-editor :is(.meo-copy-code-btn, .meo-copy-image-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
+  .meo-latex-math-mode-btn, .meo-md-html-mode-btn, .meo-long-code-action):focus-visible:not([data-meo-pointer-focus]) {
   box-shadow: inset 0 0 0 1px var(--meo-document-focus);
 }
 
@@ -5254,8 +5254,8 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   outline: none;
 }
 
-.meo-visual-control-btn:focus-visible::before {
-  outline: 1px solid var(--vscode-focusBorder);
+.meo-visual-control-btn:focus-visible:not([data-meo-pointer-focus])::before {
+  outline: 1px solid var(--meo-ui-focus, currentColor);
   outline-offset: 1px;
 }
 
@@ -5318,7 +5318,7 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
 }
 
 .cm-editor .meo-mermaid-block:hover .meo-mermaid-preview-controls,
-.cm-editor .meo-mermaid-preview-controls:focus-within {
+.cm-editor .meo-mermaid-preview-controls:has(:focus-visible:not([data-meo-pointer-focus])) {
   opacity: 1;
   pointer-events: auto;
 }
@@ -5342,14 +5342,13 @@ html[data-editor-appearance='light'] .meo-visual-control-btn {
   display: none;
 }
 
-.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn:is(:hover, :focus-visible) {
+.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn:is(:hover, :focus-visible:not([data-meo-pointer-focus])) {
   color: var(--meo-code-action-hover-foreground);
   background: var(--meo-semantic-codeCopyHoverBackground);
 }
 
-.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, currentColor);
-  outline-offset: 1px;
+.cm-editor .meo-mermaid-preview-controls .meo-visual-control-btn:focus-visible:not([data-meo-pointer-focus]) {
+  box-shadow: inset 0 0 0 1px var(--meo-document-focus, currentColor);
 }
 
 .meo-mermaid-exit-btn {
@@ -8643,4 +8642,26 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
   --meo-ui-focus: color-mix(in srgb, var(--meo-preview-foreground) 55%, var(--meo-preview-background));
   --meo-ui-danger: light-dark(#b42318, #ff837b);
   --meo-ui-shadow: 0 4px 14px rgb(0 0 0 / 24%);
+}
+
+.cm-editor .meo-copy-image-btn {
+  cursor: pointer;
+  color: var(--meo-code-action-foreground);
+}
+[data-meo-pointer-focus]:focus,
+.meo-mermaid-fullscreen-scrim:focus { outline: none; box-shadow: none; }
+.cm-editor .meo-copy-image-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
+.cm-editor .meo-preview-action-status {
+  position: absolute;
+  top: 25px;
+  right: 0;
+  z-index: 1;
+  width: max-content;
+  max-width: 240px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--meo-ui-surface-raised);
+  color: var(--meo-ui-text);
+  font-size: 12px;
+  white-space: normal;
 }

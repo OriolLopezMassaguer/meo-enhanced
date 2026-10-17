@@ -189,7 +189,7 @@ async function enterMermaidFullscreen(page: Page): Promise<void> {
     let remainingFrames = 120;
     const probe = () => {
       const button = Array.from(document.querySelectorAll<HTMLButtonElement>(
-        '.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Fullscreen"]'
+        '.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="View fullscreen"]'
       )).find((candidate) => {
         if (!candidate.isConnected || candidate.closest('.meo-rendered-block-preview')?.querySelector('.meo-mermaid-block')?.getAttribute('aria-busy') === 'true') {
           return false;
@@ -1342,7 +1342,7 @@ async function main() {
       && (chrome.label === null || chrome.label === language)
       && (chrome.label === null || chrome.labelParent)
       && chrome.toolbarParent
-      && chrome.controlCount === 3
+      && chrome.controlCount === 4
       && chrome.chrome.filter((item) => item !== null).every((item) => item
         && item.borderRadius === '6px'
         && item.borderWidth === '0px'
@@ -1666,7 +1666,7 @@ async function main() {
     if (!selectAllMode.source || !selectAllMode.selectedText?.startsWith('graph TD\nnode1 --> node2')) {
       throw new Error(`Mermaid select all did not reveal and select source: ${JSON.stringify(selectAllMode)}`);
     }
-    if (selectAllMode.controls.at(-2) !== 'Select all code' || selectAllMode.controls.at(-1) !== 'Copy') {
+    if (selectAllMode.controls.at(-3) !== 'Select all code' || selectAllMode.controls.at(-2) !== 'Copy as image' || selectAllMode.controls.at(-1) !== 'Copy source') {
       throw new Error(`Unexpected Mermaid action order: ${JSON.stringify(selectAllMode.controls)}`);
     }
     await clickVisibleBlockModeButton(page, 'mermaid');
@@ -1728,7 +1728,7 @@ async function main() {
       '.meo-mermaid-editing-block.is-split [data-themed-node]',
       (node) => ({ fill: node.getAttribute('fill'), light: Boolean(node.closest('.meo-mermaid-light-theme')) })
     );
-    await page.focus('.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="Fullscreen"]');
+    await page.focus('.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="View fullscreen"]');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => Boolean(
       document.querySelector<HTMLElement>('.meo-mermaid-fullscreen .meo-mermaid-svg-wrapper')?.style.transform
@@ -1824,7 +1824,7 @@ async function main() {
     await waitForFrames(page, 3);
     const restoredThemeFocus = await page.evaluate(() => {
       const target = document.querySelector<HTMLButtonElement>(
-        '.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="Fullscreen"]'
+        '.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="View fullscreen"]'
       );
       return {
         restored: Boolean(target?.isConnected && document.activeElement === target),
@@ -2303,7 +2303,7 @@ async function main() {
       });
     });
     await page.waitForFunction(() => (
-      document.querySelectorAll('#localized-rendered-block-actions .meo-mermaid-toolbar .meo-code-block-pill').length === 2
+      document.querySelectorAll('#localized-rendered-block-actions .meo-mermaid-toolbar .meo-code-block-pill').length === 3
       && document.querySelectorAll('#localized-rendered-block-actions .meo-math-copy-actions .meo-copy-code-btn').length === 1
     ));
     const localizedRenderedBlockActions = await page.evaluate(() => ({
@@ -2316,11 +2316,12 @@ async function main() {
     }));
     const expectedLocalizedActions = [
       { tooltip: '全选代码', label: '全选代码' },
-      { tooltip: '复制', label: '复制' }
+      { tooltip: '复制为图片', label: '复制为图片' },
+      { tooltip: '复制源码', label: '复制源码' }
     ];
     if (
       JSON.stringify(localizedRenderedBlockActions.mermaid) !== JSON.stringify(expectedLocalizedActions)
-      || JSON.stringify(localizedRenderedBlockActions.latex) !== JSON.stringify(expectedLocalizedActions.slice(1))
+      || JSON.stringify(localizedRenderedBlockActions.latex) !== JSON.stringify(expectedLocalizedActions.slice(-1))
     ) {
       throw new Error(`Rendered-block actions did not use the editor UI language: ${JSON.stringify(localizedRenderedBlockActions)}`);
     }

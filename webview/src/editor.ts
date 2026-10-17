@@ -106,6 +106,8 @@ import {
 } from './helpers/tables';
 import { parseFrontmatter, parseFrontmatterCandidate } from './helpers/frontmatter';
 import { collectLatexMathRanges } from './helpers/math';
+import { observeRenderedBlockImageAvailability, refreshRenderedBlockImageLabel } from './helpers/renderedBlockImage';
+import { suppressRenderedBlockPointerFocus } from './helpers/renderedBlockActionFocus';
 import { diagnosticDataField, diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
 import type { GitBaselinePayload } from '../../src/protocol/git';
 import type { SelectionMenuState } from './helpers/selectionMenu';
@@ -2714,6 +2716,7 @@ export function createEditor({
     state,
     parent
   });
+  const stopImageAvailability = observeRenderedBlockImageAvailability(view.dom);
   const editableTarget = (target: EventTarget | null): HTMLElement | null => {
     if (!(target instanceof Element) || !view.contentDOM.contains(target)) return null;
     const editable = target.closest<HTMLElement>('textarea, input, [contenteditable="true"]');
@@ -2745,6 +2748,7 @@ export function createEditor({
   };
   onEditorPointerDown = (event) => {
     if (event.button === 0) {
+      suppressRenderedBlockPointerFocus(view.dom);
       const target = editableTarget(event.target);
       if (target) {
         // A new document click takes precedence over the focus target saved before blur.
@@ -3608,6 +3612,7 @@ export function createEditor({
     },
     destroy() {
       editorDestroyed = true;
+      stopImageAvailability();
       if (onEditorFocusIn) view.dom.removeEventListener('focusin', onEditorFocusIn, true);
       if (onEditorFocusOut) view.dom.removeEventListener('focusout', onEditorFocusOut, true);
       if (onEditorPointerDown) view.dom.removeEventListener('pointerdown', onEditorPointerDown, true);
@@ -4012,6 +4017,9 @@ export function createEditor({
         effects: uiLanguageCompartment.reconfigure(uiLanguageFacet.of(language))
       });
       refreshMountedTableUiLanguage(view, language);
+      for (const button of view.dom.querySelectorAll<HTMLElement>('.meo-copy-image-btn')) {
+        refreshRenderedBlockImageLabel(button, language);
+      }
     },
     insertFormat(action: EditorFormatAction, level?: EditorFormatLevel) {
       const activeTableInput = getActiveTableInput();

@@ -649,7 +649,7 @@ async function main(): Promise<void> {
       openLink: '打开链接',
       footnote: '跳转到脚注 1',
       footnoteBack: '跳转到脚注引用 1',
-      codeActions: ['全选代码', '复制', '全选代码', '复制'],
+      codeActions: ['全选代码', '复制源码', '全选代码', '复制源码'],
       longCode: { lineCountVisible: false, action: '显示其余 10 行代码' },
       imageActions: ['打开链接', '刷新图片', '使用系统应用打开', '全屏查看图片'],
       featureChrome: {
@@ -657,7 +657,7 @@ async function main(): Promise<void> {
         html: '显示 HTML 源码'
       },
       renderedBlocks: {
-        controls: ['第 41 行 Mermaid 块控件', '复制'],
+        controls: ['第 41 行 Mermaid 块控件', '复制源码'],
         modes: ['预览, 切换为分栏', null]
       }
     });

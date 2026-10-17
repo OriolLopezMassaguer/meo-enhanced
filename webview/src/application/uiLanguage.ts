@@ -171,6 +171,10 @@ export type UiStrings = Readonly<{
   jumpToFootnoteReference: (number: number) => string;
   indentedCodeBlockLabel: string;
   copyCode: string;
+  copyImage: string;
+  copyingImage: string;
+  copiedImage: string;
+  copyImageFailed: string;
   copied: string;
   copy: string;
   selectAllCode: string;
@@ -444,7 +448,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpToFootnote: (number: number) => `Jump to footnote ${number}`,
     jumpToFootnoteReference: (number: number) => `Jump to footnote reference ${number}`,
     indentedCodeBlockLabel: 'Indented code block',
-    copyCode: 'Copy', copied: 'copied', copy: 'copy', selectAllCode: 'Select all code', all: 'all',
+    copyCode: 'Copy source', copyImage: 'Copy as image', copyingImage: 'Copying image…', copiedImage: 'Image copied', copyImageFailed: 'Could not copy image. Try again.', copied: 'copied', copy: 'copy', selectAllCode: 'Select all code', all: 'all',
     codeLines: (count: number) => `${count} lines`,
     showMoreCode: (count: number) => `Show ${count} more lines of code`,
     showMoreLines: (count: number) => `Show ${count} more lines`, showLessCode: 'Show less code', showLess: 'Show less',
@@ -458,7 +462,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     showFormulaPreview: 'Switch to preview',
     loading: 'Loading…', zoomIn: 'Zoom in', zoomOut: 'Zoom out', resetZoom: 'Reset zoom',
     morePreviewControls: 'More preview controls',
-    fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen',
+    fullscreen: 'View fullscreen', exitFullscreen: 'Exit fullscreen',
     mermaidError: (message: string) => `Mermaid error: ${message}`,
     openWithSystemApp: 'Open with system app', fullscreenImage: 'Fullscreen image', refreshImage: 'Refresh image',
     colorLabel: (value: string) => `Color ${value}`,
@@ -664,7 +668,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpToFootnote: (number: number) => `跳转到脚注 ${number}`,
     jumpToFootnoteReference: (number: number) => `跳转到脚注引用 ${number}`,
     indentedCodeBlockLabel: '缩进代码块',
-    copyCode: '复制', copied: '已复制', copy: '复制', selectAllCode: '全选代码', all: '全选',
+    copyCode: '复制源码', copyImage: '复制为图片', copyingImage: '正在复制图片…', copiedImage: '已复制图片', copyImageFailed: '无法复制图片，请重试。', copied: '已复制', copy: '复制', selectAllCode: '全选代码', all: '全选',
     codeLines: (count: number) => `${count} 行`,
     showMoreCode: (count: number) => `显示其余 ${count} 行代码`,
     showMoreLines: (count: number) => `显示其余 ${count} 行`, showLessCode: '收起代码', showLess: '收起',
@@ -678,7 +682,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     showFormulaPreview: '切换为预览',
     loading: '正在加载…', zoomIn: '放大', zoomOut: '缩小', resetZoom: '重置缩放',
     morePreviewControls: '更多预览操作',
-    fullscreen: '全屏', exitFullscreen: '退出全屏',
+    fullscreen: '全屏查看', exitFullscreen: '退出全屏',
     mermaidError: (message: string) => `Mermaid 错误：${message}`,
     openWithSystemApp: '使用系统应用打开', fullscreenImage: '全屏查看图片', refreshImage: '刷新图片',
     colorLabel: (value: string) => `颜色 ${value}`,

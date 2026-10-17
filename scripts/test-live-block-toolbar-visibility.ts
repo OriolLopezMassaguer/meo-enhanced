@@ -67,6 +67,7 @@ async function main(): Promise<void> {
 
     await page.waitForFunction(() => (
       document.querySelectorAll('.meo-mermaid-preview-controls .meo-visual-control-btn').length === 4
+      && !document.querySelector('[data-meo-mermaid-rendering="true"]')
     ));
 
     for (const appearance of ['light', 'dark'] as const) {
@@ -94,7 +95,7 @@ async function main(): Promise<void> {
           getComputedStyle(document.querySelector(toolbarSelector)!).opacity === '1'
         ), {}, selector);
         const buttons = await page.$$(`${selector} :is(button, [role="button"])`);
-        assert.equal(buttons.length, selector === '.meo-mermaid-toolbar' ? 3 : selector === '.meo-mermaid-preview-controls' ? 4 : 2);
+        assert.equal(buttons.length, selector === '.meo-mermaid-toolbar' || selector === '.meo-mermaid-preview-controls' ? 4 : selector === '.meo-math-copy-actions' ? 3 : 2);
         const gaps = await page.evaluate((toolbarSelector) => {
           const rects = Array.from(document.querySelectorAll(`${toolbarSelector} :is(button, [role="button"])`),
             (button) => button.getBoundingClientRect());
@@ -157,7 +158,7 @@ async function main(): Promise<void> {
         buttons.map(button => ({ label: button.getAttribute('aria-label'), y: button.getBoundingClientRect().top }))
       ));
       assert.deepEqual(layout.map(button => button.label), [
-        'Preview, Switch to split view', 'Select all code', 'Copy'
+        'Preview, Switch to split view', 'Select all code', 'Copy as image', 'Copy source'
       ]);
       assert.equal(new Set(layout.map(button => button.y)).size, 1, `${selector} preview controls stayed on a second row`);
       const previewSelector = selector === '.meo-mermaid-toolbar' ? '.meo-mermaid-block' : '.meo-latex-math-viewport';
@@ -179,7 +180,7 @@ async function main(): Promise<void> {
       await page.keyboard.press('Enter');
       assert.notDeepEqual(await collectScale(), initialScale, `${selector} keyboard zoom did not activate`);
       await page.click('.meo-mermaid-preview-controls [aria-label="Reset zoom"]');
-      await page.click('.meo-mermaid-preview-controls [aria-label="Fullscreen"]');
+      await page.click('.meo-mermaid-preview-controls [aria-label="View fullscreen"]');
       const fullscreenSelector = selector === '.meo-mermaid-toolbar' ? '.meo-mermaid-fullscreen-scrim' : '.meo-latex-math-fullscreen-scrim';
       await page.waitForSelector(fullscreenSelector);
       await page.keyboard.press('Escape');
@@ -262,7 +263,8 @@ async function main(): Promise<void> {
         const toolbar = document.querySelector<HTMLElement>(toolbarSelector)!;
         // Move to Copy with a real Tab event instead of inheriting the focus
         // modality of whichever control the earlier pointer checks left behind.
-        toolbar.querySelector<HTMLElement>('.meo-select-all-code-btn')!.focus();
+        (toolbar.querySelector<HTMLElement>('.meo-copy-image-btn')
+          ?? toolbar.querySelector<HTMLElement>('.meo-select-all-code-btn'))!.focus();
       }, selector);
       await page.keyboard.press('Tab');
       await new Promise((resolve) => setTimeout(resolve, 150));

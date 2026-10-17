@@ -130,6 +130,9 @@ function targetedCommands(
         script('scripts/test-history-rendered-block-interaction.ts'),
         script('scripts/test-mermaid-diagram-presentation-runtime.ts'),
         script('scripts/test-mermaid-editing.ts'),
+        script('scripts/test-preview-rendered-actions.ts'),
+        script('scripts/test-live-rendered-image-copy.ts'),
+        script('scripts/test-rendered-block-action-state.ts'),
         script('scripts/test-live-embedded-input-viewport.ts'),
         script('scripts/test-virtual-block-scroll-stability.ts')
       ];

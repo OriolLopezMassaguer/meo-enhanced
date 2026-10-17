@@ -3,6 +3,7 @@ import type { EditorView } from '@codemirror/view';
 import { renderLatexMathToHtml } from './math';
 import { collectDocumentMathRanges, getDisplayMathCopySource, getDisplayMathSource } from './displayMathBlocks';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
+import { createRenderedBlockImageButton } from './renderedBlockImage';
 import { uiLanguageFacet } from '../editor/uiLanguage';
 
 /** Formula editing belongs to the document selection, including both delimiters. */
@@ -115,9 +116,15 @@ export function createDisplayMathActions(view: EditorView, anchor: () => number)
     if (!source) return '';
     return source.text;
   }, language, ownerDocument);
+  const image = createRenderedBlockImageButton(() => {
+    const block = view.dom.querySelector<HTMLElement>(`.meo-md-math-fenced-display[data-meo-math-anchor="${anchor()}"]`);
+    if (!block || block.dataset.meoMathStale === 'true' || block.querySelector('.katex-error')) return null;
+    return block.querySelector('.katex-display') ? block : null;
+  }, language, ownerDocument);
+  image.classList.add('meo-code-block-pill');
   for (const type of ['pointerdown', 'mousedown']) actions.addEventListener(type, event => {
     event.preventDefault(); event.stopPropagation();
   });
-  actions.append(select, copy);
+  actions.append(select, image, copy);
   return actions;
 }

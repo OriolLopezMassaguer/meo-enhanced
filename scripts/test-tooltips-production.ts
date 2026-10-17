@@ -392,7 +392,7 @@ try {
   phase = 'native formula actions';
   assert.equal(await page.$('.meo-latex-math-mode-btn'), null, 'formula editing uses the main document');
   const formulaCopy = '.meo-math-copy-actions .meo-copy-code-btn';
-  assert.equal((await show(formulaCopy)).text, 'Copy');
+  assert.equal((await show(formulaCopy)).text, 'Copy source');
   await page.mouse.move(0, 0);
   await page.keyboard.press('Tab');
   await page.mouse.move(0, 0);
@@ -404,7 +404,7 @@ try {
   await page.waitForSelector('.meo-math-source-line');
   assert.equal(await page.$('.meo-tooltip.is-visible'), null, 'entering formula source dismisses the action hint');
   await page.hover('.meo-mermaid-block');
-  await page.click('.meo-mermaid-preview-controls [aria-label="Fullscreen"]');
+  await page.click('.meo-mermaid-preview-controls [aria-label="View fullscreen"]');
   await page.waitForSelector('.meo-mermaid-fullscreen-controls');
   for (const label of ['Zoom in', 'Zoom out', 'Reset zoom', 'Exit fullscreen']) {
     const selector = `.meo-mermaid-fullscreen-controls [aria-label="${label}"]`;

@@ -2764,6 +2764,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     wrapper.className = `meo-md-math meo-md-math-${this.mode}`;
     if (this.fencedDisplay && this.mode === 'display') {
       wrapper.classList.add('meo-md-math-fenced-display');
+      wrapper.dataset.meoMathAnchor = String(this.anchor);
       wrapper.classList.toggle('meo-math-live-result', this.editing);
       wrapper.addEventListener('pointerdown', (event: PointerEvent) => {
         if (event.button === 0) {
@@ -2800,6 +2801,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
   }
 
   private updateResultLabel(wrapper: HTMLElement, view: EditorView): void {
+    if (wrapper.dataset.meoMathStale !== String(this.stale)) wrapper.dataset.meoMathStale = String(this.stale);
     wrapper.querySelector(':scope > .meo-math-result-status')?.remove();
     if (!this.editing) return;
     const label = wrapper.ownerDocument.createElement('span');
@@ -2817,6 +2819,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     // Keep both DOM and its fitted height across caret/input transactions.
     // Mounted callbacks resolve the current widget instead of a stale source range.
     wrapper.__meoLatexMathWidget = this;
+    if (wrapper.dataset.meoMathAnchor !== String(this.anchor)) wrapper.dataset.meoMathAnchor = String(this.anchor);
     applyLiveBlockIndent(wrapper, this.indentColumns);
     if (previous.html !== this.html) wrapper.__meoLatexMathViewport?.setContent(this.html);
     this.updateResultLabel(wrapper, view);

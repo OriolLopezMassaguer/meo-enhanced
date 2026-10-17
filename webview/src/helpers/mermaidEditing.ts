@@ -20,6 +20,7 @@ import {
   type MermaidDiagramPresentationConsumer
 } from '../editor/mermaidDiagramPresentation';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
+import { createRenderedBlockImageButton } from './renderedBlockImage';
 import { getViewportController, visualLineContextMargin } from './viewportController';
 import { applyLiveBlockIndent, liveBlockIndentKey, parseBlockLinePrefix, type LiveBlockIndentValue } from './blockIndent';
 import { consumeEditorHistoryCommand } from './historyCommands';
@@ -471,8 +472,20 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
       });
     }, uiLanguage);
     const copyButton = createCopyCodeButton(() => toolbar[mermaidToolbarCodeContent] ?? '', uiLanguage);
+    const imageButton = createRenderedBlockImageButton(() => {
+      const anchor = resolveMermaidToolbarAnchor(view, toolbar, this.lineNumber);
+      if (anchor === null || toolbar.dataset.meoMermaidMode === 'source') return null;
+      const line = view.state.doc.lineAt(anchor).number;
+      const block = view.dom.querySelector<HTMLElement>(
+        `.meo-rendered-block-preview[data-meo-rendered-block-start-line="${line}"] .meo-mermaid-block, `
+        + `.meo-mermaid-editing-block[data-meo-mermaid-anchor="${anchor}"] .meo-mermaid-block`
+      );
+      if (!block || block.closest('[data-meo-mermaid-rendering="true"]') || block.querySelector('.meo-mermaid-error-badge')) return null;
+      return block.querySelector('.meo-mermaid-svg-wrapper > svg') ? block : null;
+    }, uiLanguage, toolbar.ownerDocument);
+    imageButton.classList.add('meo-code-block-pill');
 
-    toolbar.append(modeButton, selectAllButton, copyButton);
+    toolbar.append(modeButton, selectAllButton, imageButton, copyButton);
     if (!this.floating) cache.set(cacheKey, toolbar);
     if (cache.size > MERMAID_TOOLBAR_DOM_CACHE_LIMIT) {
       const oldestKey = cache.keys().next().value;
