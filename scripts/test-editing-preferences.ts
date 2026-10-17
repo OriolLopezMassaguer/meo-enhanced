@@ -32,6 +32,15 @@ const defaults = { input: { ...defaultInputAssistance }, shortcuts: {} };
 assert.equal(defaults.input.selectionToolbar, true, 'existing users keep the selection toolbar by default');
 assert.equal(defaults.input.pasteHtml, false, 'HTML paste formatting is disabled by default');
 assert.equal(normalizeEditingPreferences(undefined).input.pasteHtml, false);
+const { math: _math, ...beforeMath } = defaultInputAssistance;
+assert.equal(normalizeEditingPreferences({ input: beforeMath }).input.math, true, 'older preferences enable math completion');
+assert.equal(normalizeEditingPreferences({ input: { math: false } }).input.math, false);
+assert.equal(normalizeEditingPreferences({ input: { math: 'off' } }).input.math, true);
+for (const value of [true, false]) {
+  const change = { type: 'input' as const, key: 'math' as const, value };
+  assert.ok(decodeWebviewToHostMessage({ type: 'updateEditingPreferences', requestId: 'math', change }));
+  assert.equal(changeEditingPreferences(defaults, change, 'other').input.math, value);
+}
 const { selectionToolbar: _toolbar, ...previousInput } = defaultInputAssistance;
 assert.deepEqual(normalizeEditingPreferences({ input: { ...previousInput, emoji: true }, shortcuts: { bold: [] } }), {
   input: { ...defaultInputAssistance, emoji: true }, shortcuts: { bold: [] }

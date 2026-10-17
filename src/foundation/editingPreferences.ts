@@ -27,6 +27,7 @@ export type InputAssistance = {
   /** Shared candidate placement; retain the storage key for existing preferences. */
   readonly slashPreferAbove: boolean;
   readonly emoji: boolean;
+  readonly math: boolean;
 };
 /** Missing commands use platform defaults; an explicit empty array removes a binding. */
 export type ShortcutOverrides = Partial<Record<EditorCommandId, readonly string[]>>;
@@ -41,7 +42,7 @@ export type EditingPreferencesChange =
 
 export const defaultInputAssistance: InputAssistance = {
   selectionToolbar: true, wrapSelection: true, pairMode: 'smart', skipMode: 'smart', deleteMode: 'smart', lists: true,
-  convertTables: true, pasteUrl: true, pasteHtml: false, documentSuggestions: true, slash: true, slashPreferAbove: false, emoji: false
+  convertTables: true, pasteUrl: true, pasteHtml: false, documentSuggestions: true, slash: true, slashPreferAbove: false, emoji: false, math: true
 };
 
 export function isEditorCommandId(value: unknown): value is EditorCommandId {

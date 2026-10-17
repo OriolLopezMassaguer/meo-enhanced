@@ -233,12 +233,16 @@ try {
   await page.click('[data-setting="lineHeight"] .appearance-typography-reset');
   assert.equal(await page.$eval(lineSpacing + ' output', el => el.textContent), '1.5 倍');
   await page.click('.settings-tab[data-tab="typing"]');
-  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 14);
+  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 15);
   const slashSwitch = '[data-setting="slash"] [role="switch"]';
   const slashAboveSwitch = '[data-setting="slashPreferAbove"] [role="switch"]';
   assert.equal(await page.$eval(slashAboveSwitch, e => e.getAttribute('aria-label')), '候选菜单优先在上方显示');
-  assert.equal(await page.$eval('[data-setting="slashPreferAbove"] .settings-description', e => e.textContent), '斜杠、路径和表情菜单优先显示在输入行上方，推荐输入法用户开启。');
-  assert.deepEqual(await page.$$eval('.settings-item[data-setting]', items => items.map(item => (item as HTMLElement).dataset.setting).filter(key => ['documentSuggestions', 'slash', 'emoji', 'slashPreferAbove'].includes(key!))), ['documentSuggestions', 'slash', 'emoji', 'slashPreferAbove'], 'shared placement follows the three menu enable switches');
+  assert.equal(await page.$eval('[data-setting="slashPreferAbove"] .settings-description', e => e.textContent), '斜杠、路径、表情和公式菜单优先显示在输入行上方，推荐输入法用户开启。');
+  assert.deepEqual(await page.$$eval('.settings-item[data-setting]', items => items.map(item => (item as HTMLElement).dataset.setting).filter(key => ['documentSuggestions', 'slash', 'emoji', 'math', 'slashPreferAbove'].includes(key!))), ['documentSuggestions', 'slash', 'emoji', 'math', 'slashPreferAbove'], 'shared placement follows all menu enable switches');
+  const mathSwitch = '[data-setting="math"] [role="switch"]';
+  assert.equal(await page.$eval(mathSwitch, e => e.getAttribute('aria-checked')), 'true');
+  await page.click(mathSwitch); await page.waitForFunction(() => (window as any).__preferences.input.math === false);
+  await page.click(mathSwitch); await page.waitForFunction(() => (window as any).__preferences.input.math === true);
   await page.click(slashAboveSwitch);
   await page.waitForFunction(() => (window as any).__preferences.input.slashPreferAbove === true);
   await page.click(slashSwitch);
@@ -719,7 +723,7 @@ try {
         query: element.querySelector('.settings-item-title')!.textContent!,
         values: [...element.querySelectorAll('.settings-key, .image-location-mode-title, .image-location-field-label, .image-location-picker, .image-location-token')].map(control => control.getAttribute('aria-label') ?? control.textContent!)
       })));
-      assert.equal(items.length, tab === 'general' ? 9 : tab === 'appearance' ? 11 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
+      assert.equal(items.length, tab === 'general' ? 9 : tab === 'appearance' ? 11 : tab === 'typing' ? 15 : editorCommandIds.length, 'search inventory includes every setting and command');
       searchCases.push(...items.flatMap(item => [item.query, ...item.values].map(query => ({tab, id: item.id, query}))));
     }
     await page.click('.settings-close');

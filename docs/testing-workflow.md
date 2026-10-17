@@ -496,6 +496,19 @@ targets, clicks, explicit dismissal, blur, removal, owner disposal, keyboard foc
 and stateful updates. It runs in the targeted appearance and release browser
 gates alongside the compositor timing and production control checks.
 
+## Math autocomplete
+
+`bun run test:math-completion` checks formula command contexts, replacement and
+template compatibility with the installed KaTeX, then exercises the production
+Live/Source editor. It covers incomplete delimiters and all four math fence
+aliases, nested tab stops, existing arguments and environment closers, literal
+and comment exclusions, IME composition, undo/redo, mode changes, read-only
+state, disabled preferences, bilingual light/dark menus and a narrow viewport.
+The deterministic contract and browser contract run in the quick gate and
+release suites; the browser contract also belongs to the targeted history pack.
+Settings persistence and the shared menu placement are covered by the existing
+editing-preferences and settings-window contracts.
+
 ## HTML comment input
 
 `scripts/test-html-comment-input-production.ts` runs in the quick, targeted history

@@ -44,7 +44,8 @@ export const typingCatalog: readonly { key: keyof InputAssistance; section: Typi
   { key: 'documentSuggestions', section: 'candidates', title: ['文档、路径和标题候选', 'Document, path and heading suggestions'], description: ['输入链接或双链时显示候选，选择后插入。', 'Show suggestions while writing a link or wiki link. Choose one to insert it.'] },
   { key: 'slash', section: 'candidates', title: ['斜杠命令', 'Slash commands'], description: ['在正文输入 / 搜索命令；/table3x4 插入 3 数据行 × 4 列的表格。', 'Type / in prose to search commands. /table3x4 inserts 3 data rows × 4 columns.'] },
   { key: 'emoji', section: 'candidates', title: ['表情名称候选', 'Emoji name suggestions'], description: ['输入 :名称 并选择候选后插入表情；未选择时保留原文。', 'Type :name and choose a suggestion to insert an emoji. Unselected text stays literal.'] },
-  { key: 'slashPreferAbove', section: 'candidates', title: ['候选菜单优先在上方显示', 'Prefer suggestion menus above'], description: ['斜杠、路径和表情菜单优先显示在输入行上方，推荐输入法用户开启。', 'Prefer slash, path and emoji menus above the input line. Recommended for IME users.'] }
+  { key: 'math', section: 'candidates', title: ['公式自动补全', 'Math autocomplete'], description: ['在公式内输入反斜杠和命令名称显示候选，选择后用 Tab 填写参数。', 'Type a backslash and command name in math to show suggestions. Use Tab to fill template arguments.'] },
+  { key: 'slashPreferAbove', section: 'candidates', title: ['候选菜单优先在上方显示', 'Prefer suggestion menus above'], description: ['斜杠、路径、表情和公式菜单优先显示在输入行上方，推荐输入法用户开启。', 'Prefer slash, path, emoji and math menus above the input line. Recommended for IME users.'] }
 ];
 export const tablePasteContexts = [
   { title: ['正文', 'Prose'], description: ['开启时将 Excel 等复制的单元格转换为表格，关闭时保留文本。', 'When enabled, convert cells copied from Excel and other spreadsheets to a table. Otherwise, keep the text.'] },
@@ -110,7 +111,8 @@ export const typingSearchKeywords: Readonly<Record<keyof InputAssistance, Search
   pasteHtml: ['网页粘贴 富文本 保留格式 样式转换 HTML Markdown', 'paste rich text formatting HTML webpage Markdown conversion'],
   documentSuggestions: ['自动完成 文件候选 路径补全 标题补全 双向链接 双链 维基链接 锚点', 'autocomplete file path heading completion wiki link backlink anchor suggestions'],
   slash: ['斜线 斜杠 快速插入 命令菜单 命令面板 /table', 'slash quick insert command menu command palette /table'],
-  slashPreferAbove: ['候选菜单 斜杠 路径 文档 标题 表情 上方 向上 输入法 候选窗 排列 顺序', 'suggestion menus slash path document heading emoji above upward IME input method candidate order placement'],
+  slashPreferAbove: ['候选菜单 斜杠 路径 文档 标题 表情 公式 上方 向上 输入法 候选窗 排列 顺序', 'suggestion menus slash path document heading emoji math above upward IME input method candidate order placement'],
+  math: ['公式 自动补全 数学 LaTeX TeX KaTeX 分式 根式 希腊字母 参数 模板', 'math autocomplete completion formula latex tex katex fraction square root greek snippet template arguments'],
   emoji: ['表情符号 颜文字 小黄脸 图标 笑脸 冒号', 'emoji emoticon smiley face colon shortcode suggestions']
 };
 export const imageLocationSearchKeywords: SearchKeywords = [

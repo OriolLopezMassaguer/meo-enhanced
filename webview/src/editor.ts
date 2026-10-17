@@ -124,6 +124,7 @@ import {
 import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
 import { parseBlockLinePrefix } from './helpers/blockIndent';
 import { displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
+import { getMathCompletionBody } from './helpers/displayMathBlocks';
 import {
   ViewportController,
   visualLineContextMargin,
@@ -2338,7 +2339,7 @@ export function createEditor({
       Prec.highest(htmlCommentEditing),
       Prec.highest(typingAssistance),
       Prec.highest(pasteAssistance(displayMathPasteText)),
-      Prec.highest(createInputSuggestions({ inputContext, requestLinks: requestLinkCandidates, currentHeadings: () => currentHeadingSuggestions(view.state.doc.toString()),
+      Prec.highest(createInputSuggestions({ inputContext, mathContext: getMathCompletionBody, requestLinks: requestLinkCandidates, currentHeadings: () => currentHeadingSuggestions(view.state.doc.toString()),
         cellCoords: measureTextareaSelectionStart,
         focusTable: focusInsertedTable,
         focusMath: () => {
