@@ -1,5 +1,5 @@
 {
-  "extension.displayName": "MEO Enhanced - Markdown 编辑器",
+  "extension.displayName": "MEO Critic - Markdown 编辑器（含 CriticMarkup）",
   "extension.description": "适用于 VS Code、支持实时编辑模式的增强型 Markdown 编辑器。",
   "command.open": "使用 MEO Enhanced 打开",
   "command.toggleMode": "MEO Enhanced：切换实时/源码模式",

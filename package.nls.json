@@ -1,5 +1,5 @@
 {
-  "extension.displayName": "MEO Enhanced - Markdown Editor",
+  "extension.displayName": "MEO Critic - Markdown Editor with CriticMarkup",
   "extension.description": "An enhanced Markdown editor with live editing mode for VS Code.",
   "command.open": "Open With MEO Enhanced",
   "command.toggleMode": "MEO Enhanced: Toggle Live/Source Mode",
