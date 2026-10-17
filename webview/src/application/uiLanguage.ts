@@ -225,6 +225,9 @@ export type UiStrings = Readonly<{
   tableInsert: string;
   tableMove: string;
   tableDelete: string;
+  deleteTable: string;
+  sortTableAscending: string;
+  sortTableDescending: string;
   tableBack: string;
   tableCollapse: string;
   tableMoreActions: string;
@@ -472,6 +475,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     alertLabel: (type: string) => type,
     tableActions: 'Table actions', returnToTableHeader: 'Click to return to table header',
     tableInsert: 'Insert', tableMove: 'Move', tableDelete: 'Delete', tableBack: 'Back',
+    deleteTable: 'Delete table', sortTableAscending: 'Sort ascending', sortTableDescending: 'Sort descending',
     tableCollapse: 'Collapse table actions', tableMoreActions: 'Next page',
     tablePreviousActions: 'Previous page',
     tableAlign: 'Align',
@@ -691,6 +695,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     alertLabel: (type: string) => ({ NOTE: '备注', TIP: '提示', IMPORTANT: '重要', WARNING: '警告', CAUTION: '注意' }[type] ?? type),
     tableActions: '表格操作', returnToTableHeader: '点击回到表头',
     tableInsert: '插入', tableMove: '移动', tableDelete: '删除', tableBack: '返回',
+    deleteTable: '删除表格', sortTableAscending: '升序排列', sortTableDescending: '降序排列',
     tableCollapse: '收起表格操作', tableMoreActions: '下一页',
     tablePreviousActions: '上一页',
     tableAlign: '对齐',

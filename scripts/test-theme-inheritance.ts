@@ -231,12 +231,13 @@ try {
         button.classList.remove('is-active');
         return { inactive, active, activeBackground, icon: read('.source-preview-button > svg'),
           inline: read('.selection-inline-button'), menu: read('.preview-options-panel'), menuBackground: read('.preview-options-panel', 'backgroundColor'),
-          muted: role('--meo-ui-text-muted'), foreground: role('--meo-ui-text'), hover: role('--meo-ui-surface-hover'),
+          muted: role('--meo-ui-text-muted'), foreground: role('--meo-ui-text'),
+          selectedForeground: role('--meo-ui-text-selected'), selected: role('--meo-ui-surface-selected'),
           iconForeground: role('--meo-ui-text'), menuForeground: role('--meo-ui-text'), menuSurface: role('--meo-ui-surface-raised') };
       });
       assert.equal(controls.inactive, controls.foreground, `${profile.id}: Source preview button shares the ordinary toolbar foreground`);
-      assert.equal(controls.active, controls.foreground, `${profile.id}: Source preview button active text`);
-      assert.equal(controls.activeBackground, controls.hover, `${profile.id}: Source preview button active surface`);
+      assert.equal(controls.active, controls.selectedForeground, `${profile.id}: Source preview button uses the selected foreground`);
+      assert.equal(controls.activeBackground, controls.selected, `${profile.id}: Source preview button uses the selected surface`);
       assert.equal(controls.icon, controls.iconForeground, `${profile.id}: Source preview icon`);
       assert.equal(controls.inline, controls.menuForeground, `${profile.id}: selected-text toolbar button`);
       assert.equal(controls.menu, controls.menuForeground, `${profile.id}: shared Preview options menu text`);
@@ -344,8 +345,8 @@ try {
       await page.waitForSelector('.cm-editor.meo-mode-live');
       await page.waitForFunction(() => document.querySelector<HTMLElement>('.preview-host')?.hidden === true);
       await page.hover('.table-wrapper > .format-button');
-      await page.mouse.move(300, 95);
       await page.waitForFunction(() => getComputedStyle(document.querySelector('.table-dropdown-wrapper')!).opacity === '1');
+      await page.hover('.table-grid-cell[data-row="3"][data-col="3"]');
       await screenshot(profile.id + '-table-insert.png');
       {
         await page.mouse.move(700, 450);

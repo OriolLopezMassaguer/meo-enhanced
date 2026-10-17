@@ -285,7 +285,7 @@ export function applyUiTheme(appearance: 'light' | 'dark', matchesHost: boolean,
     ['selection', 'editor.selectionBackground', fallback['--vscode-editor-selectionBackground']],
     ['inactive-selection', 'editor.inactiveSelectionBackground', fallback['--vscode-editor-selectionBackground']],
     ['caret', 'editorCursor.foreground', fallback['--vscode-editor-foreground']],
-    ['line', 'editor.lineHighlightBackground', 'transparent'],
+    ['line', 'editor.lineHighlightBackground', matchesHost ? 'transparent' : 'var(--meo-document-active-line)'],
     ['line-border', 'editor.lineHighlightBorder', 'transparent'],
     ['line-number', 'editorLineNumber.foreground', fallback['--vscode-editorLineNumber-foreground']],
     ['active-line-number', 'editorLineNumber.activeForeground', fallback['--vscode-editor-foreground']]

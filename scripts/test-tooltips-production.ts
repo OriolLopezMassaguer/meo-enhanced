@@ -154,6 +154,24 @@ try {
   assert.equal(menuHint.inside, true);
   assert.equal(await page.$eval(menuButton, element => element.getAttribute('data-tooltip-placement')), null);
   assert.equal(menuHint.visibleCount, 1);
+  phase = 'collapsed table delete hint';
+  const deleteTable = menu + ' [data-command="delete-table"]';
+  const waitForDeleteHint = async () => {
+    await page.hover(deleteTable);
+    await page.waitForFunction(selector => {
+      const button = document.querySelector(selector)!;
+      const hint = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+      return hint?.classList.contains('is-visible') && hint.querySelector('.meo-tooltip-label')?.textContent === 'Delete table';
+    }, { timeout: 1200 }, deleteTable);
+  };
+  await waitForDeleteHint();
+  await page.click(deleteTable);
+  assert.equal(await page.$eval(deleteTable, button => button.classList.contains('is-delete-armed')), true);
+  await page.waitForFunction(() => !document.querySelector('.meo-tooltip.is-visible'), { timeout: 1200 });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval(deleteTable, button => button.classList.contains('is-delete-armed')), false);
+  await page.mouse.move(0, 0);
+  await waitForDeleteHint();
   await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
 

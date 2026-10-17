@@ -9,9 +9,12 @@ export const tableCommands = [
   'move-column-left',
   'move-column-right',
   'delete-column',
+  'delete-table',
   'align-left',
   'align-center',
-  'align-right'
+  'align-right',
+  'sort-ascending',
+  'sort-descending'
 ] as const;
 
 export type TableCommand = typeof tableCommands[number];

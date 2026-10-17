@@ -2752,8 +2752,8 @@ html[data-editor-appearance='dark'] .cm-editor.meo-mode-live {
   visibility: hidden !important;
 }
 
-.editor-root.meo-window-focus-return-pending .cm-editor .meo-md-html-table textarea:focus {
-  background: transparent;
+.editor-root.meo-window-focus-return-pending .cm-editor .meo-md-html-table :is(th, td):has(> .meo-md-html-table-cell-content.is-editing > textarea:focus)::after {
+  visibility: hidden;
 }
 
 .cm-editor,
@@ -6741,6 +6741,17 @@ body.outline-resizing .preview-frame {
   white-space: normal;
 }
 
+/* Frame the full cell even when another cell makes the row taller. */
+.cm-editor .meo-md-html-table :is(th, td):not(.meo-md-html-table-cell-selected):has(> .meo-md-html-table-cell-content.is-editing > textarea:focus)::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+  outline: 1.5px solid var(--meo-ui-focus);
+  outline-offset: -1.5px;
+}
+
 .cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected,
 .cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected {
   background: transparent;
@@ -6748,6 +6759,16 @@ body.outline-resizing .preview-frame {
   --meo-table-sel-right: transparent;
   --meo-table-sel-bottom: transparent;
   --meo-table-sel-left: transparent;
+}
+
+/* Overlay the grid and cover its half-borders so adjacent segments meet. */
+.cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected::after,
+.cm-editor .meo-md-html-table td.meo-md-html-table-cell-selected::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  inset: -0.5px;
+  pointer-events: none;
   box-shadow:
     inset 0 1px 0 var(--meo-table-sel-top),
     inset -1px 0 0 var(--meo-table-sel-right),
@@ -7236,15 +7257,6 @@ html[data-editor-appearance='dark'] body.vscode-dark
   -webkit-text-fill-color: var(--meo-foreground) !important;
 }
 
-.cm-editor .meo-md-html-table-cell-content.is-editing.has-search-match::before {
-  content: '';
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  pointer-events: none;
-  background: var(--meo-active-line-bg);
-}
-
 .cm-editor .meo-md-html-table-cell-content.is-editing.has-search-match .meo-md-html-table-cell-preview {
   position: relative;
   z-index: 1;
@@ -7297,14 +7309,6 @@ html[data-editor-appearance='dark'] body.vscode-dark
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
   caret-color: var(--meo-caret);
-}
-
-.cm-editor .meo-md-html-table-cell-content.is-editing.has-search-match textarea:focus {
-  background: transparent;
-}
-
-.cm-editor .meo-md-html-table textarea:focus {
-  background: var(--meo-active-line-bg);
 }
 
 .selection-inline-menu,
@@ -7482,6 +7486,50 @@ html[data-meo-ui-contrast='high'] .cm-editor :is(.meo-md-html-table-context-trig
 
 .cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-delete-btn:not(:disabled) {
   color: var(--meo-ui-danger-emphasis, var(--meo-ui-danger));
+}
+
+.cm-editor .meo-md-html-table-context-delete-table {
+  overflow: hidden;
+  transition: width 100ms ease-out, background-color 100ms ease-out, color 100ms ease-out;
+}
+
+.cm-editor .meo-md-html-table-context-delete-table > svg {
+  position: absolute;
+  transition: opacity 60ms ease-out;
+}
+
+.cm-editor .meo-md-html-table-context-delete-label {
+  position: absolute;
+  left: 50%;
+  width: max-content;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%);
+  transition: opacity 80ms ease-out;
+}
+
+.cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-delete-table.is-delete-armed:not(:disabled),
+.cm-editor .meo-md-html-table-context-menu .meo-md-html-table-context-delete-table.is-delete-armed:is(:hover, :active):not(:disabled) {
+  width: var(--meo-table-delete-confirm-width);
+  color: #fff;
+  background: #bc4b42;
+  box-shadow: none;
+}
+
+.cm-editor .meo-md-html-table-context-delete-table.is-delete-armed > svg {
+  opacity: 0;
+}
+
+.cm-editor .meo-md-html-table-context-delete-table.is-delete-armed > .meo-md-html-table-context-delete-label {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-editor .meo-md-html-table-context-delete-table,
+  .cm-editor .meo-md-html-table-context-delete-table > :is(svg, span) {
+    transition: none;
+  }
 }
 
 .cm-editor .meo-md-html-table-context-page-btn {

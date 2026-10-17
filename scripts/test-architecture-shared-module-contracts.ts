@@ -50,6 +50,9 @@ const runCheck = (): { ok: boolean; output: string } => {
 try {
   mkdirSync(join(fixtureRoot, 'scripts'), { recursive: true });
   cpSync(join(repoRoot, 'scripts', 'check-architecture.ts'), join(fixtureRoot, 'scripts', 'check-architecture.ts'));
+  // These tiny projects exercise architecture rules without a release-test corpus.
+  // Test inventory has its own fixture suite and runs against the real project gate.
+  write('scripts/check-test-inventory.ts', 'export async function checkTestInventory() {}\n');
   const architectureSource = readFileSync(join(fixtureRoot, 'scripts', 'check-architecture.ts'), 'utf8');
   const finalCodePaletteSource = readFileSync(
     join(repoRoot, 'webview/src/application/finalCodePalette.ts'),
@@ -227,10 +230,9 @@ try {
     knownLegacyTestFailures: []
   }, null, 2));
 
-  write('README.md', 'The table toolbar can order columns.\n');
+  write('README.md', 'The table toolbar can sort rows by the current column.\n');
   const tableSortingAlias = runCheck();
-  assert.equal(tableSortingAlias.ok, false, 'table sorting aliases in public docs must be rejected');
-  assert.match(tableSortingAlias.output, /ARCH013/);
+  assert.equal(tableSortingAlias.ok, true, `immediate table sorting is a retained capability: ${tableSortingAlias.output}`);
   rmSync(join(fixtureRoot, 'README.md'));
 
   write('package.json', JSON.stringify({ contributes: { configuration: { properties: {
@@ -241,9 +243,9 @@ try {
   assert.match(tableOrderingSetting.output, /ARCH013/);
   rmSync(join(fixtureRoot, 'package.json'));
 
-  write('README.md', 'Order the rows by name.\n');
+  write('README.md', 'Preview can order the rows by name.\n');
   const tableOrderingSentence = runCheck();
-  assert.equal(tableOrderingSentence.ok, false, 'non-adjacent natural-language table ordering must be rejected');
+  assert.equal(tableOrderingSentence.ok, false, 'the retired Preview sorting entry must be rejected');
   assert.match(tableOrderingSentence.output, /ARCH013/);
   rmSync(join(fixtureRoot, 'README.md'));
 
@@ -2128,10 +2130,11 @@ try {
   const stagedRoot = join(fixtureRoot, 'staged-index');
   mkdirSync(join(stagedRoot, 'scripts'), { recursive: true });
   cpSync(join(repoRoot, 'scripts', 'check-architecture.ts'), join(stagedRoot, 'scripts', 'check-architecture.ts'));
+  cpSync(join(fixtureRoot, 'scripts', 'check-test-inventory.ts'), join(stagedRoot, 'scripts', 'check-test-inventory.ts'));
   writeFileSync(join(stagedRoot, 'scripts', 'architecture-baseline.json'), JSON.stringify({
     targetRoots: [], knownLegacyTestFailures: []
   }));
-  writeFileSync(join(stagedRoot, 'README.md'), 'Order the rows by name.\n');
+  writeFileSync(join(stagedRoot, 'README.md'), 'Preview can order the rows by name.\n');
   mkdirSync(join(stagedRoot, 'docs'), { recursive: true });
   writeFileSync(join(stagedRoot, 'docs', '表 格.md'), 'Unicode path without a removed capability.\n');
   writeFileSync(join(stagedRoot, 'docs', 'deleted.md'), 'This file will be deleted from the index.\n');

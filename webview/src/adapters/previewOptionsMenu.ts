@@ -30,7 +30,7 @@ export function createPreviewOptionsMenu(label: string, controls: readonly HTMLE
     panel.style.maxHeight = `${Math.max(0, below, above)}px`;
     const openAbove = panel.offsetHeight > below && above > below;
     panel.style.maxHeight = `${Math.max(0, openAbove ? above : below)}px`;
-    panel.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - panel.offsetWidth - 8))}px`;
+    panel.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - panel.getBoundingClientRect().width - 8))}px`;
     panel.style.top = openAbove
       ? `${Math.max(8, bounds.top - panel.offsetHeight - 4)}px`
       : `${bounds.bottom + 4}px`;

@@ -17,9 +17,12 @@ assert.deepEqual(tableCommands, [
   'move-column-left',
   'move-column-right',
   'delete-column',
+  'delete-table',
   'align-left',
   'align-center',
-  'align-right'
+  'align-right',
+  'sort-ascending',
+  'sort-descending'
 ], 'the public Table Command boundary must expose only retained product commands');
 
 const target: TableCommandTarget = { tableId: 'table-1', row: 1, column: 0, selection: null };

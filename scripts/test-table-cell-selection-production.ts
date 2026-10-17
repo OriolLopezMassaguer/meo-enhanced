@@ -466,11 +466,100 @@ async function main() {
     await page.mouse.up();
     await assertCaptureCleared('same-text external presentation');
 
-    await beginCapturedDrag();
-    const outside = await rect('#outside');
-    await page.mouse.move(outside.x, outside.y, { steps: 2 });
-    await page.mouse.up();
-    await assertCaptureCleared('outside pointerup');
+    const selectedSourceCells = '.meo-md-html-table-shell[data-test-table="0"] .meo-md-html-table:not(.meo-md-html-table-sticky-table) .meo-md-html-table-cell-selected';
+    const outsideReleases = await page.$eval('.meo-md-html-table-shell[data-test-table="0"] table', table => {
+      const box = table.getBoundingClientRect();
+      return [
+        { x: box.right + 16, y: box.top + box.height / 2 },
+        { x: box.left - 16, y: box.top + box.height / 2 },
+        { x: box.left + box.width / 2, y: box.top - 12 },
+        { x: box.left + box.width / 2, y: box.bottom + 12 }
+      ];
+    });
+    for (const outside of outsideReleases) {
+      await beginCapturedDrag();
+      await page.mouse.move(outside.x, outside.y, { steps: 2 });
+      const visibleRange = await page.$$eval(selectedSourceCells, cells => cells.map(cell => {
+        const input = cell.querySelector<HTMLTextAreaElement>('textarea')!;
+        return `${input.dataset.tableRow}:${input.dataset.tableCol}`;
+      }));
+      await page.mouse.up();
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const released = await page.evaluate(() => {
+        const capture = (window as any).__selectionCapture;
+        const table = capture.table as HTMLTableElement;
+        table.releasePointerCapture = capture.nativeRelease;
+        return {
+          released: capture.released,
+          captured: table.hasPointerCapture?.(1) ?? false,
+          selected: Array.from(table.querySelectorAll('.meo-md-html-table-cell-selected'), cell => {
+            const input = cell.querySelector<HTMLTextAreaElement>('textarea')!;
+            return `${input.dataset.tableRow}:${input.dataset.tableCol}`;
+          }),
+          active: document.activeElement === table
+        };
+      });
+      if (JSON.stringify(released.released) !== '[1]' || released.captured || !released.active ||
+        JSON.stringify(released.selected) !== JSON.stringify(visibleRange)) {
+        throw new Error(`Outside pointerup discarded the visible range: ${JSON.stringify({ outside, visibleRange, released })}`);
+      }
+      await page.keyboard.press('Escape');
+    }
+
+    const outsideMoves = await page.$eval('.meo-md-html-table-shell[data-test-table="0"] table', table => {
+      const box = table.getBoundingClientRect();
+      const at = (row: number, col: number) => {
+        const cell = table.querySelector<HTMLTableCellElement>(`[data-table-row="${row}"][data-table-col="${col}"]`)!;
+        const rect = cell.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      };
+      const first = at(1, 0), last = at(2, 1);
+      const all = ['1:0', '1:1', '2:0', '2:1'];
+      return [
+        { edge: 'right, shrink', x: box.right + 16, y: first.y, selected: ['1:0', '1:1'] },
+        { edge: 'right, grow', x: box.right + 16, y: last.y, selected: all },
+        { edge: 'left', x: box.left - 16, y: last.y, selected: ['1:0', '2:0'] },
+        { edge: 'collapse to anchor', x: box.left - 16, y: first.y, selected: [] },
+        { edge: 'left, grow again', x: box.left - 16, y: last.y, selected: ['1:0', '2:0'] },
+        { edge: 'top, grow', x: last.x, y: box.top - 12, selected: ['0:0', '0:1', '1:0', '1:1'] },
+        { edge: 'top, shrink', x: first.x, y: box.top - 12, selected: ['0:0', '1:0'] },
+        { edge: 'bottom, grow', x: last.x, y: box.bottom + 12, selected: all },
+        { edge: 'bottom, shrink', x: first.x, y: box.bottom + 12, selected: ['1:0', '2:0'] },
+        { edge: 'top left corner', x: box.left - 16, y: box.top - 12, selected: ['0:0', '1:0'] },
+        { edge: 'bottom right corner', x: box.right + 16, y: box.bottom + 12, selected: all },
+        { edge: 'reenter table', x: last.x, y: last.y, selected: all },
+        { edge: 'release outside', x: box.right + 16, y: last.y, selected: all }
+      ];
+    });
+    for (const capturePointer of [true, false]) {
+      if (!capturePointer) await page.evaluate(() => {
+        const table = document.querySelector<HTMLTableElement>('.meo-md-html-table-shell[data-test-table="0"] table')!;
+        (window as any).__selectionNoCapture = { table, setPointerCapture: table.setPointerCapture };
+        table.setPointerCapture = () => {};
+      });
+      const start = await rect(first);
+      await page.mouse.move(start.x, start.y);
+      await page.mouse.down();
+      for (const move of outsideMoves) {
+        await page.mouse.move(move.x, move.y);
+        const selected = await page.$$eval(selectedSourceCells, cells => cells.map(cell => {
+          const input = cell.querySelector<HTMLTextAreaElement>('textarea')!;
+          return `${input.dataset.tableRow}:${input.dataset.tableCol}`;
+        }));
+        if (JSON.stringify(selected) !== JSON.stringify(move.selected)) {
+          throw new Error(`Outside drag did not adjust the range (${move.edge}, capture=${capturePointer}): ${JSON.stringify({ selected, expected: move.selected })}`);
+        }
+      }
+      await page.mouse.up();
+      if (!capturePointer) await page.evaluate(() => {
+        const saved = (window as any).__selectionNoCapture;
+        saved.table.setPointerCapture = saved.setPointerCapture;
+      });
+      if (await page.$$eval(selectedSourceCells, cells => cells.length) !== 4) {
+        throw new Error('Outside drag release lost its final projected range');
+      }
+      await page.keyboard.press('Escape');
+    }
 
     await beginCapturedDrag();
     await page.evaluate(() => {

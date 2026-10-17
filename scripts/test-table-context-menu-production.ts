@@ -817,8 +817,8 @@ async function main(): Promise<void> {
     assert.ok(result.menuBackdropFilter === 'none' || result.menuBackdropFilter === '');
     assert.equal(result.shellHeightStable, true, 'the floating menu must not reserve document height');
     assert.equal(result.visibleText, '', 'the expanded toolbar must not render visible labels');
-    assert.equal(result.separatorCount, 3);
-    assert.equal(result.arrangementSeparatorCount, 3);
+    assert.equal(result.separatorCount, 4);
+    assert.equal(result.arrangementSeparatorCount, 4);
     assert.equal(result.horizontalMenu, true);
     assert.equal(result.collapseClosesMenu, true);
     assert.equal(
@@ -840,7 +840,7 @@ async function main(): Promise<void> {
     assert.ok(result.pageNavigationDelta <= 0.5, `paging shifted visible content by ${result.pageNavigationDelta}px`);
     assert.deepEqual(result.commandOrder, [
       'insert-row-above', 'insert-row-below', 'delete-row',
-      'insert-column-left', 'insert-column-right', 'delete-column'
+      'insert-column-left', 'insert-column-right', 'delete-column', 'delete-table'
     ]);
     assert.equal(result.insertRowAboveEnabledForBody, true,
       'insert row above must remain available for body cells');
@@ -849,7 +849,7 @@ async function main(): Promise<void> {
     assert.deepEqual(result.arrangementCommandOrder, [
       'move-row-up', 'move-row-down',
       'move-column-left', 'move-column-right',
-      'align-left', 'align-center', 'align-right'
+      'align-left', 'align-center', 'align-right', 'sort-ascending', 'sort-descending'
     ]);
     assert.equal(result.preferredColumnWidth, '90');
     assert.ok(result.initialWidths.every((width) => width >= 89.5), JSON.stringify(result.initialWidths));

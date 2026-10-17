@@ -104,15 +104,18 @@ import {
   AlignLeft,
   AlignRight,
   ArrowDown,
+  ArrowDownAZ,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  ArrowUpAZ,
   ChevronLeft,
   ChevronRight,
   Columns2,
   EllipsisVertical,
   Plus,
   Rows2,
+  Trash2,
   X,
   createElement,
   type IconNode
@@ -188,9 +191,12 @@ interface DomRefs {
     moveColumnLeft: HTMLButtonElement;
     moveColumnRight: HTMLButtonElement;
     deleteColumn: HTMLButtonElement;
+    deleteTable: HTMLButtonElement;
     alignColumnLeft: HTMLButtonElement;
     alignColumnCenter: HTMLButtonElement;
     alignColumnRight: HTMLButtonElement;
+    sortAscending: HTMLButtonElement;
+    sortDescending: HTMLButtonElement;
   };
 }
 
@@ -2434,6 +2440,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   measuredHeightCache: { height: number };
   pendingContextMenuRestore: boolean;
   contextPage: TableContextPage;
+  deleteTableConfirmationTimer: number | null = null;
   tableCaretRevealGeneration: number;
   destroyed: boolean;
 
@@ -2863,6 +2870,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     contextButtons.alignColumnLeft.disabled = !hasColumns;
     contextButtons.alignColumnCenter.disabled = !hasColumns;
     contextButtons.alignColumnRight.disabled = !hasColumns;
+    const canSort = this.activeColumnIndex() !== null && this.tableData.rows.length > 1;
+    contextButtons.sortAscending.disabled = !canSort;
+    contextButtons.sortDescending.disabled = !canSort;
     const selectedAlignments = columns.map((column) => this.tableData.alignments[column] ?? 'left');
     const selectedAlignment = selectedAlignments.length > 0
       && selectedAlignments.every((alignment) => alignment === selectedAlignments[0])
@@ -2893,6 +2903,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   }
 
   requestTableCommand(command: TableCommand, enabled = true) {
+    this.clearDeleteTableConfirmation();
     const target = this.currentCommandTarget();
     this.pendingContextMenuRestore = Boolean(this.domRefs && !this.domRefs.contextMenu.hidden);
     return this.tableCommandEnvironment.dispatch({
@@ -3627,9 +3638,37 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       applyPointerTransition(transition, event, cell);
     };
 
+    const findDragCell = (event: PointerEvent): HTMLTableCellElement | null => {
+      const hit = this.findCellElement(document.elementFromPoint(event.clientX, event.clientY));
+      if (hit) return hit;
+      const grid = this.domRefs?.cellGrid;
+      if (!grid?.length || !grid[0].length) return null;
+      // Project onto this table's nearest row and column, including beyond its edges.
+      // Binary search uses current geometry without scanning every cell in a large table.
+      let row = 0;
+      let lastRow = grid.length - 1;
+      while (row < lastRow) {
+        const middle = Math.floor((row + lastRow) / 2);
+        if (event.clientY < grid[middle][0].getBoundingClientRect().bottom) lastRow = middle;
+        else row = middle + 1;
+      }
+      const cells = grid[row];
+      let col = 0;
+      let lastCol = cells.length - 1;
+      while (col < lastCol) {
+        const middle = Math.floor((col + lastCol) / 2);
+        if (event.clientX < cells[middle].getBoundingClientRect().right) lastCol = middle;
+        else col = middle + 1;
+      }
+      const state = this.cellSelection.snapshot();
+      // Leaving a text drag in its original cell still ends the native text preview.
+      if (state.phase === 'text-candidate' && state.anchor?.row === row && state.anchor.col === col) return null;
+      return cells[col];
+    };
+
     const onPointerMove = (event: PointerEvent) => {
-      const el = document.elementFromPoint(event.clientX, event.clientY);
-      const cell = this.findCellElement(el);
+      if (!this.cellSelection.ownsPointer(event.pointerId)) return;
+      const cell = findDragCell(event);
       if (!cell) {
         const transition = this.cellSelection.accept({
           type: 'move', pointerId: event.pointerId, cell: null
@@ -3735,6 +3774,11 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       if (this.domRefs && !this.domRefs.contextMenu.hidden) {
         event.preventDefault();
         event.stopPropagation();
+        if (this.deleteTableConfirmationTimer !== null) {
+          this.clearDeleteTableConfirmation();
+          this.updateContextControlsPosition();
+          return;
+        }
         this.setContextMenuOpen(false);
         return;
       }
@@ -3770,6 +3814,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
 
     const onDocumentPointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return;
+      // Menu actions clear confirmation on click. Collapsing on pointerdown moves
+      // trailing controls before pointerup and loses the original click target.
+      if (!this.domRefs?.contextMenu.contains(event.target)) this.clearDeleteTableConfirmation();
       const wrap = getWrap();
       const container = getContainer();
       // Chrome and modals temporarily own focus. A delayed outside-table exit
@@ -3813,10 +3860,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     const onDocumentPointerMove = (event: PointerEvent) => {
       if (table.hasPointerCapture?.(event.pointerId)) return;
       if (event.target instanceof Node && table.contains(event.target)) return;
-      const transition = this.cellSelection.accept({
-        type: 'move', pointerId: event.pointerId, cell: null
-      });
-      this.applyCellSelectionTransition(transition, { event });
+      onPointerMove(event);
     };
 
     const onDocumentPointerEnd = (event: PointerEvent) => {
@@ -4085,13 +4129,79 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       case 'delete-column': {
         return this.buildRemoveColumnsAt(dom, selectedColumns, target.row ?? 0);
       }
+      case 'delete-table':
+        return this.buildDeleteTableTransaction(dom);
       case 'align-left':
         return this.buildAlignmentTransaction('left', target);
       case 'align-center':
         return this.buildAlignmentTransaction('center', target);
       case 'align-right':
         return this.buildAlignmentTransaction('right', target);
+      case 'sort-ascending':
+      case 'sort-descending':
+        return column === null
+          ? { transaction: null, outcome: 'no-op' }
+          : this.buildSortedRowsTransaction(dom, column, command === 'sort-ascending', target.row ?? 0);
     }
+  }
+
+  buildDeleteTableTransaction(dom: HTMLElement): TableCommandTransactionPlan {
+    const view = this.getEditorView(dom);
+    const range = view ? this.resolveCurrentTableRange(view, dom) : null;
+    if (!view || !range) return { transaction: null, outcome: 'no-op' };
+    const from = view.state.doc.lineAt(range.from).from;
+    const to = view.state.doc.lineAt(Math.max(range.from, range.to - 1)).to;
+    return {
+      transaction: { changes: { from, to, insert: '' }, selection: { anchor: from } },
+      outcome: 'changed',
+      afterDispatch: () => {
+        this.pendingContextMenuRestore = false;
+        this.setContextMenuOpen(false);
+      },
+      restoreInteraction: () => view.focus()
+    };
+  }
+
+  buildSortedRowsTransaction(
+    dom: HTMLElement,
+    column: number,
+    ascending: boolean,
+    focusRow: number
+  ): TableCommandTransactionPlan {
+    const matrix = this.readCellMatrix();
+    if (matrix.rows.length < 2) return { transaction: null, outcome: 'no-op' };
+    // Compare the existing inline presentation, while moving the original Markdown
+    // cells together. Pending native input must be reflected before reading its label.
+    const values = matrix.rows.map((row, index) => {
+      const input = this.domRefs?.rowInputs[index]?.[column];
+      if (input && row[column] !== this.tableData.rows[index]?.[column]) this.refreshCellPreviewFromInput(input);
+      const preview = this.domRefs?.cellGrid[index + 1]?.[column]
+        ?.querySelector('.meo-md-html-table-cell-preview')?.cloneNode(true) as HTMLElement | undefined;
+      if (!preview) return row[column] ?? '';
+      preview.querySelectorAll('button, svg, .katex-mathml').forEach((element) => element.remove());
+      preview.querySelectorAll('br').forEach((element) => element.replaceWith(' '));
+      preview.querySelectorAll('img').forEach((element) => element.replaceWith(element.alt));
+      return (preview.textContent ?? '').trim();
+    });
+    const numeric = values.every((value) => !value || (
+      /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value) && Number.isFinite(Number(value))
+    ));
+    const collator = new Intl.Collator(this.view!.state.facet(uiLanguageFacet), { numeric: true, sensitivity: 'base' });
+    const sourceRowOrder = matrix.rows.map((_row, index) => index).sort((left, right) => {
+      const a = values[left], b = values[right];
+      if (!a || !b) return Number(!a) - Number(!b) || left - right;
+      const compared = numeric ? Number(a) - Number(b) : collator.compare(a, b);
+      return compared * (ascending ? 1 : -1) || left - right;
+    });
+    matrix.rows = sourceRowOrder.map((index) => matrix.rows[index]);
+    const plan = this.buildMatrixTransaction(matrix, dom, {
+      row: focusRow > 0 ? sourceRowOrder.indexOf(focusRow - 1) + 1 : 0,
+      col: column
+    }, { sourceRowOrder, preserveScrollPosition: true });
+    return {
+      ...plan,
+      afterDispatch: () => this.applyCellSelectionTransition(this.cellSelection.accept({ type: 'clear', reason: 'escape' }))
+    };
   }
 
   recordPendingCellEdit(row: number, col: number, value: string) {
@@ -5511,6 +5621,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
 
   refreshUiLanguage(language: UiLanguage) {
     if (!this.domRefs) return;
+    this.clearDeleteTableConfirmation();
     const strings = getUiStrings(language);
     const { contextTrigger, contextMenu, contextButtons, stickyHeaderViewport } = this.domRefs;
     contextTrigger.dataset.tooltip = strings.tableActions;
@@ -5533,9 +5644,12 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       [contextButtons.moveColumnLeft, strings.moveColumnLeft],
       [contextButtons.moveColumnRight, strings.moveColumnRight],
       [contextButtons.deleteColumn, strings.deleteColumn],
+      [contextButtons.deleteTable, strings.deleteTable],
       [contextButtons.alignColumnLeft, strings.alignColumnLeft],
       [contextButtons.alignColumnCenter, strings.alignColumnCenter],
-      [contextButtons.alignColumnRight, strings.alignColumnRight]
+      [contextButtons.alignColumnRight, strings.alignColumnRight],
+      [contextButtons.sortAscending, strings.sortTableAscending],
+      [contextButtons.sortDescending, strings.sortTableDescending]
     ];
     for (const [button, accessibleLabel] of commandLabels) {
       button.dataset.tooltip = accessibleLabel;
@@ -5544,7 +5658,19 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     this.updateContextControlsPosition();
   }
 
+  clearDeleteTableConfirmation() {
+    if (this.deleteTableConfirmationTimer !== null) window.clearTimeout(this.deleteTableConfirmationTimer);
+    this.deleteTableConfirmationTimer = null;
+    const button = this.domRefs?.contextButtons.deleteTable;
+    if (button) {
+      button.classList.remove('is-delete-armed');
+      button.querySelector('.meo-md-html-table-context-delete-label')!.textContent = '';
+      button.dataset.tooltip = button.getAttribute('aria-label') ?? '';
+    }
+  }
+
   setContextPage(page: TableContextPage, focusFirst = false) {
+    this.clearDeleteTableConfirmation();
     this.contextPage = page;
     if (!this.domRefs) return;
     const { contextMenu, contextPages } = this.domRefs;
@@ -5558,6 +5684,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
   }
 
   setContextMenuOpen(open: boolean, focusFirst = false) {
+    if (!open) this.clearDeleteTableConfirmation();
     if (!this.domRefs) return;
     const { shell, contextTrigger, contextMenu } = this.domRefs;
     contextMenu.hidden = !open;
@@ -5727,6 +5854,37 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     const deleteColumn = this.createContextButton(strings.deleteColumn, 'delete-column', Columns2, () => {
       this.requestDeleteColumn(container);
     }, { icon: X, placement: 'bottom-right' });
+    const deleteTable = this.createContextButton(strings.deleteTable, 'delete-table', Trash2, () => {
+      if (this.destroyed || !this.domRefs) return;
+      if (this.deleteTableConfirmationTimer !== null) {
+        this.clearDeleteTableConfirmation();
+        this.requestTableCommand('delete-table');
+        return;
+      }
+      // Keep the collapsed icon's text empty so shared hints do not suppress its
+      // label as duplicate visible text. Read the current label after language changes.
+      deleteLabel.textContent = deleteTable.getAttribute('aria-label') ?? strings.deleteTable;
+      deleteTable.style.setProperty('--meo-table-delete-confirm-width', `${Math.ceil(deleteLabel.getBoundingClientRect().width) + 16}px`);
+      deleteTable.classList.add('is-delete-armed');
+      deleteTable.removeAttribute('data-tooltip');
+      this.deleteTableConfirmationTimer = window.setTimeout(() => {
+        this.clearDeleteTableConfirmation();
+        this.updateContextControlsPosition();
+      }, 3000);
+    });
+    deleteTable.classList.add('meo-md-html-table-context-delete-btn', 'meo-md-html-table-context-delete-table');
+    const deleteLabel = document.createElement('span');
+    deleteLabel.className = 'meo-md-html-table-context-delete-label';
+    deleteLabel.setAttribute('aria-hidden', 'true');
+    deleteTable.append(deleteLabel);
+    deleteTable.addEventListener('keydown', (event) => {
+      if (!event.repeat) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    deleteTable.addEventListener('transitionend', (event) => {
+      if (event.propertyName === 'width') this.updateContextControlsPosition();
+    });
     const alignColumnLeft = this.createContextButton(strings.alignColumnLeft, 'align-left', AlignLeft, () => {
       this.requestColumnAlignment(container, 'left');
     });
@@ -5739,6 +5897,12 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       this.requestColumnAlignment(container, 'right');
     });
     alignColumnRight.classList.add('meo-md-html-table-context-align-right');
+    const sortAscending = this.createContextButton(strings.sortTableAscending, 'sort-ascending', ArrowDownAZ, () => {
+      this.requestTableCommand('sort-ascending', !sortAscending.disabled);
+    });
+    const sortDescending = this.createContextButton(strings.sortTableDescending, 'sort-descending', ArrowUpAZ, () => {
+      this.requestTableCommand('sort-descending', !sortDescending.disabled);
+    });
     alignColumnLeft.setAttribute('role', 'menuitemradio');
     alignColumnCenter.setAttribute('role', 'menuitemradio');
     alignColumnRight.setAttribute('role', 'menuitemradio');
@@ -5766,6 +5930,8 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       insertColumnLeft,
       insertColumnRight,
       deleteColumn,
+      createSeparator(),
+      deleteTable,
       createSeparator('before-trailing-control'),
       nextPage
     );
@@ -5784,6 +5950,9 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       alignColumnLeft,
       alignColumnCenter,
       alignColumnRight,
+      createSeparator(),
+      sortAscending,
+      sortDescending,
       createSeparator('before-trailing-control'),
       previousPage
     );
@@ -5814,6 +5983,11 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
+        if (this.deleteTableConfirmationTimer !== null) {
+          this.clearDeleteTableConfirmation();
+          deleteTable.focus({ preventScroll: true });
+          return;
+        }
         this.setContextMenuOpen(false);
         trigger.focus({ preventScroll: true });
         return;
@@ -5851,9 +6025,12 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
         moveColumnLeft,
         moveColumnRight,
         deleteColumn,
+        deleteTable,
         alignColumnLeft,
         alignColumnCenter,
-        alignColumnRight
+        alignColumnRight,
+        sortAscending,
+        sortDescending
       }
     };
   }
@@ -6126,6 +6303,7 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       return;
     }
     tableDomOwners.delete(dom);
+    this.clearDeleteTableConfirmation();
     this.destroyed = true;
     const selectionDisposal = this.cellSelection.accept({ type: 'dispose' });
     this.applyCellSelectionTransition(selectionDisposal);
