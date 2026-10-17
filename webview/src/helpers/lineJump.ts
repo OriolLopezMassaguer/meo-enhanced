@@ -5,10 +5,9 @@ export function isAcceptedLineJumpInput(value: string): boolean {
 }
 
 export function parseLineJumpTarget(value: string, totalLines: number): number | null {
-  if (!positiveIntegerPattern.test(value)) {
+  if (!positiveIntegerPattern.test(value) || !Number.isSafeInteger(totalLines) || totalLines < 1) {
     return null;
   }
 
-  const lineNumber = Number(value);
-  return Number.isSafeInteger(lineNumber) && lineNumber <= totalLines ? lineNumber : null;
+  return Math.min(Number(value), totalLines);
 }

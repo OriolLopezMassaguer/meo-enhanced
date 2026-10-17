@@ -55,3 +55,15 @@ if (!richHeading.inlineSegments?.some((segment) => segment.text === 'italic' && 
 if (!richHeading.inlineSegments?.some((segment) => segment.text === 'deleted' && segment.strikethrough)) throw new Error('Strikethrough heading style was not preserved');
 
 console.log('outline tree checks passed');
+
+const setextState = EditorState.create({
+  doc: '**Bold** and *italic*\ncontinued\n---\n\nRoot\n===',
+  extensions: [markdown({ base: markdownLanguage })]
+});
+const setextHeadings = extractHeadings(setextState);
+if (JSON.stringify(setextHeadings.map(({ level, text }) => ({ level, text }))) !== JSON.stringify([
+  { level: 2, text: 'Bold and italic continued' }, { level: 1, text: 'Root' }
+])) throw new Error('Setext outline must omit underline syntax and normalize multiline text');
+if (!setextHeadings[0].inlineSegments?.some(segment => segment.text === 'Bold' && segment.strong)) throw new Error('Setext heading inline formatting was lost');
+const emptyHeading = extractHeadings(EditorState.create({ doc: '# #', extensions: [markdown({ base: markdownLanguage })] }))[0];
+if (emptyHeading.text !== '' || emptyHeading.inlineSegments?.length) throw new Error('An empty ATX heading must keep an empty content range');

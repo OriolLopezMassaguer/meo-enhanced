@@ -199,8 +199,11 @@ async function main(): Promise<void> {
         constructs: observerRecords.filter((record) => record.editorId === id).length
       });
       (window as any).__invokeTableColumnWidthObserver = (id: string) => {
+        const table = document.createElement('table');
+        table.dataset.tableColumnWidth = id;
+        const mutation = { target: table, addedNodes: [], removedNodes: [] } as unknown as MutationRecord;
         for (const record of observerRecords) {
-          if (record.editorId === id) record.callback([], {} as MutationObserver);
+          if (record.editorId === id) record.callback([mutation], {} as MutationObserver);
         }
       };
     });
@@ -432,6 +435,14 @@ async function main(): Promise<void> {
       document.querySelector('#first .cm-editor')!.append(document.createElement('b'));
     });
     await waitForFrames(page, 2);
+    assert.equal(
+      (await readMetrics(page, 'first')).queries, beforeFirstMutation.queries,
+      'passive Live DOM changes must not rediscover rendered tables'
+    );
+    await page.evaluate(() => {
+      document.querySelector('#first table[data-table-column-width] thead th')!.append(document.createElement('b'));
+    });
+    await waitForFrames(page, 2);
     const afterFirstMutation = await readMetrics(page, 'first');
     const afterSecondMutation = await readMetrics(page, 'second');
     assert.ok(afterFirstMutation.queries > beforeFirstMutation.queries);
@@ -447,7 +458,7 @@ async function main(): Promise<void> {
     const secondLiveQueries = (await readMetrics(page, 'second')).queries;
     await page.evaluate(() => {
       document.querySelector('#first .cm-editor')!.append(document.createElement('em'));
-      document.querySelector('#second .cm-editor')!.append(document.createElement('em'));
+      document.querySelector('#second table[data-table-column-width] thead th')!.append(document.createElement('em'));
     });
     await waitForFrames(page, 2);
     assert.equal((await readMetrics(page, 'first')).queries, firstReleasedQueries);

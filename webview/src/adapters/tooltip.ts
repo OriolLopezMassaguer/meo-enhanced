@@ -482,7 +482,7 @@ export function createTooltip(anchor: HTMLElement, options: {
 }
 
 /**
- * Bootstrap-owned binding for data-tooltip, optional data-tooltip-shortcut and
+ * Bootstrap-owned binding for data-tooltip, optional data-tooltip-command / data-tooltip-shortcut and
  * data-tooltip-kind="fulltext|description", data-tooltip-placement="top|bottom|left|right",
  * data-tooltip-positioning="element|pointer" (element by default),
  * and data-tooltip-live-update="true" for stateful controls.
@@ -490,9 +490,12 @@ export function createTooltip(anchor: HTMLElement, options: {
  * Generated controls supply metadata; links show their destination and any authored title.
  * Bootstrap supplies editableLinkHrefAtPoint for editor-owned text and cell drafts;
  * it resolves only pointer/key/input interactions, without committing an edit.
+ * Command controls resolve their first effective binding through shortcutForCommand.
+ * Call refreshShortcuts after preferences change; newly mounted controls resolve on scan.
  */
 export function bindTooltips(root: HTMLElement, options: {
   readonly editableLinkHrefAtPoint?: (point: { x: number; y: number }) => string;
+  readonly shortcutForCommand?: (command: string) => string | undefined;
 } = {}) {
   const doc = root.ownerDocument, view = doc.defaultView!;
   const events = new view.AbortController();
@@ -505,6 +508,12 @@ export function bindTooltips(root: HTMLElement, options: {
   const ignored = '.find-clear-button, .find-close-button, .outline-close-button, .editor-notice-close, .meo-hex-color-adjustment-close';
 
   function prepare(element: HTMLElement) {
+    if (element.dataset.tooltipCommand && options.shortcutForCommand) {
+      const key = options.shortcutForCommand(element.dataset.tooltipCommand);
+      if (key) {
+        if (element.dataset.tooltipShortcut !== key) element.dataset.tooltipShortcut = key;
+      } else if (element.hasAttribute('data-tooltip-shortcut')) element.removeAttribute('data-tooltip-shortcut');
+    }
     if (element.dataset.tooltip && element.matches('button, [role="button"]') && (!element.hasAttribute('aria-label') || ariaOwned.has(element))) {
       if (!element.textContent?.trim()) { element.setAttribute('aria-label', element.dataset.tooltip); ariaOwned.add(element); }
     }
@@ -525,6 +534,7 @@ export function bindTooltips(root: HTMLElement, options: {
     const text = href ? (description && description !== href ? destination + '\n' + description : destination) : description;
     if (!text) return null;
     const kind = href ? 'link' : element.dataset.tooltipKind;
+    prepare(element);
     const key = element.dataset.tooltipShortcut;
     if (kind === 'fulltext' && element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1) return null;
     if (key && (kind === 'fulltext' || kind === 'description' || kind === 'link' || /[\r\n]/.test(text))) {
@@ -532,8 +542,15 @@ export function bindTooltips(root: HTMLElement, options: {
       return null;
     }
     if (kind === 'fulltext' || kind === 'description' || kind === 'link') return { text, kind };
-    if (element.textContent?.trim().replace(/\s+/g, ' ') === text.replace(/\s+/g, ' ')) return null;
+    if (!key && element.textContent?.trim().replace(/\s+/g, ' ') === text.replace(/\s+/g, ' ')) return null;
     return { text, shortcut: key || undefined };
+  }
+
+  function refreshCurrent() {
+    if (!current) return;
+    const content = contentFor(current.anchor, current.editableHref);
+    if (!content || !painted(current.anchor)) { current.hint.dispose(); current = undefined; }
+    else current.hint.setContent(content);
   }
 
   function fromTarget(target: EventTarget | null, editableHref?: string): HTMLElement | null {
@@ -638,14 +655,10 @@ export function bindTooltips(root: HTMLElement, options: {
       if (!frame.isConnected) { state.dispose?.(); frames.delete(frame); }
       else if (state.doc) state.doc.documentElement.dataset.meoTooltipAppearance = doc.documentElement.dataset.meoTooltipAppearance ?? doc.documentElement.dataset.editorAppearance ?? 'light';
     }
-    if (current) {
-      const content = contentFor(current.anchor, current.editableHref);
-      if (!content || !painted(current.anchor)) { current.hint.dispose(); current = undefined; }
-      else current.hint.setContent(content);
-    }
+    refreshCurrent();
     activeTooltip?.reposition();
   });
-  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-tooltip', 'data-tooltip-link-href', 'data-tooltip-shortcut', 'data-tooltip-kind', 'data-tooltip-placement', 'data-tooltip-positioning', 'data-tooltip-live-update', 'data-meo-link-href', 'data-meo-preview-href', 'href', 'hidden', 'open'] });
+  observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-tooltip', 'data-tooltip-link-href', 'data-tooltip-command', 'data-tooltip-shortcut', 'data-tooltip-kind', 'data-tooltip-placement', 'data-tooltip-positioning', 'data-tooltip-live-update', 'data-meo-link-href', 'data-meo-preview-href', 'href', 'hidden', 'open'] });
   const appearance = new view.MutationObserver(() => {
     for (const state of frames.values()) if (state.doc) {
       state.doc.documentElement.dataset.meoTooltipAppearance = doc.documentElement.dataset.meoTooltipAppearance ?? doc.documentElement.dataset.editorAppearance ?? 'light';
@@ -675,6 +688,11 @@ export function bindTooltips(root: HTMLElement, options: {
   view.addEventListener('resize', () => activeTooltip?.reposition(), { signal: events.signal });
   scan(root);
   return {
+    refreshShortcuts() {
+      prepare(root);
+      for (const element of root.querySelectorAll<HTMLElement>('[data-tooltip-command]')) prepare(element);
+      refreshCurrent();
+    },
     dispose() {
       hoverReadyUntil = 0;
       events.abort(); observer.disconnect(); appearance.disconnect(); current?.hint.dispose();

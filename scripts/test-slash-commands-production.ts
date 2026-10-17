@@ -646,9 +646,12 @@ try {
   await page.setViewport({ width: 1000, height: 720 });
   const wideTable = ['A', '---', 'x'].map(value => '| ' + Array(10).fill(value).join(' | ') + ' |').join('\n');
   await prepare('live', wideTable, 0); await page.waitForSelector('tbody textarea');
+  // Keep the scrollable clipping fixture independent of automatic width fitting.
+  await page.addStyleTag({ content: '.slash-horizontal-clipping-fixture { min-width: 1000px !important; }' });
   await page.evaluate(() => {
     const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!, wrap = input.closest<HTMLElement>('.meo-md-html-table-wrap')!;
-    wrap.style.width = '150px'; input.focus(); input.setSelectionRange(0, 0);
+    input.closest('table')!.classList.add('slash-horizontal-clipping-fixture');
+    wrap.style.width = '150px'; wrap.style.overflowX = 'auto'; input.focus(); input.setSelectionRange(0, 0);
   }); await settlePosition(); await page.keyboard.type('/b'); await open();
   assert.ok(await page.$eval('.meo-input-suggestions', popup => popup.getBoundingClientRect().width > 150), 'native menus can extend beyond a narrow cell');
   await page.evaluate(() => {

@@ -1,5 +1,13 @@
 # Third-Party Notices
 
+## VS Code Codicons
+
+- Author: Microsoft
+- Sources: [open-preview](https://github.com/microsoft/vscode-codicons/blob/main/src/icons/open-preview.svg), [save](https://github.com/microsoft/vscode-codicons/blob/main/src/icons/save.svg), [save-as](https://github.com/microsoft/vscode-codicons/blob/main/src/icons/save-as.svg)
+- License: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/
+- Usage: Save, Save As and Source side preview toolbar buttons in `webview/src/helpers/codicons.ts`.
+- Changes: Shapes adapted to 18px outline SVGs with a 1.5px rendered stroke; disk, pen and preview-panel paths repositioned to preserve clear gaps at toolbar size. Colors follow the current interface color.
+
 ## Typora Whitey Deep palette
 
 - Source: https://github.com/typora/typora-default-themes/blob/master/themes/whitey-deep.css

@@ -168,13 +168,17 @@ for (const reason of ['pointercancel', 'lostcapture'] as const) {
   assert.deepEqual(selection.snapshot(), { phase: 'idle', anchor: null, range: null });
 }
 
-for (const [from, to] of [[cell(1, 0), cell(3, 2)], [cell(3, 2), cell(1, 0)]] as const) {
+for (const [from, to, insideTable] of [
+  [cell(1, 0), cell(3, 2), true], [cell(3, 2), cell(1, 0), true],
+  [cell(1, 0), cell(3, 2), false], [cell(3, 2), cell(1, 0), false]
+] as const) {
   const selection = new TableCellSelection();
   begin(selection, 8, from, 0);
   assert.deepEqual(selection.accept({ type: 'move', pointerId: 8, cell: to }), accepted(
     { kind: 'cells', pointerId: 8, range: range(1, 3, 0, 2), focus: 'table' }
   ));
-  assert.deepEqual(selection.accept({ type: 'end', pointerId: 8, cell: null, insideTable: true }), accepted(
+  selection.accept({ type: 'move', pointerId: 8, cell: null });
+  assert.deepEqual(selection.accept({ type: 'end', pointerId: 8, cell: null, insideTable }), accepted(
     { kind: 'release-pointer', pointerId: 8 },
     { kind: 'cells', pointerId: 8, range: range(1, 3, 0, 2), focus: 'table' }
   ), 'pointerup persists the last normalized dragging range');
@@ -226,8 +230,22 @@ for (const reason of ['pointercancel', 'lostcapture'] as const) {
   selection.accept({ type: 'move', pointerId: 9, cell: cell(1, 1) });
   assert.deepEqual(selection.accept({ type: 'end', pointerId: 9, cell: null, insideTable: false }), accepted(
     { kind: 'release-pointer', pointerId: 9 },
-    { kind: 'clear', pointerId: 9, reason: 'outside' }
-  ), 'outside release aborts the pointer owner');
+    { kind: 'cells', pointerId: 9, range: range(0, 1, 0, 1), focus: 'table' }
+  ), 'outside release commits the visible multi-cell range');
+  assert.equal(selection.ownsPointer(9), false);
+  assert.deepEqual(selection.accept({ type: 'abort', pointerId: 9, reason: 'lostcapture' }), rejected,
+    'capture loss after outside release cannot cancel the committed range');
+  assert.deepEqual(selection.snapshot(), { phase: 'persisted', anchor: cell(0, 0), range: range(0, 1, 0, 1) });
+}
+
+for (const leftCell of [false, true]) {
+  const selection = new TableCellSelection();
+  begin(selection, 10, cell(0, 0), 0);
+  if (leftCell) selection.accept({ type: 'move', pointerId: 10, cell: null });
+  assert.deepEqual(selection.accept({ type: 'end', pointerId: 10, cell: null, insideTable: false }), accepted(
+    { kind: 'release-pointer', pointerId: 10 },
+    { kind: 'clear', pointerId: 10, reason: 'outside' }
+  ), 'outside release without a visible multi-cell range still exits');
 }
 
 for (const reason of ['outside', 'escape', 'cross-table', 'external', 'replacement'] as const) {

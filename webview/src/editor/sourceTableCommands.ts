@@ -2,16 +2,12 @@ import { Transaction, EditorSelection, type EditorState, type TransactionSpec } 
 import type { EditorView } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
 import { syntaxTree } from '@codemirror/language';
-import type { EditorCommandId } from '../../../src/foundation/editingPreferences';
 import type { TableCommand } from '../application/tableCommand';
 import { externalTableCellToMarkdown, markdownTableFromCells, parseMarkdownTable, type MarkdownTable } from '../application/delimitedTable';
 import type { TableClipboardMatrix } from './tableClipboard';
 import type { TableCommandEditorTarget } from './tableCommandAdapter';
 
-export const tableShortcutCommands: Partial<Record<EditorCommandId, TableCommand>> = {
-  rowAbove: 'insert-row-above', rowBelow: 'insert-row-below', rowDelete: 'delete-row', columnBefore: 'insert-column-left', columnAfter: 'insert-column-right', columnDelete: 'delete-column',
-  moveRowUp: 'move-row-up', moveRowDown: 'move-row-down', moveColumnLeft: 'move-column-left', moveColumnRight: 'move-column-right', alignLeft: 'align-left', alignCenter: 'align-center', alignRight: 'align-right'
-};
+export { tableShortcutCommands } from '../application/tableCommand';
 export type SourceTable = { readonly from: number; readonly to: number; readonly row: number; readonly column: number; readonly prefix: string; readonly matrix: MarkdownTable };
 export function sourceTableAt(state: EditorState, position = state.selection.main.head): SourceTable | null {
   let node = syntaxTree(state).resolveInner(position, -1);

@@ -308,7 +308,11 @@ export class TableCellSelection {
       return accepted({ kind: 'cells', pointerId: event.pointerId, range: this.range, focus: 'table' });
     }
     if (event.type === 'end') {
-      if (!event.insideTable) {
+      // An outside release commits the latest visible range from the drag adapter.
+      const hasVisibleRange = this.range !== null && (
+        this.range.fromRow !== this.range.toRow || this.range.fromCol !== this.range.toCol
+      );
+      if (!event.insideTable && !hasVisibleRange) {
         this.reset();
         return accepted(
           { kind: 'release-pointer', pointerId: event.pointerId },
@@ -342,7 +346,7 @@ export class TableCellSelection {
           effect
         );
       }
-      if (event.cell) this.range = normalizeRange(this.anchor, event.cell);
+      if (event.insideTable && event.cell) this.range = normalizeRange(this.anchor, event.cell);
       if (!this.range) {
         this.reset();
         return accepted(

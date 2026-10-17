@@ -59,6 +59,139 @@ try {
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
   await page.addStyleTag({ content: ':root{--meo-semantic-blockquoteBorder:#8c959f;--meo-semantic-blockquoteForeground:#24292f}' });
   await page.addScriptTag({ content: await build.outputs[0]!.text() });
+  const headingCases = [
+    '你好\n---', '你好\n===', 'first\nsecond\n---',
+    '**你好**\n---\n*你好*\n---\n==好==\n---\n~~删除~~\n---',
+    '你好\n\n---', '你好\n***', '你好\n- - -', '# Heading\n---',
+    '> **Quote**\n> ---', '> first\n> *second*\n> ===', '- **List**\n  ---',
+    '```text\n你好\n---\n```', '    你好\n    ---',
+    '---\ntitle: test\n---\n\nVisible\n---',
+    '| A |\n| --- |\n| value |\n---', '| A |\n| --- |\n| value |\n===',
+    '| A |\n| --- |\n---', '> | A |\n> | --- |\n> | value |\n> ---',
+    'a | b\ninvalid\n---'
+  ];
+  for (const fixture of headingCases) {
+    const source = fixture + '\n\nAfter';
+    const html = renderMarkdownToHtml({ markdownText: source, markdownFilePath: 'D:/audit.md', target: 'html' }).html;
+    const result = await page.evaluate(async ({ source, html }) => {
+      const host = document.querySelector('#live')!;
+      const editor = (window as any).ListEditingHarness.createEditor({ parent: host, text: source, initialMode: 'live', onApplyChanges() {} });
+      try {
+        editor.view.dispatch({ selection: { anchor: source.length } });
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        document.querySelector('#preview')!.innerHTML = html;
+        const headings = editor.getHeadings();
+        const tables = (root: Element) => Array.from(root.querySelectorAll('table:not(.meo-md-html-table-sticky-table)'), table => Array.from(table.querySelectorAll('th,td'), cell => (cell.querySelector('.meo-md-html-table-cell-preview') ?? cell).textContent!.trim()));
+        const live = { headings: headings.map((heading: any) => ({ level: heading.level, text: heading.text })), hr: host.querySelectorAll('.meo-md-hr:not(.meo-md-frontmatter-boundary)').length, tables: tables(host) };
+        const preview = { headings: Array.from(document.querySelectorAll('#preview :is(h1,h2,h3,h4,h5,h6)'), node => ({ level: Number(node.tagName.slice(1)), text: node.textContent!.replace(/\s+/g, ' ').trim() })), hr: document.querySelectorAll('#preview hr').length, tables: tables(document.querySelector('#preview')!) };
+        const styled = headings.every((heading: any) => {
+          const node = editor.view.domAtPos(heading.from).node;
+          return (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement).closest('.cm-line')?.classList.contains('meo-md-h' + heading.level);
+        });
+        editor.setMode('source'); editor.setMode('live');
+        return { live, preview, styled, unchanged: editor.getText() === source };
+      } finally { editor.destroy(); }
+    }, { source, html });
+    assert.deepEqual(result.live, result.preview, 'Live/Preview heading semantics: ' + fixture);
+    assert.ok(result.styled, 'headings use the existing Live title style: ' + fixture);
+    assert.ok(result.unchanged, 'mode switches preserve heading source: ' + fixture);
+  }
+  const headingEditing = await page.evaluate(async () => {
+    const source = '**Title**\n---\n\nAfter';
+    const editor = (window as any).ListEditingHarness.createEditor({ parent: document.querySelector('#live'), text: source, initialMode: 'live', onApplyChanges() {} });
+    try {
+      const revealed = [];
+      for (const anchor of [3, source.indexOf('---'), source.length]) {
+        editor.view.dispatch({ selection: { anchor } });
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        revealed.push(Array.from(editor.view.dom.querySelectorAll('.meo-md-marker-active')).some((node: any) => node.textContent === '---' && node.getBoundingClientRect().width > 0));
+      }
+      return { revealed, headings: editor.getHeadings(), history: editor.getHistoryDepth() };
+    } finally { editor.destroy(); }
+  });
+  assert.deepEqual(headingEditing.revealed, [true, true, false], 'editing either heading line reveals its underline');
+  assert.ok(headingEditing.headings[0].inlineSegments.some((segment: any) => segment.text === 'Title' && segment.strong), 'Setext outline retains rich inline formatting');
+  assert.deepEqual(headingEditing.history, { undo: 0, redo: 0 }, 'syntax reveal does not create undo entries');
+  await page.evaluate(() => {
+    const editor = (window as any).__headingEditor = (window as any).ListEditingHarness.createEditor({ parent: document.querySelector('#live'), text: 'Title\n\nAfter', initialMode: 'live', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: 5 } }); editor.focus();
+  });
+  try {
+    await page.keyboard.press('Enter'); await page.keyboard.type('---');
+    await page.waitForFunction(() => (window as any).__headingEditor.getHeadings()[0]?.level === 2);
+    await page.evaluate(() => {
+      const editor = (window as any).__headingEditor;
+      const { isolateHistory } = (window as any).ListEditingHarness;
+      editor.view.dispatch({ selection: { anchor: 6, head: 9 }, annotations: isolateHistory.of('full') });
+    });
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(() => (window as any).__headingEditor.getHeadings().length === 0);
+    await page.evaluate(() => (window as any).__headingEditor.undo());
+    await page.waitForFunction(() => (window as any).__headingEditor.getHeadings()[0]?.level === 2);
+  } finally {
+    await page.evaluate(() => { (window as any).__headingEditor.destroy(); delete (window as any).__headingEditor; });
+  }
+  for (const [mode, anchor] of [['live', 3], ['live', 11], ['source', 3], ['source', 11]] as const) {
+    for (const [command, expected] of [
+      ['heading1', '# **Title**\n\nAfter'], ['heading2', '**Title**\n\nAfter'],
+      ['heading3', '### **Title**\n\nAfter'], ['headingUp', '# **Title**\n\nAfter'],
+      ['headingDown', '### **Title**\n\nAfter']
+    ] as const) {
+      const result = await page.evaluate(async ({ command, mode, anchor }) => {
+        const source = '**Title**\n---\n\nAfter';
+        const editor = (window as any).ListEditingHarness.createEditor({ parent: document.querySelector('#live'), text: source, initialMode: mode, onApplyChanges() {} });
+        try {
+          editor.view.dispatch({ selection: { anchor } });
+          editor.executeCommand(command); const changed = editor.getText(), caret = editor.view.state.selection.main.head;
+          await editor.undo(); return { changed, caret, undone: editor.getText(), source };
+        } finally { editor.destroy(); }
+      }, { command, mode, anchor });
+      assert.equal(result.changed, expected, 'heading toolbar updates the whole Setext heading: ' + command);
+      assert.equal(result.caret, expected.indexOf('**Title**') + (anchor === 3 ? 3 : 9), 'heading conversion preserves the content caret');
+      assert.equal(result.undone, result.source, 'heading toolbar change undoes as one step');
+    }
+  }
+  for (const [source, anchor, head, expected] of [
+    ['first\n*second*\n---\n\nAfter', 2, 12, '### first *second*\n\nAfter'],
+    ['> **Title**\n> ---\n\nAfter', 4, 4, '> ### **Title**\n\nAfter'],
+    ['- Title\n  ---\n\nAfter', 11, 11, '- ### Title\n\nAfter']
+  ] as const) {
+    const result = await page.evaluate(({ source, anchor, head }) => {
+      const editor = (window as any).ListEditingHarness.createEditor({ parent: document.querySelector('#live'), text: source, initialMode: 'live', onApplyChanges() {} });
+      try {
+        editor.view.dispatch({ selection: { anchor, head } }); editor.executeCommand('headingDown'); return editor.getText();
+      } finally { editor.destroy(); }
+    }, { source, anchor, head });
+    assert.equal(result, expected, 'heading conversion preserves containers and joins multiline content once');
+  }
+  for (const mode of ['source', 'live']) {
+    for (const [source, anchor, expected] of [
+      ['word', 4, 'word\n\n---\n\n'],
+      ['before\n\nafter', 7, 'before\n\n---\n\nafter'],
+      ['before\nafter', 2, 'before\n\n---\n\nafter'],
+      ['before\n\n\nafter', 8, 'before\n\n---\n\nafter'],
+      ['', 0, '\n---\n\n']
+    ] as const) {
+      const result = await page.evaluate(async ({ mode, source, anchor }) => {
+        const editor = (window as any).ListEditingHarness.createEditor({ parent: document.querySelector('#live'), text: source, initialMode: mode, onApplyChanges() {} });
+        try {
+          editor.view.dispatch({ selection: { anchor } }); editor.executeCommand('rule');
+          const inserted = editor.getText();
+          const caret = editor.view.state.selection.main.head;
+          await editor.undo(); const undone = editor.getText();
+          await editor.redo();
+          return { inserted, undone, redone: editor.getText(), caret };
+        } finally { editor.destroy(); }
+      }, { mode, source, anchor });
+      assert.equal(result.inserted, expected, mode + ': divider button separates surrounding paragraphs');
+      assert.equal(result.caret, expected.indexOf('---') + 3, 'divider caret stays after its marker');
+      assert.equal(result.undone, source); assert.equal(result.redone, expected);
+      const html = renderMarkdownToHtml({ markdownText: result.inserted, markdownFilePath: 'D:/audit.md', target: 'html' }).html;
+      assert.equal((html.match(/<hr\b/g) ?? []).length, 1, 'inserted divider remains a divider in Preview');
+      assert.ok(!/<h[12]\b/.test(html), 'divider insertion never creates a Setext heading');
+    }
+  }
+  console.log('PASS Setext heading parity, syntax reveal and divider insertion');
   for (const cell of cases) {
     const source = '| Content |\n| --- |\n| ' + cell + ' |';
     const html = renderMarkdownToHtml({ markdownText: source, markdownFilePath: 'D:/audit.md', target: 'html', uiLanguage: 'zh-CN' }).html;

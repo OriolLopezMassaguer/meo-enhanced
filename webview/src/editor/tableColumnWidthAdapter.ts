@@ -11,6 +11,7 @@ import {
   requestLiveInputDerivedWorkOnFrame
 } from './liveInputDerivedWork';
 import { isExternalDocumentPresentation } from './externalDocumentPresentation';
+import { planAutomaticTableWidths } from '../application/automaticTableWidths';
 
 export type TableColumnWidthAdapter = {
   acquire(): void;
@@ -181,8 +182,15 @@ export function createCodeMirrorDomTableColumnWidthAdapter(
     if (exact) return exact;
     const signature = table.dataset.tableSignature;
     if (!signature) return null;
+    // This signature describes column structure, not table identity. Only recover
+    // a nearby replacement; another mounted table must keep its own baseline.
     return startupBaselines
-      .filter((baseline) => baseline.signature === signature && baseline.widths.length === columnCount)
+      .filter((baseline) => (
+        baseline.signature === signature
+        && baseline.widths.length === columnCount
+        && Math.abs(baseline.from - from) <= 8
+        && (!baseline.table.isConnected || baseline.table === table)
+      ))
       .sort((left, right) => Math.abs(left.from - from) - Math.abs(right.from - from))[0] ?? null;
   };
 
@@ -314,6 +322,7 @@ export function createCodeMirrorDomTableColumnWidthAdapter(
     table.style.maxWidth = '';
     table.style.minWidth = '';
     table.style.tableLayout = '';
+    table.style.removeProperty('--meo-table-cell-inline-padding');
     table.parentElement?.classList.remove('is-table-overflowing');
     for (const column of table.querySelectorAll<HTMLTableColElement>('colgroup > col')) {
       column.style.width = '';
@@ -338,6 +347,73 @@ export function createCodeMirrorDomTableColumnWidthAdapter(
       return;
     }
     const intent = findIntent(table, true);
+    const preferredColumnWidth = preferredDefaultColumnWidth(table);
+    if (preferredColumnWidth > 0 && (!intent || intent.source === 'automatic')) {
+      const available = availableWidth(table);
+      if (available <= 0) return;
+      const facts = layoutFacts(table);
+      if (intent && sameLayoutFacts(intent.snapshot, facts)) return;
+      let preferredWidths = intent?.snapshot.intentWidths;
+      const metricsChanged = intent && !facts.minimumWidths.every((width, index) => width === intent.snapshot.minimumWidths[index]);
+      if (!preferredWidths || intent && (available > intent.snapshot.availableWidth + 0.5 || metricsChanged)) {
+        reset(table);
+        // Sample natural content before fitting. Measuring an already compressed
+        // table would bake the current viewport's proportions into future layouts.
+        table.style.width = 'max-content';
+        table.style.maxWidth = 'none';
+        table.style.tableLayout = 'auto';
+        const baseline = refreshUncommittedStartupBaseline(table);
+        preferredWidths = baseline?.widths ?? layoutFacts(table).widths;
+      }
+      const defaultWidths = preferredWidths.map(width => Math.max(width, preferredColumnWidth));
+      const preferredTotalWidth = defaultWidths.reduce((sum, width) => sum + width, 0);
+      const naturalTotalWidth = preferredWidths.reduce((sum, width) => sum + width, 0);
+      const targetWidth = Math.min(available, preferredTotalWidth);
+      const constrained = preferredTotalWidth > available + 0.5;
+      let result = planAutomaticTableWidths(
+        preferredWidths,
+        Math.min(targetWidth, naturalTotalWidth),
+        preferredColumnWidth
+      );
+      const spareWidth = targetWidth - result.totalWidth;
+      if (spareWidth > 0) {
+        // Once content fits, restore the default breathing room only in short
+        // columns. Switching all targets at this threshold makes long columns
+        // grow while the container shrinks and causes a visible width jump.
+        const growth = defaultWidths.map((width, index) => width - preferredWidths[index]);
+        const totalGrowth = growth.reduce((sum, width) => sum + width, 0);
+        if (totalGrowth > 0) result = {
+          widths: result.widths.map((width, index) => width + spareWidth * growth[index] / totalGrowth),
+          totalWidth: targetWidth,
+          overflows: false
+        };
+      }
+
+      table.style.removeProperty('--meo-table-cell-inline-padding');
+      const preview = table.querySelector<HTMLElement>('thead th .meo-md-html-table-cell-preview');
+      if (preview) {
+        const style = getComputedStyle(preview);
+        const padding = Math.min(Number.parseFloat(style.paddingLeft) || 0, Number.parseFloat(style.paddingRight) || 0);
+        const compact = Math.max(1, (Math.min(...result.widths) - (Number.parseFloat(style.fontSize) || 0) - 2) / 2);
+        if (compact < padding) table.style.setProperty('--meo-table-cell-inline-padding', `${compact}px`);
+      }
+      render(table, result.widths, result.totalWidth);
+      table.parentElement?.classList.remove('is-table-overflowing');
+      storeIntent(table, {
+        source: 'automatic',
+        snapshot: {
+          widths: [...result.widths],
+          intentWidths: [...preferredWidths],
+          minimumWidths: [...minimumWidths(table)],
+          availableWidth: available,
+          policyState: constrained
+            ? { elastic: true, tracksAvailableWidth: true }
+            : { elastic: false, tracksAvailableWidth: false },
+          preferredTotalWidth
+        }
+      });
+      return;
+    }
     if (!intent) {
       reset(table);
       const startupBaseline = refreshUncommittedStartupBaseline(table);

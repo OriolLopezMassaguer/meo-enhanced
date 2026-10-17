@@ -35,6 +35,7 @@ import { estimateBlockWidgetHeight } from '../editor/blockWidgetHeight';
 import { formatSourceLineNumber } from '../editor/sourceLineNumbers';
 import { mountProjectedLineNumbers } from '../editor/projectedLineNumbers';
 import { RenderedBlockPreviewHeight } from './renderedBlockPreview';
+import { createPreviewTableLayoutController, type PreviewTableLayoutController } from './previewTableLayout';
 
 export interface RenderableHtmlBlock {
   from: number;
@@ -401,6 +402,10 @@ function createHtmlModeButton(className: string, label: string, icon: typeof Cod
   return button;
 }
 
+type HtmlTableLayout = { frame: number | null; controller: PreviewTableLayoutController | null };
+// CodeMirror may retain a widget's DOM while replacing its equal value object.
+const htmlTableLayouts = new WeakMap<HTMLElement, HtmlTableLayout>();
+
 class HtmlBlockWidget extends UiLanguageSensitiveWidget {
   private imageWidgets: ImageWidget[] = [];
   private readonly height: RenderedBlockPreviewHeight;
@@ -493,6 +498,18 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     });
     root.appendChild(button);
     this.height.observe(root, view);
+    if (contentRoot.querySelector('table')) {
+      // The widget is not mounted during toDOM. Its natural table geometry is
+      // meaningful only after CodeMirror attaches it; dispose with this widget.
+      const layout: HtmlTableLayout = { frame: null, controller: null };
+      htmlTableLayouts.set(root, layout);
+      layout.frame = requestAnimationFrame(() => {
+        layout.frame = null;
+        if (htmlTableLayouts.get(root) === layout && root.isConnected) {
+          layout.controller = createPreviewTableLayoutController(root.ownerDocument, contentRoot);
+        }
+      });
+    }
     return root;
   }
 
@@ -501,6 +518,10 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
   }
 
   destroy(dom: HTMLElement): void {
+    const layout = htmlTableLayouts.get(dom);
+    if (layout && layout.frame !== null) cancelAnimationFrame(layout.frame);
+    layout?.controller?.dispose();
+    htmlTableLayouts.delete(dom);
     this.height.destroy(dom);
     for (const widget of this.imageWidgets) widget.destroy();
     this.imageWidgets = [];

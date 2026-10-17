@@ -1,73 +1,13 @@
+import { planAutomaticTableWidths, type AutomaticTableWidthPlan } from '../application/automaticTableWidths';
+
 const DEFAULT_MINIMUM_COLUMN_WIDTH = 90;
 const preferredWidthCache = new WeakMap<HTMLTableElement, {
   readonly signature: string;
   readonly widths: readonly number[];
 }>();
 
-export type PreviewTableWidthPlan = {
-  readonly widths: readonly number[];
-  readonly totalWidth: number;
-  readonly overflows: boolean;
-};
-
-export function planPreviewTableWidths(
-  preferredWidths: readonly number[],
-  availableWidth: number,
-  minimumColumnWidth = DEFAULT_MINIMUM_COLUMN_WIDTH
-): PreviewTableWidthPlan {
-  if (preferredWidths.length === 0) return { widths: [], totalWidth: 0, overflows: false };
-  const available = Math.max(0, availableWidth);
-  const minimum = Math.max(1, minimumColumnWidth);
-  const minimumTotal = minimum * preferredWidths.length;
-  const totalWidth = available;
-  const preferredCap = Math.max(minimum, Math.min(640, Math.max(360, available * 0.62)));
-  if (available < minimumTotal) {
-    // The minimum is a readability target, not an overflow trigger. Preserve a
-    // small equal share for every column, then distribute the remaining width
-    // by measured content demand so the table always converges on its container.
-    const equalBudget = available * 0.35;
-    const equalShare = equalBudget / preferredWidths.length;
-    const demands = preferredWidths.map(width => Math.max(
-      1,
-      Math.min(preferredCap, Number.isFinite(width) ? width : minimum)
-    ));
-    const demandTotal = demands.reduce((sum, demand) => sum + demand, 0);
-    const weightedBudget = Math.max(0, available - equalBudget);
-    const widths = demands.map(demand => equalShare + weightedBudget * (demand / demandTotal));
-    return { widths, totalWidth, overflows: false };
-  }
-  const demands = preferredWidths.map((width) => (
-    Math.max(0, Math.min(preferredCap, Number.isFinite(width) ? width : minimum) - minimum)
-  ));
-  const widths = preferredWidths.map(() => minimum);
-  let remaining = Math.max(0, totalWidth - minimumTotal);
-  let active = demands.map((demand, index) => ({ demand, index })).filter(({ demand }) => demand > 0.5);
-
-  // Water-fill toward each column's measured max-content width. Columns with
-  // more content receive more room, while short columns retain a readable floor.
-  while (remaining > 0.5 && active.length > 0) {
-    const demandTotal = active.reduce((sum, entry) => sum + entry.demand, 0);
-    if (demandTotal <= 0) break;
-    let consumed = 0;
-    const next: typeof active = [];
-    for (const entry of active) {
-      const allocation = Math.min(entry.demand, remaining * (entry.demand / demandTotal));
-      widths[entry.index] += allocation;
-      consumed += allocation;
-      const demand = entry.demand - allocation;
-      if (demand > 0.5) next.push({ ...entry, demand });
-    }
-    if (consumed <= 0.1) break;
-    remaining -= consumed;
-    active = next;
-  }
-
-  if (remaining > 0) {
-    const extra = remaining / widths.length;
-    for (let index = 0; index < widths.length; index += 1) widths[index] += extra;
-  }
-  return { widths, totalWidth, overflows: false };
-}
+export type PreviewTableWidthPlan = AutomaticTableWidthPlan;
+export const planPreviewTableWidths = planAutomaticTableWidths;
 
 export type PreviewTableLayoutController = {
   refresh(): void;
@@ -75,9 +15,27 @@ export type PreviewTableLayoutController = {
 };
 
 function tableColumnCount(table: HTMLTableElement): number {
-  return Array.from(table.rows).reduce((maximum, row) => (
-    Math.max(maximum, Array.from(row.cells).reduce((count, cell) => count + Math.max(1, cell.colSpan), 0))
-  ), 0);
+  let group: Element | null = null;
+  let rowIndex = 0;
+  let count = 0;
+  const occupied: number[] = [];
+  for (const row of Array.from(table.rows)) {
+    if (row.parentElement !== group) {
+      group = row.parentElement;
+      occupied.length = 0;
+      rowIndex = 0;
+    }
+    let column = 0;
+    for (const cell of Array.from(row.cells)) {
+      // Row spans reserve slots within this row group; rowspan=0 lasts to its end.
+      while ((occupied[column] ?? 0) > rowIndex) column++;
+      const end = column + Math.max(1, cell.colSpan);
+      for (; column < end; column++) occupied[column] = cell.rowSpan === 0 ? Infinity : rowIndex + cell.rowSpan;
+      count = Math.max(count, end);
+    }
+    rowIndex++;
+  }
+  return count;
 }
 
 function ensureColumnGroup(table: HTMLTableElement, columnCount: number): HTMLTableColElement[] {
@@ -108,18 +66,11 @@ function preferredWidthSignature(table: HTMLTableElement, columnCount: number): 
 }
 
 function readPreferredWidths(table: HTMLTableElement, columnCount: number, signature: string): number[] {
-  const preferred = Array.from({ length: columnCount }, () => DEFAULT_MINIMUM_COLUMN_WIDTH);
-  for (const row of Array.from(table.rows)) {
-    let columnIndex = 0;
-    for (const cell of Array.from(row.cells)) {
-      const span = Math.max(1, cell.colSpan);
-      const share = cell.getBoundingClientRect().width / span;
-      for (let offset = 0; offset < span && columnIndex + offset < columnCount; offset += 1) {
-        preferred[columnIndex + offset] = Math.max(preferred[columnIndex + offset], share);
-      }
-      columnIndex += span;
-    }
-  }
+  // Native column boxes already account for rowspan/colspan and rich content.
+  // Measuring these tracks avoids assigning a spanning cell's average to every column.
+  const columns = table.querySelectorAll<HTMLTableColElement>(':scope > colgroup[data-meo-preview-columns] > col');
+  const preferred = Array.from({ length: columnCount }, (_, index) => Math.max(1,
+    columns[index]?.getBoundingClientRect().width ?? DEFAULT_MINIMUM_COLUMN_WIDTH));
   preferredWidthCache.set(table, { signature, widths: preferred });
   return preferred;
 }
@@ -179,8 +130,12 @@ function visibleRightEdgeInset(table: HTMLTableElement): number {
 }
 
 function layoutTables(tables: readonly HTMLTableElement[]): void {
-  const entries = tables.flatMap(table => {
-    const wrapper = table.closest<HTMLElement>('.meo-table-scroll, .meo-export-html-block') ?? table.parentElement;
+  const visibleTables = tables.map(table => {
+    const wrapper = table.parentElement?.closest<HTMLElement>('td, th')
+      ?? table.closest<HTMLElement>('.meo-table-scroll, .meo-export-html-block, .meo-md-html-content') ?? table.parentElement;
+    return { table, wrapper };
+  }).filter(({ table, wrapper }) => wrapper && table.getClientRects().length && wrapper.clientWidth > 0);
+  const entries = visibleTables.flatMap(({ table, wrapper }) => {
     const columnCount = tableColumnCount(table);
     if (!wrapper || columnCount === 0) return [];
     const columns = ensureColumnGroup(table, columnCount);
@@ -236,12 +191,16 @@ function layoutTables(tables: readonly HTMLTableElement[]): void {
     wrapper.classList.remove('is-table-overflowing');
   }
 }
-export function createPreviewTableLayoutController(frameDocument: Document): PreviewTableLayoutController {
+/** Mount after attachment and dispose with the reading document or rendered HTML widget. */
+export function createPreviewTableLayoutController(
+  frameDocument: Document,
+  root: Document | HTMLElement = frameDocument
+): PreviewTableLayoutController {
   let disposed = false;
   let frame: number | null = null;
   const observedWidths = new WeakMap<Element, number>();
-  const tables = () => Array.from(frameDocument.querySelectorAll<HTMLTableElement>(
-    '.meo-table-scroll > table, .meo-export-html-block table'
+  const tables = () => Array.from(root.querySelectorAll<HTMLTableElement>(
+    '.meo-table-scroll > table, .meo-export-html-block table, .meo-md-html-content table'
   ));
   const refresh = () => {
     if (disposed) return;
@@ -271,18 +230,20 @@ export function createPreviewTableLayoutController(frameDocument: Document): Pre
     if (widthChanged) scheduleRefresh();
   }) : null;
   for (const table of tables()) {
-    const wrapper = table.closest<HTMLElement>('.meo-table-scroll, .meo-export-html-block') ?? table.parentElement;
+    const wrapper = table.closest<HTMLElement>('.meo-table-scroll, .meo-export-html-block, .meo-md-html-content') ?? table.parentElement;
     if (wrapper) {
       observedWidths.set(wrapper, wrapper.clientWidth);
       observer?.observe(wrapper);
     }
   }
+  root.addEventListener('toggle', scheduleRefresh, true);
   refresh();
   return {
     refresh,
     dispose() {
       disposed = true;
       observer?.disconnect();
+      root.removeEventListener('toggle', scheduleRefresh, true);
       if (frame !== null) frameDocument.defaultView?.cancelAnimationFrame(frame);
       frame = null;
     }

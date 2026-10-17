@@ -63,6 +63,8 @@ assert.deepEqual([chinese.feedbackPrompt, chinese.reportIssue], ['使用中遇�
 assert.equal(english.line, 'Lines');
 assert.equal(chinese.line, '行号');
 assert.equal(chinese.exportHtml, '导出为 HTML');
+assert.deepEqual([english.deleteTable, english.sortTableAscending, english.sortTableDescending], ['Delete table', 'Sort ascending', 'Sort descending']);
+assert.deepEqual([chinese.deleteTable, chinese.sortTableAscending, chinese.sortTableDescending], ['删除表格', '升序排列', '降序排列']);
 assert.equal(chinese.exportDocument, '导出为…');
 assert.equal(english.findMatches(2), '2 matches');
 assert.equal(chinese.findMatches(2), '2 个匹配项');

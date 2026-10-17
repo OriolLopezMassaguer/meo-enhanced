@@ -219,14 +219,14 @@ try {
   assert.equal(layout.editorVisible, true);
   assert.equal(layout.previewVisible, true);
   assert.equal(layout.pressed, 'true');
-  assert.equal(layout.label, 'Exit split');
+  assert.equal(layout.label, '');
   assert.equal(
     layout.syncPressed,
     'true',
     'A newly opened document session must ignore stale persisted scroll-sync state'
   );
   assert.equal(layout.syncVisible, true);
-  assert.equal(layout.splitIcon, 'square-split-horizontal');
+  assert.equal(layout.splitIcon, 'open-preview');
   assert.equal(layout.syncIcon, 'link');
   assert.deepEqual(layout.scrollTopIcons, ['arrow-up-to-line', 'arrow-up-to-line']);
   assert.equal(layout.syncIconSize, 14);
@@ -1887,7 +1887,7 @@ try {
     split: false,
     previewHidden: true,
     editorHidden: false,
-    label: 'Split preview',
+    label: '',
     syncVisible: false
   });
   await page.click('.source-preview-button');
