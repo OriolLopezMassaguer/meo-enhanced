@@ -1,5 +1,4 @@
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
-import type { EditorCommandId } from '../../src/foundation/editingPreferences';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
 import { createSettingsWindow, type GeneralSetting } from './adapters/settingsWindow';
@@ -12,7 +11,7 @@ import { bindTooltips, createTooltip } from './adapters/tooltip';
 import { createEditingPreferencesTransport } from './adapters/editingPreferencesTransport';
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
-import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
+import { defaultInputAssistance, isEditorCommandId, type EditingPreferences } from '../../src/foundation/editingPreferences';
 import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info } from 'lucide';
 import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
@@ -88,6 +87,7 @@ let uiColors: UiColors = { light: {}, dark: {} };
 let uiColorsPreview: UiColors | null = null;
 let editingPreferences: EditingPreferences = { input: { ...defaultInputAssistance }, shortcuts: {} };
 let editingPreferencesRevision = -1;
+let shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
 
 type CreateEditorFactory = (typeof import('./editor'))['createEditor'];
 
@@ -168,6 +168,7 @@ if (!root) {
 
 root.classList.add('editor-root');
 const tooltipBinding = bindTooltips(document.body, {
+  shortcutForCommand: command => isEditorCommandId(command) ? shortcutHints[command][0] : undefined,
   editableLinkHrefAtPoint: point => editor?.getLinkHrefAtPoint(point) ?? ''
 });
 let activeUiLanguage: UiLanguage = 'en';
@@ -211,6 +212,7 @@ for (let level = 1; level <= 6; level++) {
   option.className = 'heading-dropdown-option';
   option.dataset.tooltipPlacement = 'right';
   option.dataset.level = String(level);
+  option.dataset.tooltipCommand = 'heading' + level;
   option.dataset.tooltip = activeUiStrings.headingLevel(level);
   option.setAttribute('aria-label', activeUiStrings.headingLevel(level));
 
@@ -228,6 +230,7 @@ const bulletListBtn = document.createElement('button');
 bulletListBtn.type = 'button';
 bulletListBtn.className = 'format-button';
 bulletListBtn.dataset.action = 'bulletList';
+bulletListBtn.dataset.tooltipCommand = 'bullet';
 bulletListBtn.dataset.tooltip = activeUiStrings.bulletList;
 bulletListBtn.appendChild(createElement(List, { width: 18, height: 18 }));
 
@@ -235,6 +238,7 @@ const numberedListBtn = document.createElement('button');
 numberedListBtn.type = 'button';
 numberedListBtn.className = 'format-button';
 numberedListBtn.dataset.action = 'numberedList';
+numberedListBtn.dataset.tooltipCommand = 'ordered';
 numberedListBtn.dataset.tooltip = activeUiStrings.numberedList;
 numberedListBtn.appendChild(createElement(ListOrdered, { width: 18, height: 18 }));
 
@@ -242,6 +246,7 @@ const taskBtn = document.createElement('button');
 taskBtn.type = 'button';
 taskBtn.className = 'format-button';
 taskBtn.dataset.action = 'task';
+taskBtn.dataset.tooltipCommand = 'taskList';
 taskBtn.dataset.tooltip = activeUiStrings.task;
 taskBtn.appendChild(createElement(SquareCheck, { width: 18, height: 18 }));
 
@@ -635,6 +640,7 @@ const codeBlockBtn = document.createElement('button');
 codeBlockBtn.type = 'button';
 codeBlockBtn.className = 'format-button';
 codeBlockBtn.dataset.action = 'codeBlock';
+codeBlockBtn.dataset.tooltipCommand = 'codeBlock';
 codeBlockBtn.dataset.tooltip = activeUiStrings.codeBlock;
 codeBlockBtn.appendChild(createElement(SquareCode, { width: 18, height: 18 }));
 
@@ -642,6 +648,7 @@ const quoteBtn = document.createElement('button');
 quoteBtn.type = 'button';
 quoteBtn.className = 'format-button';
 quoteBtn.dataset.action = 'quote';
+quoteBtn.dataset.tooltipCommand = 'quote';
 quoteBtn.dataset.tooltip = activeUiStrings.quote;
 quoteBtn.appendChild(createElement(Quote, { width: 18, height: 18 }));
 
@@ -649,6 +656,7 @@ const hrBtn = document.createElement('button');
 hrBtn.type = 'button';
 hrBtn.className = 'format-button';
 hrBtn.dataset.action = 'hr';
+hrBtn.dataset.tooltipCommand = 'rule';
 hrBtn.dataset.tooltip = activeUiStrings.horizontalRule;
 hrBtn.appendChild(createElement(Minus, { width: 18, height: 18 }));
 
@@ -656,6 +664,7 @@ const linkBtn = document.createElement('button');
 linkBtn.type = 'button';
 linkBtn.className = 'format-button';
 linkBtn.dataset.action = 'link';
+linkBtn.dataset.tooltipCommand = 'link';
 linkBtn.dataset.tooltip = activeUiStrings.link;
 linkBtn.appendChild(createElement(Link, { width: 18, height: 18 }));
 
@@ -663,6 +672,7 @@ const wikiLinkBtn = document.createElement('button');
 wikiLinkBtn.type = 'button';
 wikiLinkBtn.className = 'format-button';
 wikiLinkBtn.dataset.action = 'wikiLink';
+wikiLinkBtn.dataset.tooltipCommand = 'wikiLink';
 wikiLinkBtn.dataset.tooltip = activeUiStrings.wikiLink;
 wikiLinkBtn.appendChild(createElement(Brackets, { width: 18, height: 18 }));
 
@@ -670,6 +680,7 @@ const imageBtn = document.createElement('button');
 imageBtn.type = 'button';
 imageBtn.className = 'format-button';
 imageBtn.dataset.action = 'image';
+imageBtn.dataset.tooltipCommand = 'image';
 imageBtn.dataset.tooltip = activeUiStrings.image;
 imageBtn.appendChild(createElement(Image, { width: 18, height: 18 }));
 
@@ -677,6 +688,7 @@ const tableBtn = document.createElement('button');
 tableBtn.type = 'button';
 tableBtn.className = 'format-button';
 tableBtn.dataset.action = 'table';
+tableBtn.dataset.tooltipCommand = 'insertTable';
 tableBtn.dataset.tooltipPlacement = 'right';
 tableBtn.dataset.tooltip = activeUiStrings.table;
 tableBtn.appendChild(createElement(Table2, { width: 18, height: 18 }));
@@ -855,6 +867,7 @@ const saveBtn = document.createElement('button');
 saveBtn.type = 'button';
 saveBtn.className = 'format-button';
 saveBtn.dataset.action = 'save';
+saveBtn.dataset.tooltipCommand = 'save';
 saveBtn.dataset.tooltip = activeUiStrings.save;
 saveBtn.setAttribute('aria-label', activeUiStrings.saveDocument);
 saveBtn.appendChild(createCodicon('save'));
@@ -863,6 +876,7 @@ const saveAsBtn = document.createElement('button');
 saveAsBtn.type = 'button';
 saveAsBtn.className = 'format-button';
 saveAsBtn.dataset.action = 'saveAs';
+saveAsBtn.dataset.tooltipCommand = 'saveAs';
 saveAsBtn.dataset.tooltip = activeUiStrings.saveAs;
 saveAsBtn.setAttribute('aria-label', activeUiStrings.saveAs);
 saveAsBtn.appendChild(createCodicon('save-as'));
@@ -871,6 +885,7 @@ const undoBtn = document.createElement('button');
 undoBtn.type = 'button';
 undoBtn.className = 'format-button';
 undoBtn.dataset.action = 'undo';
+undoBtn.dataset.tooltipCommand = 'undo';
 undoBtn.dataset.tooltip = activeUiStrings.undo;
 undoBtn.setAttribute('aria-label', activeUiStrings.undo);
 undoBtn.appendChild(createElement(Undo2, { width: 18, height: 18 }));
@@ -879,6 +894,7 @@ const redoBtn = document.createElement('button');
 redoBtn.type = 'button';
 redoBtn.className = 'format-button';
 redoBtn.dataset.action = 'redo';
+redoBtn.dataset.tooltipCommand = 'redo';
 redoBtn.dataset.tooltip = activeUiStrings.redo;
 redoBtn.setAttribute('aria-label', activeUiStrings.redo);
 redoBtn.appendChild(createElement(Redo2, { width: 18, height: 18 }));
@@ -933,6 +949,7 @@ const findToggleBtn = document.createElement('button');
 findToggleBtn.type = 'button';
 findToggleBtn.className = 'format-button toggle-button';
 findToggleBtn.dataset.action = 'find';
+findToggleBtn.dataset.tooltipCommand = 'find';
 findToggleBtn.dataset.tooltip = activeUiStrings.findAndReplace;
 findToggleBtn.appendChild(createElement(Search, { width: 18, height: 18 }));
 
@@ -4139,18 +4156,6 @@ scheduleReadyHandshake();
 scheduleEditorBundleWarmupAfterReady();
 
 function refreshShortcutHints(): void {
-  const keys = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
-  const controls: [HTMLElement, EditorCommandId][] = [[saveBtn, 'save'], [saveAsBtn, 'saveAs'], [undoBtn, 'undo'], [redoBtn, 'redo'], [findToggleBtn, 'find'], [bulletListBtn, 'bullet'], [numberedListBtn, 'ordered'], [taskBtn, 'taskList'], [codeBlockBtn, 'codeBlock'], [quoteBtn, 'quote'], [hrBtn, 'rule'], [linkBtn, 'link'], [wikiLinkBtn, 'wikiLink'], [imageBtn, 'image'], [tableBtn, 'insertTable']];
-  for (const option of headingDropdown.querySelectorAll<HTMLElement>('[data-level]')) {
-    controls.push([option, ('heading' + option.dataset.level) as EditorCommandId]);
-  }
-  for (const control of selectionMenuElements.menu.querySelectorAll<HTMLElement>('[data-action]')) {
-    const action = control.dataset.action === 'lineover' ? 'strike' : control.dataset.action;
-    if (action && Object.hasOwn(keys, action)) controls.push([control, action as EditorCommandId]);
-  }
-  for (const [control, command] of controls) {
-    // The control owns its copy; rebinding only updates the shortcut badge.
-    if (keys[command][0]) control.dataset.tooltipShortcut = keys[command][0];
-    else delete control.dataset.tooltipShortcut;
-  }
+  shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
+  tooltipBinding.refreshShortcuts();
 }

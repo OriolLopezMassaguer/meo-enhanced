@@ -154,6 +154,59 @@ try {
   assert.equal(menuHint.inside, true);
   assert.equal(await page.$eval(menuButton, element => element.getAttribute('data-tooltip-placement')), null);
   assert.equal(menuHint.visibleCount, 1);
+  phase = 'table shortcut hints';
+  let shortcutRevision = 0;
+  const setShortcuts = async (shortcuts: Record<string, string[]>) => page.evaluate(({ shortcuts, revision }) => {
+    const g = window as any;
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'editingPreferencesChanged', revision,
+      preferences: { input: { ...g.EditingSettingsHarness.defaultInputAssistance }, shortcuts }
+    } }));
+  }, { shortcuts, revision: ++shortcutRevision });
+  const tableHintKey = () => page.$eval(menuButton, element =>
+    document.getElementById(element.getAttribute('aria-describedby')!)?.querySelector('kbd:not([hidden])')?.textContent ?? null);
+  await setShortcuts({ rowBelow: ['Ctrl + Alt + R', 'Ctrl + Alt + B'], save: ['Ctrl + Alt + S'] });
+  assert.equal(await tableHintKey(), 'Ctrl + Alt + R', 'a visible table hint immediately displays the first effective binding');
+  assert.equal(await page.$eval('[data-action="save"]', element => (element as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Alt + S');
+  await setShortcuts({ rowBelow: ['Ctrl + Alt + N'], save: [] });
+  assert.equal(await tableHintKey(), 'Ctrl + Alt + N', 'rebinding updates the open hint without another hover');
+  assert.equal(await page.$eval('[data-action="save"]', element => (element as HTMLElement).dataset.tooltipShortcut), undefined);
+  await setShortcuts({ rowBelow: [] });
+  assert.equal(await tableHintKey(), null, 'clearing a binding removes only its badge');
+  assert.equal(await page.$eval('.meo-tooltip.is-visible .meo-tooltip-label', element => element.textContent), menuHint.text);
+
+  await setShortcuts({ rowBelow: ['Ctrl + Alt + R'] });
+  await page.keyboard.press('Escape');
+  await page.mouse.move(0, 0);
+  // A table mounted after preferences change must not depend on an earlier toolbar scan.
+  await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    (window as any).__shortcutFixtureEnd = view.state.doc.length;
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n| New | Table |\n| --- | --- |\n| C | D |' } });
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table-shell').length === 2);
+  const newTrigger = await page.$$('.meo-md-html-table-context-trigger');
+  const newInputs = await page.$$('.meo-md-html-table-shell tbody textarea');
+  await newInputs[newInputs.length - 1]!.focus();
+  await newTrigger[1]!.click();
+  assert.equal((await show(menuButton)).shortcut, 'Ctrl + Alt + R', 'new tables resolve the current binding');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    const g = window as any;
+    const view = g.EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    view.dispatch({ changes: { from: g.__shortcutFixtureEnd, to: view.state.doc.length } });
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table-shell').length === 1);
+  await page.focus('.meo-md-html-table-shell tbody textarea');
+  const rowsBefore = await page.$$eval('.meo-md-html-table-shell tbody tr', elements => elements.length);
+  await page.keyboard.down('Control'); await page.keyboard.down('Alt'); await page.keyboard.press('r');
+  await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+  await page.waitForFunction(count => document.querySelectorAll('.meo-md-html-table-shell tbody tr').length === count + 1, {}, rowsBefore);
+  await page.click(trigger);
+  assert.equal((await show(menuButton)).shortcut, 'Ctrl + Alt + R', 'the displayed shortcut still executes the table action');
+  await setShortcuts({});
+  assert.equal(await tableHintKey(), null, 'reset restores the unbound table default');
+  assert.equal(await page.$eval('[data-action="save"]', element => (element as HTMLElement).dataset.tooltipShortcut), 'Ctrl + S', 'reset restores the platform default');
   phase = 'collapsed table delete hint';
   const deleteTable = menu + ' [data-command="delete-table"]';
   const waitForDeleteHint = async () => {

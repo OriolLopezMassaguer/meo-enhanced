@@ -1,3 +1,5 @@
+import type { EditorCommandId } from '../../../src/foundation/editingPreferences';
+
 export const tableCommands = [
   'insert-row-above',
   'insert-row-below',
@@ -18,6 +20,14 @@ export const tableCommands = [
 ] as const;
 
 export type TableCommand = typeof tableCommands[number];
+
+// Keyboard execution and toolbar hints share the same command correspondence.
+export const tableShortcutCommands: Partial<Record<EditorCommandId, TableCommand>> = {
+  rowAbove: 'insert-row-above', rowBelow: 'insert-row-below', rowDelete: 'delete-row',
+  columnBefore: 'insert-column-left', columnAfter: 'insert-column-right', columnDelete: 'delete-column',
+  moveRowUp: 'move-row-up', moveRowDown: 'move-row-down', moveColumnLeft: 'move-column-left', moveColumnRight: 'move-column-right',
+  alignLeft: 'align-left', alignCenter: 'align-center', alignRight: 'align-right'
+};
 
 export type TableCommandSelection = {
   readonly fromRow: number;

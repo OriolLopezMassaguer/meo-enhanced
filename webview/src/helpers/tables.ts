@@ -75,7 +75,7 @@ import {
   type TableCommandTargetRegistration,
   type TableCommandTransactionPlan
 } from '../editor/tableCommandAdapter';
-import type { TableCommand, TableCommandTarget } from '../application/tableCommand';
+import { tableShortcutCommands, type TableCommand, type TableCommandTarget } from '../application/tableCommand';
 import {
   createTableCellCommitConfirmation,
   createTableCellInteraction,
@@ -5585,7 +5585,11 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     button.dataset.tooltip = label;
     button.setAttribute('aria-label', label);
     button.setAttribute('role', 'menuitem');
-    if (command) button.dataset.command = command;
+    if (command) {
+      button.dataset.command = command;
+      const shortcutCommand = Object.entries(tableShortcutCommands).find(([, target]) => target === command)?.[0];
+      if (shortcutCommand) button.dataset.tooltipCommand = shortcutCommand;
+    }
     button.appendChild(this.createContextIcon(icon));
     if (badge) {
       button.appendChild(this.createContextIcon(
@@ -6644,13 +6648,7 @@ export function executeMountedTableShortcut(view: EditorView, command: EditorCom
   const shell = active instanceof Element ? active.closest<HTMLElement>('.meo-md-html-table-shell') : null;
   const owner = shell ? tableDomOwners.get(shell) : null;
   if (!owner || !shell) return false;
-  const commands: Partial<Record<EditorCommandId, TableCommand>> = {
-    rowAbove: 'insert-row-above', rowBelow: 'insert-row-below', rowDelete: 'delete-row',
-    columnBefore: 'insert-column-left', columnAfter: 'insert-column-right', columnDelete: 'delete-column',
-    moveRowUp: 'move-row-up', moveRowDown: 'move-row-down', moveColumnLeft: 'move-column-left', moveColumnRight: 'move-column-right',
-    alignLeft: 'align-left', alignCenter: 'align-center', alignRight: 'align-right'
-  };
-  const mapped = commands[command]; if (!mapped) return false;
+  const mapped = tableShortcutCommands[command]; if (!mapped) return false;
   owner.updateContextMenuState();
   const control = shell.querySelector<HTMLButtonElement>(`[data-command='${mapped}']`);
   void owner.requestTableCommand(mapped, !!control && !control.disabled);

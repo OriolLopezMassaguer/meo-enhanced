@@ -1,5 +1,6 @@
 import { createElement, Bold, Italic, Strikethrough, Highlighter, Terminal, Link, Brackets, Keyboard, Underline } from 'lucide';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
+import type { EditorCommandId } from '../../../src/foundation/editingPreferences';
 
 export interface SelectionMenuElements {
   menu: HTMLDivElement;
@@ -15,7 +16,7 @@ export type SelectionMenuState = {
 };
 
 const createSelectionActionButton = (
-  action: string,
+  action: EditorCommandId | 'lineover',
   label: string,
   Icon: any,
   iconAttributes: Record<string, string | number> = {}
@@ -24,6 +25,7 @@ const createSelectionActionButton = (
   button.type = 'button';
   button.className = 'selection-inline-button';
   button.dataset.action = action;
+  button.dataset.tooltipCommand = action === 'lineover' ? 'strike' : action;
   button.dataset.tooltip = label;
   button.setAttribute('aria-label', label);
   button.appendChild(createElement(Icon, { width: 16, height: 16, ...iconAttributes }));
