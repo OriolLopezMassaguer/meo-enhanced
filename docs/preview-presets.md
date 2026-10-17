@@ -6,7 +6,7 @@ Preview 的“预设”入口依次提供 **默认**、**GitHub README**、**Typ
 
 预设选择保存在扩展的 globalState 中，重启或打开新文档时使用上次选择；文档已有的字体与主题偏好继续恢复。被移除或禁用的自定义预设回退到默认。所有预设的正文字号统一跟随软件现有基础字号（未提供时为 14px），标题、代码正文和语言标签按比例派生，覆盖自定义 CSS 的正文字号。
 
-Preview 与 Source 分栏的正文滚动条和回到顶部按钮使用预览文档的配色，随预设和预览主题更新。Source 分栏的光标对应位置标记和分割线手动对齐按钮也从预览实际正文与背景色派生，不受编辑器主题影响；左上角两个按钮、选项面板和下拉菜单同样随预览配色更新。独立 Preview 的工具栏与菜单继续使用编辑器主题，气泡提示在所有位置保持统一样式。代码行不再依赖零字号容器；若第三方 CSS 仍使代码字号或行高变成零或无效值，Preview 恢复可读字号与行高，并在预设说明气泡提示。此保护针对字号与行高，不替代任意 CSS 的视觉验证。
+Preview 与 Source 分栏的正文滚动条和回到顶部按钮使用预览文档的配色，随预设和预览主题更新。Source 分栏的光标对应位置标记也从预览实际正文与背景色派生，不受编辑器主题影响；左上角两个按钮、选项面板和下拉菜单同样随预览配色更新。分割线上的手动对齐胶囊使用外观设置的 UI 配色，与两侧文档配色独立。独立 Preview 的工具栏与菜单继续使用编辑器主题，气泡提示在所有位置保持统一样式。代码行不再依赖零字号容器；若第三方 CSS 仍使代码字号或行高变成零或无效值，Preview 恢复可读字号与行高，并在预设说明气泡提示。此保护针对字号与行高，不替代任意 CSS 的视觉验证。
 
 [Newsprint CSS](https://github.com/typora/typora-default-themes/blob/master/themes/newsprint.css) 没有关闭语法着色，[Whitey CSS](https://github.com/typora/typora-default-themes/blob/master/themes/whitey.css) 还调整了部分语法颜色；[Minimal 文档](https://github.com/kepano/obsidian-minimal/blob/master/docs/Plugins/Style%20Settings.md) 提供代码语法颜色设置。三个适配预设保留着色开关，使用现有 Light+／Dark+ 词法配色，代码背景与边框跟随各自主题；不复用上游编辑器的词法器。
 

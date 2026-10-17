@@ -6910,7 +6910,12 @@ body.outline-resizing .preview-frame {
   top: 50%;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  width: 26px;
+  box-sizing: border-box;
+  border: 1px solid var(--meo-ui-border-control);
+  border-radius: 13px;
+  background: var(--meo-ui-surface);
+  overflow: hidden;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -6921,13 +6926,25 @@ body.outline-resizing .preview-frame {
 
 .format-button.meo-preview-viewport-align-button {
   pointer-events: auto;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 23px;
   box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--meo-ui-surface-raised) 70%, var(--meo-ui-text-muted));
-  border-radius: 50%;
+  border: 0;
+  border-radius: 0;
   color: var(--meo-ui-text-muted);
-  background: var(--meo-ui-surface-raised);
+  background: transparent;
+}
+
+.meo-preview-viewport-align-button:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.meo-preview-viewport-align-button:last-child {
+  border-radius: 0 0 12px 12px;
+}
+
+.meo-preview-viewport-align-button:focus-visible:not(:disabled) {
+  outline-offset: -2px;
 }
 
 .meo-preview-viewport-align-button:hover:not(:disabled) {
@@ -6947,7 +6964,7 @@ body.outline-resizing .preview-frame {
   transform: scaleX(-1);
 }
 
-html[data-meo-ui-contrast='high'] .meo-preview-viewport-align-button {
+html[data-meo-ui-contrast='high'] .meo-preview-viewport-alignment {
   border-color: var(--meo-ui-text);
 }
 
@@ -8523,7 +8540,6 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .preview-preset-info.has-error:not(:disabled) { color: var(--meo-ui-danger); }
 /* Only Source preview chrome uses the document palette; toolbar popups opt in after portaling. */
 .source-preview-tools,
-.meo-preview-viewport-align-button,
 .preview-options-panel.source-preview-more-panel,
 .preview-dropdown-panel[data-source-preview-theme] {
   --meo-ui-text: var(--meo-preview-foreground);

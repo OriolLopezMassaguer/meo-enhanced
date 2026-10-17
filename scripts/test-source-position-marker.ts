@@ -393,12 +393,13 @@ try {
     hint: (button as HTMLElement).dataset.tooltip, label: button.getAttribute('aria-label'),
     disabled: (button as HTMLButtonElement).disabled
   })));
-  assert.deepEqual(buttons.map(button => [button.width, button.height, button.iconWidth, button.disabled]), [[26, 26, 22, false], [26, 26, 22, false]]);
+  assert.deepEqual(buttons.map(button => [button.width, button.height, button.iconWidth, button.disabled]), [[24, 23, 22, false], [24, 23, 22, false]]);
   assert.deepEqual(buttons.map(button => button.hint), ['Align preview to source view', 'Align source to preview view']);
   assert.ok(buttons.every(button => button.hint === button.label));
   const fixed = await geometry();
   assert.ok(Math.abs(fixed.x - fixed.dividerX) <= 0.5 && Math.abs(fixed.y - fixed.frameY) <= 0.5, JSON.stringify(fixed));
-  assert.equal(fixed.height, 56);
+  assert.equal(fixed.width, 26);
+  assert.equal(fixed.height, 48);
   assert.equal(await page.$('.meo-preview-source-navigation'), null, 'the moving locator is removed');
 
   // The Source caret deliberately stays far away from its visible reading position.
