@@ -2512,8 +2512,8 @@ export function createPreviewController({
     button.className = 'format-button meo-preview-viewport-align-button';
     button.dataset.meoAlignViewport = owner === 'source' ? 'preview' : 'source';
     button.appendChild(createIconElement([
-      ['path', { d: 'm8 8-4 4 4 4' }],
-      ['path', { d: 'M4 12h16' }]
+      ['path', { d: 'm10 8-4 4 4 4' }],
+      ['path', { d: 'M6 12h12' }]
     ], { width: 22, height: 22, class: 'lucide lucide-arrow-left', 'aria-hidden': 'true' }));
     button.addEventListener('pointerdown', event => {
       // Pointer activation scrolls a view without stealing its focus or selection.

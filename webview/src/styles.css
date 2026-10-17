@@ -6910,9 +6910,10 @@ body.outline-resizing .preview-frame {
   top: 50%;
   display: flex;
   flex-direction: column;
+  align-items: center;
   width: 26px;
   box-sizing: border-box;
-  border: 1px solid var(--meo-ui-border-control);
+  border: 1px solid var(--meo-ui-border-float);
   border-radius: 13px;
   background: var(--meo-ui-surface);
   overflow: hidden;
@@ -6926,21 +6927,15 @@ body.outline-resizing .preview-frame {
 
 .format-button.meo-preview-viewport-align-button {
   pointer-events: auto;
-  width: 24px;
+  width: 23px;
   height: 23px;
   box-sizing: border-box;
   border: 0;
-  border-radius: 0;
+  border-radius: 50%;
+  /* Keep the rectangular corners outside both the paint and the hit target. */
+  clip-path: circle(50%);
   color: var(--meo-ui-text-muted);
   background: transparent;
-}
-
-.meo-preview-viewport-align-button:first-child {
-  border-radius: 12px 12px 0 0;
-}
-
-.meo-preview-viewport-align-button:last-child {
-  border-radius: 0 0 12px 12px;
 }
 
 .meo-preview-viewport-align-button:focus-visible:not(:disabled) {

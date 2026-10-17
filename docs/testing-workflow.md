@@ -443,7 +443,8 @@ Production split-view alignment and floating table header checks verify ordinary
 button-anchored alignment hints and pointer-positioned table hints respectively.
 `scripts/test-source-position-marker.ts` retains the existing editing-position
 marker coverage and checks the fixed divider pair while synchronized scrolling is off:
-a shared 26×48px capsule with 22px arrows, stable centering independent of caret and hover,
+a shared 26×48px capsule with shortened arrows and touching circular hit targets,
+stable centering independent of caret and hover,
 semantic viewport alignment in both directions, unchanged origin viewport, Source
 selection/text/focus and horizontal position, independent subsequent scrolling,
 repeated activation, document boundaries, keyboard activation and anchored hints.

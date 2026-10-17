@@ -393,13 +393,20 @@ try {
     hint: (button as HTMLElement).dataset.tooltip, label: button.getAttribute('aria-label'),
     disabled: (button as HTMLButtonElement).disabled
   })));
-  assert.deepEqual(buttons.map(button => [button.width, button.height, button.iconWidth, button.disabled]), [[24, 23, 22, false], [24, 23, 22, false]]);
+  assert.deepEqual(buttons.map(button => [button.width, button.height, button.iconWidth, button.disabled]), [[23, 23, 22, false], [23, 23, 22, false]]);
   assert.deepEqual(buttons.map(button => button.hint), ['Align preview to source view', 'Align source to preview view']);
   assert.ok(buttons.every(button => button.hint === button.label));
   const fixed = await geometry();
   assert.ok(Math.abs(fixed.x - fixed.dividerX) <= 0.5 && Math.abs(fixed.y - fixed.frameY) <= 0.5, JSON.stringify(fixed));
   assert.equal(fixed.width, 26);
   assert.equal(fixed.height, 48);
+  const circularTargets = await page.$$eval(alignment + ' button', buttons => buttons.map(button => {
+    const rect = button.getBoundingClientRect();
+    const hit = (x: number, y: number) => document.elementFromPoint(x, y)?.closest('button') === button;
+    return { width: rect.width, height: rect.height, center: hit(rect.left + rect.width / 2, rect.top + rect.height / 2),
+      corner: hit(rect.left + 1, rect.top + 1), leftEdge: hit(rect.left + 1, rect.top + rect.height / 2) };
+  }));
+  assert.ok(circularTargets.every(target => target.width === target.height && target.center && target.leftEdge && !target.corner), 'alignment hit targets must be circles rather than rectangular halves');
   assert.equal(await page.$('.meo-preview-source-navigation'), null, 'the moving locator is removed');
 
   // The Source caret deliberately stays far away from its visible reading position.
@@ -504,7 +511,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.meo-tooltip.is-visible')?.textContent?.includes('Align preview to source view'));
   const hintPosition = await page.$eval('.meo-tooltip.is-visible', element => element.getBoundingClientRect().toJSON());
   const buttonRect = await page.$eval(toPreview, element => element.getBoundingClientRect().toJSON());
-  await page.mouse.move(buttonRect.left + 3, buttonRect.top + 3);
+  await page.mouse.move(buttonRect.left + 6, buttonRect.top + 6);
   await settle();
   const movedHint = await page.$eval('.meo-tooltip.is-visible', element => element.getBoundingClientRect().toJSON());
   assert.ok(Math.abs(movedHint.x - hintPosition.x) <= 0.5 && Math.abs(movedHint.y - hintPosition.y) <= 0.5, 'tooltips stay anchored to the button');
