@@ -25,6 +25,14 @@ Windows is smoke checked against the installed font collection. Mac/Linux adapte
 need native platform verification before release; unavailable queries use fallback fonts.
 
 The user-facing inventory is in [testing-feature-coverage.md](testing-feature-coverage.md).
+
+`scripts/test-link-candidates-production.ts` initializes the standalone fixture's
+host font variables and measures native textarea text through Chromium's debugging
+protocol. Its real mouse-click checks cover both single-line and wrapped paths in
+monospace and serif fonts, retaining caret, completion-resume and insertion assertions.
+Native character bounds establish the target's visual line; a shared table-row
+height or a separate div mirror cannot establish the native text layout.
+
 `scripts/test-pdf-page-background.ts` runs in the browser gate and uses the production
 PDF renderer for every built-in preset and a custom dual-theme preset. It compares
 the final PDF's full-paper background drawing on every page against the rendered
