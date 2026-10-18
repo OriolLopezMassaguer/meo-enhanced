@@ -3976,11 +3976,20 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor :is(.meo-md-math-fenced-display.meo-math-live-result, .meo-md-html-live-result) {
-  /* The editing result needs room for its label; reading has no label rail. */
+  /* Keep the divider label below editable source and above rendered content. */
   padding: 24px 0;
   background: var(--meo-code-background);
-  border-top: 1px solid var(--meo-document-separator);
   border-radius: 0 0 6px 6px;
+}
+
+.cm-editor :is(.meo-md-math-fenced-display.meo-math-live-result, .meo-md-html-live-result)::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--meo-document-separator);
+  pointer-events: none;
 }
 
 .meo-math-copy-actions {
@@ -4028,10 +4037,16 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .meo-math-result-status,
 .meo-md-html-result-status {
   position: absolute;
-  top: 3px;
-  left: 8px;
+  top: 9px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 16px);
+  padding: 0 8px;
+  background: var(--meo-code-background);
   font-size: 11px;
   line-height: 18px;
+  text-align: center;
+  white-space: nowrap;
   color: var(--meo-semantic-secondaryForeground);
 }
 
