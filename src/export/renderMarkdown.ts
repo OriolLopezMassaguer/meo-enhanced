@@ -332,7 +332,7 @@ export function renderMarkdownToHtml(options: RenderMarkdownOptions): RenderMark
       ol: ['start', 'reversed', ...(github ? githubHtmlAttributes.ol : [])],
       li: ['value'],
       '*': ['class', 'style', 'id', 'data-source-b64', 'data-source-line', 'data-source-end-line', 'aria-hidden', ...(github ? githubHtmlAttributes['*'] : [])],
-      span: ['class', 'style', 'title', 'role', 'aria-label', 'aria-hidden', 'data-line-number'],
+      span: ['class', 'style', 'title', 'role', 'tabindex', 'aria-label', 'aria-hidden', 'data-line-number'],
       th: ['colspan', 'rowspan', 'scope', 'style'],
       td: ['colspan', 'rowspan', 'style'],
       code: ['class'],
