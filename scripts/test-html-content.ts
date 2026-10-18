@@ -89,6 +89,66 @@ function checkExport(): void {
   assert.match(mixed, /<div[^>]*>\s*<p[^>]*><strong>Markdown body<\/strong><\/p>\s*<\/div>/);
 }
 
+async function checkSourceExpansionAnchor(page: Page): Promise<void> {
+  await page.setViewport({ width: 1100, height: 700 });
+  await page.addStyleTag({ content: ':root{--meo-user-editor-font-size:20px;--meo-font-live-size:20px;--meo-user-editor-line-height:1.5;--meo-line-height-live:1.5;--meo-font-source:monospace}' });
+  const before = [
+    '<section id="html-section-demo">', '<h2>这是 HTML 二级标题</h2>',
+    '<p>这是 section 中的段落，包含 <strong>强调</strong> 和 <a href="https://example.com/">示例链接</a>。</p>',
+    '<p><small>这一行是补充说明。</small></p>', '</section>', '',
+    '<article>', '<h3>HTML 文章片段</h3>', '<blockquote>', '<p>引用中的第一段。</p>',
+    '<p>引用中的第二段，包含 <em>斜体</em>。</p>', '</blockquote>', '</article>', '',
+    '<dl>', '<dt>Live</dt>', '<dd>直接查看内容，并在原位编辑源码。</dd>',
+    '<dt>Preview</dt>', '<dd>查看最终阅读效果。</dd>', '</dl>', '',
+    '## Expansion witness', '', 'Instruction before the edited block.', ''
+  ].join('\n');
+  const after = [
+    '<p style="text-align:right;color:rgb(180,83,9);font-style:italic">右对齐，RGB 颜色，斜体。</p>', '',
+    '<p style="background-color:#fef3c7;color:#78350f;text-decoration:underline">浅黄色背景、深色文字与下划线。</p>', '',
+    '<div style="width:75%;max-width:420px;min-height:36px;background-color:#dbeafe;color:#1e3a8a">有宽度限制的容器：窗口变窄时，检查文字能否保持可读。</div>', '',
+    '<div style="white-space:pre-wrap">这一行保留    多个空格。\n这是第二行。\n这是第三行：中文 English 123。</div>'
+  ].join('\n');
+  for (const kind of ['html', 'math']) {
+    const block = kind === 'html'
+      ? '<p id="expansion-target" style="text-align:center;color:#2563eb;font-size:20px;font-weight:bold">居中、蓝色、20px、加粗</p>'
+      : '$$\nx^2 + 1\n$$';
+    const text = `${Array.from({ length: 40 }, (_, n) => `Leading paragraph ${n}.\n`).join('\n')}\n${before}\n${block}\n\n${after}\n\n${Array.from({ length: 40 }, (_, n) => `Trailing paragraph ${n}.\n`).join('\n')}`;
+    await page.evaluate(text => {
+      const editor = (window as any).__htmlEditor;
+      editor.setText(text, true);
+      editor.scrollToLine(editor.view.state.doc.lineAt(text.indexOf('Expansion witness')).number, 'center');
+    }, text);
+    const target = kind === 'html' ? '#expansion-target' : '.meo-md-math-fenced-display .katex';
+    await page.waitForSelector(target);
+    await page.evaluate(async target => {
+      const view = (window as any).__htmlEditor.view;
+      view.scrollDOM.scrollTop += document.querySelector(target)!.getBoundingClientRect().top - 470;
+      for (let n = 0; n < 12; n++) await new Promise(requestAnimationFrame);
+      view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('Instruction before') + 5 } });
+      view.focus();
+    }, target);
+    await frames(page, 8);
+    await page.mouse.move(600, 500);
+    await page.mouse.wheel({ deltaY: 80 });
+    await frames(page, 12);
+    await page.evaluate(() => {
+      const view = (window as any).__htmlEditor.view;
+      const top = () => (Array.from(view.dom.querySelectorAll('.cm-line')).find((line: any) => line.textContent.includes('Expansion witness')) as HTMLElement).getBoundingClientRect().top;
+      const probe = { baseline: top(), samples: [] as number[] };
+      (window as any).__htmlExpansionProbe = probe;
+      const sample = () => { probe.samples.push(top()); if (probe.samples.length < 30) requestAnimationFrame(sample); };
+      requestAnimationFrame(sample);
+    });
+    await page.click(target);
+    await frames(page, 30);
+    const movement = await page.evaluate(() => {
+      const probe = (window as any).__htmlExpansionProbe;
+      return Math.max(...probe.samples.map((top: number) => Math.abs(top - probe.baseline)));
+    });
+    assert.ok(movement <= 1, `${kind}: opening source after trusted wheel input moved preceding content by ${movement}px`);
+  }
+}
+
 async function main(): Promise<void> {
   checkExport();
   const build = await Bun.build({ entrypoints: [path.join(repoRoot, 'scripts/test-html-content-entry.ts')], outdir: tempDir,
@@ -384,6 +444,7 @@ async function main(): Promise<void> {
       await select(page, 'x^2 + 1', 1);
       assert.deepEqual(await editingSurface('math'), htmlSurface, `${appearance}/${language}: HTML and display math share the editing surface`);
     }
+    await checkSourceExpansionAnchor(page);
     assert.deepEqual(errors, [], 'No runtime errors');
     console.log(`HTML fragment rendering, source editing and invisible-source tests passed. Screenshots: ${artifacts}`);
   } finally { await browser.close(); }

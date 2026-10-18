@@ -487,9 +487,20 @@ function createSanitizedHtml(
   return { fragment: template.content, imageWidgets };
 }
 
-function preserveHtmlPosition(view: EditorView, mutate: () => void): void {
+function preserveHtmlPosition(view: EditorView, from: number, mutate: () => void): void {
   const controller = getViewportController(view);
-  if (controller) controller.preserveScrollPosition(mutate);
+  const resolveElement = (): HTMLElement | null => {
+    const position = Math.min(from, view.state.doc.length);
+    const dom = view.domAtPos(position);
+    const node = dom.node.nodeType === Node.TEXT_NODE ? dom.node : dom.node.childNodes[dom.offset] ?? dom.node;
+    const element = (node instanceof HTMLElement ? node : node.parentElement)?.closest<HTMLElement>('.cm-line, .meo-md-html-block');
+    if (!element) return null;
+    const start = view.posAtDOM(element);
+    return start === position || start === view.state.doc.lineAt(position).from ? element : null;
+  };
+  const element = controller && resolveElement();
+  if (controller && element) controller.preserveElementPositionWhileMutation(element, resolveElement, mutate, 'next-frame', true);
+  else if (controller) controller.preservePositionWhileMutation(from, mutate);
   else mutate();
 }
 
@@ -498,7 +509,7 @@ export function enterHtmlSource(view: EditorView, block: HtmlEditingRange, ancho
   const selection = anchor === undefined && currentSelection.ranges.every((range) => (
     range.from >= block.from && range.to <= block.to
   )) ? currentSelection : { anchor: anchor ?? block.from };
-  preserveHtmlPosition(view, () => {
+  preserveHtmlPosition(view, block.from, () => {
     view.dispatch({
       selection,
       effects: setHtmlEditingRangeEffect.of({ from: block.from, to: block.to }),
@@ -894,7 +905,7 @@ const htmlEscapeKeymap = keymap.of([{
   run(view) {
     const range = getHtmlEditingRange(view.state);
     if (!range) return false;
-    preserveHtmlPosition(view, () => view.dispatch({ selection: { anchor: range.to }, effects: setHtmlEditingRangeEffect.of(null) }));
+    preserveHtmlPosition(view, range.from, () => view.dispatch({ selection: { anchor: range.to }, effects: setHtmlEditingRangeEffect.of(null) }));
     return true;
   }
 }]);
