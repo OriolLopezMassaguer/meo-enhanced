@@ -24,9 +24,13 @@ assert.equal(match('{+x+}'), null);
 assert.equal(match('see {++x++} here', 4)?.to, 11, 'matches from an offset');
 assert.equal(match('{++a++} and {--b--}')?.to, 7, 'stops at the first closing delimiter');
 assert.equal(matchCriticMarkup('{++a++}', 0, 5), null, 'does not read past the end bound');
-assert.deepEqual(parseCriticComment('#c17 @DEBATE: why not?'), { id: 'c17', author: 'DEBATE', body: 'why not?' });
-assert.deepEqual(parseCriticComment('plain note'), { id: null, author: null, body: 'plain note' });
-assert.deepEqual(parseCriticComment('@Oriol: no id'), { id: null, author: 'Oriol', body: 'no id' });
+assert.deepEqual(parseCriticComment('#c17 @DEBATE: why not?'), { id: 'c17', author: 'DEBATE', date: null, resolved: false, body: 'why not?' });
+assert.deepEqual(parseCriticComment('plain note'), { id: null, author: null, date: null, resolved: false, body: 'plain note' });
+assert.deepEqual(parseCriticComment('@Oriol: no id'), { id: null, author: 'Oriol', date: null, resolved: false, body: 'no id' });
+assert.deepEqual(parseCriticComment('#c2 @Oriol 2026-10-18: [x] done'), { id: 'c2', author: 'Oriol', date: '2026-10-18', resolved: true, body: 'done' });
+assert.deepEqual(parseCriticComment('@Ana Maria 2026-01-02: n'), { id: null, author: 'Ana Maria', date: '2026-01-02', resolved: false, body: 'n' });
+assert.equal(parseCriticComment('@Oriol: [X] upper').resolved, true, 'marker is case-insensitive');
+assert.equal(parseCriticComment('@Oriol: [x]no space').resolved, false, 'the marker needs a following space');
 
 // Export / Preview.
 const markdown = [

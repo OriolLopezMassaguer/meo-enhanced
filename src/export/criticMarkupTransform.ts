@@ -41,9 +41,9 @@ function tokenize(state: any, silent: boolean): boolean {
       pushSpan(state, 'critic-del', state.src.slice(state.pos + match.openLength, match.separator.from));
       pushSpan(state, 'critic-add', state.src.slice(match.separator.to, match.to - match.closeLength));
     } else if (match.kind === 'comment') {
-      const { id, author, body } = parseCriticComment(content);
+      const { id, author, date, body } = parseCriticComment(content);
       state.env.criticNotes = (state.env.criticNotes ?? 0) + 1;
-      pushNote(state, String(state.env.criticNotes), author ? `${author}: ${body}` : body, id ? `#${id}` : undefined);
+      pushNote(state, String(state.env.criticNotes), author ? `${author}${date ? ` ${date}` : ''}: ${body}` : body, id ? `#${id}` : undefined);
     } else {
       pushSpan(state, spanClass[match.kind], content);
     }

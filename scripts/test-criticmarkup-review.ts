@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser } from './browser-test-helpers';
 import {
-  buildCommentInsertion, criticUnitAt, findCriticMarks, groupCriticUnits, nextCommentId, resolveCriticUnit
+  buildCommentInsertion, criticUnitAt, findCriticMarks, groupCriticUnits, nextCommentId, resolveAllCriticUnits, resolveCriticUnit,
+  toggleCommentResolved
 } from '../src/foundation/criticMarkup';
 
 const resolve = (text: string, position: number, decision: 'accept' | 'reject') => {
@@ -64,6 +65,32 @@ assert.deepEqual(buildCommentInsertion('', 'c04', ''), { insert: '{>>#c04 <<}', 
 assert.equal(buildCommentInsertion('x', 'c04', '  ').insert, '{==x==}{>>#c04 <<}', 'blank author is omitted');
 const inserted = buildCommentInsertion('text', 'c04', 'Oriol');
 assert.equal(inserted.insert.slice(inserted.cursor), '<<}', 'cursor sits before the closing delimiter');
+
+
+// Dates ride on the author token; resolved comments toggle a leading [x] marker.
+assert.deepEqual(buildCommentInsertion('t', 'c05', 'Oriol', '2026-10-18'), { insert: '{==t==}{>>#c05 @Oriol 2026-10-18: <<}', cursor: 34 });
+assert.equal(buildCommentInsertion('', 'c05', '', '2026-10-18').insert, '{>>#c05 <<}', 'a date without an author is dropped');
+const toggle = (text: string) => {
+  const mark = findCriticMarks(text).find((candidate) => candidate.kind === 'comment')!;
+  const change = toggleCommentResolved(text, mark);
+  return text.slice(0, change.from) + change.insert + text.slice(change.to);
+};
+assert.equal(toggle('a {>>#c1 @O 2026-10-18: note<<}'), 'a {>>#c1 @O 2026-10-18: [x] note<<}');
+assert.equal(toggle('a {>>#c1 @O: [x] note<<}'), 'a {>>#c1 @O: note<<}');
+assert.equal(toggle('a {>>plain<<}'), 'a {>>[x] plain<<}');
+assert.equal(toggle('a {>>#c1 only id<<}'), 'a {>>#c1 [x] only id<<}');
+
+// Accept / reject all: one set of changes, optionally limited to a range.
+const doc = 'A {++one++} B {--two--} C {~~x~>y~~} D {==h==}{>>#c1 n<<}';
+const apply = (decision: 'accept' | 'reject', range?: { from: number; to: number }) => {
+  const changes = resolveAllCriticUnits(doc, groupCriticUnits(findCriticMarks(doc)), decision, range);
+  return [...changes].sort((left, right) => right.from - left.from)
+    .reduce((text, change) => text.slice(0, change.from) + change.insert + text.slice(change.to), doc);
+};
+assert.equal(apply('accept'), 'A one B  C y D h');
+assert.equal(apply('reject'), 'A  B two C x D h');
+assert.equal(apply('accept', { from: 0, to: doc.indexOf(' B ') }), 'A one B {--two--} C {~~x~>y~~} D {==h==}{>>#c1 n<<}', 'a range limits the units');
+assert.equal(resolveAllCriticUnits('plain', [], 'accept').length, 0);
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-criticmarkup-review-'));
