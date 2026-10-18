@@ -120,6 +120,45 @@ try {
   assert.equal(review.accepted, 'Say new and {~~old~>fresh~~} now.\n\nSecond paragraph.');
   assert.equal(review.undone, review.text, 'undo restores the mark');
   assert.equal(review.rejected, 'Say {++new++} and old now.\n\nSecond paragraph.');
+
+  // Comment button: wraps the selection, picks the next #cNN and leaves the cursor in the note.
+  const comment = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
+    const text = 'Pick this phrase now.\n{>>#c07 @Old: earlier<<}';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'source', onApplyChanges() {} });
+    const from = text.indexOf('this phrase');
+    editor.view.dispatch({ selection: { anchor: from, head: from + 'this phrase'.length } });
+    harness.setCriticCommentAuthor('Oriol');
+    document.documentElement.classList.add('meo-critic-markup');
+    editor.insertFormat('criticComment');
+    await settle();
+    const withSelection = editor.getText();
+    const cursorAfter = editor.view.state.selection.main.head;
+    const cursorContext = withSelection.slice(cursorAfter - 10, cursorAfter + 3);
+    editor.view.dispatch({ selection: { anchor: 0 } });
+    harness.setCriticCommentAuthor('');
+    editor.insertFormat('criticComment');
+    await settle();
+    const withoutSelection = editor.getText();
+    const buttonHiddenWhenOff = (() => {
+      const menu = harness.createSelectionMenu().menu;
+      document.body.append(menu);
+      const button = menu.querySelector<HTMLElement>('[data-action="criticComment"]')!;
+      document.documentElement.classList.remove('meo-critic-markup');
+      const hidden = getComputedStyle(button).display === 'none';
+      document.documentElement.classList.add('meo-critic-markup');
+      const shown = getComputedStyle(button).display !== 'none';
+      menu.remove();
+      return { hidden, shown };
+    })();
+    editor.destroy();
+    return { withSelection, cursorContext, withoutSelection, buttonHiddenWhenOff };
+  });
+  assert.equal(comment.withSelection, 'Pick {==this phrase==}{>>#c08 @Oriol: <<} now.\n{>>#c07 @Old: earlier<<}');
+  assert.equal(comment.cursorContext, '8 @Oriol: <<}', 'cursor sits in the note, before the closing delimiter');
+  assert.ok(comment.withoutSelection.startsWith('{>>#c09 <<}Pick '), `no selection, no author: ${comment.withoutSelection}`);
+  assert.deepEqual(comment.buttonHiddenWhenOff, { hidden: true, shown: true }, 'toolbar button follows the checkbox');
 } finally {
   await browser.close();
   fs.rmSync(tempDir, { recursive: true, force: true });

@@ -443,6 +443,12 @@
           "order": 8,
           "description": "%config.appearance.criticMarkup%"
         },
+        "meoEnhanced.criticMarkup.author": {
+          "type": "string",
+          "default": "",
+          "order": 9,
+          "description": "%config.criticMarkup.author%"
+        },
         "meoEnhanced.appearance.fontSizeMode": {
           "type": "string",
           "enum": [

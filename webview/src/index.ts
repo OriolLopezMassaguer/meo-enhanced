@@ -19,6 +19,7 @@ import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses, initializeWikiLinkHandling, collectWikiLinkTargets, requestWikiLinkStatuses, scheduleWikiLinkStatusRefresh, setWikiLinkRefreshContext, cancelPendingWikiStatusRefresh, handleResolvedWikiLinks } from './helpers/wikiLinks';
 import { initializeLocalLinkHandling, requestLocalLinkStatuses, scheduleLocalLinkStatusRefresh, setLocalLinkRefreshContext, cancelPendingLocalLinkStatusRefresh, handleResolvedLocalLinks } from './helpers/localLinks';
+import { setCriticCommentAuthor } from './helpers/criticMarkupReview';
 import { setGitDiffLineHighlightsEnabled } from './helpers/gitDiffLineHighlights';
 import { applyBuiltInVisualBaseline, applyUiVisualBaseline } from './helpers/theme';
 import { setShikiTheme } from './helpers/shikiHighlighter';
@@ -3197,6 +3198,7 @@ const handleInit = (message: InitMessage) => {
   setLiveStrongColoring(message.liveStrongColoring, { post: false });
   setBoldHeadingsEnabled(message.boldHeadingsEnabled, { post: false });
   setCriticMarkupEnabled(message.criticMarkupEnabled, { post: false });
+  setCriticCommentAuthor(message.criticMarkupAuthor);
   setLargeDocumentOptimizationEnabled(message.largeDocumentOptimizationEnabled, { post: false });
   setRestoreReadingPositionOnOpen(message.restoreReadingPositionOnOpen, { post: false });
   readingPositionLifecycle?.start({
@@ -3603,6 +3605,11 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'boldHeadingsChanged') {
     setBoldHeadingsEnabled(message.enabled, { post: false });
+    return;
+  }
+
+  if (message.type === 'criticMarkupAuthorChanged') {
+    setCriticCommentAuthor(message.author);
     return;
   }
 

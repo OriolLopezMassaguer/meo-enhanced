@@ -22,6 +22,7 @@
   "config.preview.showComments": "Show HTML comments in Preview and exports.",
   "config.appearance.strongColoring": "Color bold Markdown text in Live mode.",
   "config.appearance.criticMarkup": "Highlight CriticMarkup revision marks ({++add++}, {--delete--}, {~~old~>new~~}, {==mark==}, {>>note<<}) in Live and Source modes. Off shows them as plain text. Preview is not affected.",
+  "config.criticMarkup.author": "Name written after @ in comments added with the CriticMarkup comment button. Leave empty to use the markdown-markup.author setting, or omit it.",
   "config.appearance.boldHeadings": "Show headings in bold in Live and Source modes. Preview uses its own fixed heading style.",
   "config.fontSize.auto": "Follow the VS Code editor font size.",
   "config.fontSize.custom": "Use a custom content font size.",

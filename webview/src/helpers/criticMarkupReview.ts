@@ -1,9 +1,33 @@
 import { StateField, type EditorState } from '@codemirror/state';
 import { EditorView, showTooltip, type Tooltip } from '@codemirror/view';
-import { criticUnitAt, groupCriticUnits, resolveCriticUnit, type CriticUnit } from '../../../src/foundation/criticMarkup';
+import {
+  buildCommentInsertion, criticUnitAt, groupCriticUnits, nextCommentId, resolveCriticUnit, type CriticUnit
+} from '../../../src/foundation/criticMarkup';
 import { getUiStrings } from '../application/uiLanguage';
 import { uiLanguageFacet } from '../editor/uiLanguage';
 import { criticMarksInState } from './criticMarkupSyntax';
+
+let commentAuthor = '';
+/** Name written after @ in new comments; the host resolves the setting and its fallback. */
+export function setCriticCommentAuthor(author: string): void {
+  commentAuthor = author;
+}
+
+/** Wrap the selection in a highlight with a new `#cNN` comment and leave the cursor in the note. */
+export function insertCriticComment(view: EditorView): void {
+  const { state } = view;
+  const selection = state.selection.main;
+  const text = state.doc.toString();
+  const id = nextCommentId(criticMarksInState(state), text);
+  const { insert, cursor } = buildCommentInsertion(state.doc.sliceString(selection.from, selection.to), id, commentAuthor);
+  view.dispatch({
+    changes: { from: selection.from, to: selection.to, insert },
+    selection: { anchor: selection.from + cursor },
+    userEvent: 'input.criticComment',
+    scrollIntoView: true
+  });
+  view.focus();
+}
 
 /** The unit under the cursor, or null when the cursor is outside every mark. */
 function reviewUnit(state: EditorState): CriticUnit | null {

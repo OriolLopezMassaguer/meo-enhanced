@@ -3194,6 +3194,8 @@ html:not(.meo-critic-markup) .cm-editor.meo-mode-live :is(.meo-md-critic-marker,
   -webkit-text-fill-color: inherit !important;
 }
 
+html:not(.meo-critic-markup) .selection-inline-button[data-action="criticComment"] { display: none; }
+
 /* Accept / Reject over the mark under the cursor; hidden while CriticMarkup is off. */
 html:not(.meo-critic-markup) .cm-tooltip.meo-critic-review { display: none; }
 .meo-critic-review {

@@ -1,4 +1,4 @@
-import { createElement, Bold, Italic, Strikethrough, Highlighter, Terminal, Link, Brackets, Keyboard, Underline } from 'lucide';
+import { createElement, Bold, Italic, Strikethrough, Highlighter, Terminal, Link, Brackets, Keyboard, Underline, MessageSquarePlus } from 'lucide';
 import { getUiStrings, type UiLanguage } from '../application/uiLanguage';
 
 export interface SelectionMenuElements {
@@ -45,6 +45,7 @@ export const createSelectionMenu = (): SelectionMenuElements => {
   const selectionWikiLinkBtn = createSelectionActionButton('wikiLink', 'Wiki Link', Brackets);
   const selectionKbdBtn = createSelectionActionButton('kbd', 'Kbd', Keyboard);
   const selectionUnderlineBtn = createSelectionActionButton('underline', 'Underline', Underline);
+  const selectionCriticCommentBtn = createSelectionActionButton('criticComment', 'CriticMarkup comment', MessageSquarePlus);
   menu.append(
     selectionBoldBtn,
     selectionItalicBtn,
@@ -54,7 +55,8 @@ export const createSelectionMenu = (): SelectionMenuElements => {
     selectionLinkBtn,
     selectionWikiLinkBtn,
     selectionKbdBtn,
-    selectionUnderlineBtn
+    selectionUnderlineBtn,
+    selectionCriticCommentBtn
   );
 
   const setUiLanguage = (language: UiLanguage): void => {
@@ -69,7 +71,8 @@ export const createSelectionMenu = (): SelectionMenuElements => {
       link: strings.link,
       wikiLink: strings.wikiLink,
       kbd: strings.kbd,
-      underline: strings.underline
+      underline: strings.underline,
+      criticComment: strings.criticComment
     };
     for (const button of menu.querySelectorAll<HTMLButtonElement>('[data-action]')) {
       const label = labels[button.dataset.action ?? ''];

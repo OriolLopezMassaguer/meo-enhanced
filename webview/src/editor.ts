@@ -21,7 +21,7 @@ import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
 import { prepareSourceSyntax, sourceSyntax, sourceSyntaxPreparation } from './helpers/sourceSyntax';
 import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import { crossBlockCriticField, sourceCriticField } from './helpers/criticMarkupSyntax';
-import { criticReviewField } from './helpers/criticMarkupReview';
+import { criticReviewField, insertCriticComment } from './helpers/criticMarkupReview';
 import type { UiLanguage } from '../../src/foundation/uiLanguage';
 import { longCodeBlockEnabledFacet } from './helpers/longCodeBlocks';
 import type { SourceLineNumberMode } from '../../src/protocol/readyInit';
@@ -253,7 +253,7 @@ type TableTextTransform = (value: string, start: number, end: number) => boolean
 type TableFormatAction = 'inlineCode' | 'kbd' | 'underline' | 'bold' | 'italic' | 'lineover' | 'strike' | 'highlight' | 'link' | 'wikiLink';
 type SyncChange = { from: number; to: number; insert: string };
 type RevealOptions = { focusEditor?: boolean; align?: 'center' | 'upper' | 'top' | 'nearest' | 'none' };
-type EditorFormatAction = TableFormatAction | 'heading' | 'bulletList' | 'numberedList' | 'task' | 'codeBlock' | 'quote' | 'hr' | 'table' | 'image';
+type EditorFormatAction = TableFormatAction | 'criticComment' | 'heading' | 'bulletList' | 'numberedList' | 'task' | 'codeBlock' | 'quote' | 'hr' | 'table' | 'image';
 type EditorFormatLevel = number | { cols: number; rows: number };
 
 const setSearchQueryEffect = StateEffect.define<SearchQueryState>();
@@ -3964,6 +3964,8 @@ export function createEditor({
       if (activeTableInput) {
         return insertFormatInActiveTableInput(activeTableInput, action);
       }
+
+      if (action === 'criticComment') return insertCriticComment(view);
 
       if (view.state.selection.ranges.length > 1 && formatMultipleSelections(view, action)) return;
       const blockCommands: Partial<Record<EditorFormatAction, EditorCommandId>> = { bulletList: 'bullet', numberedList: 'ordered', task: 'taskList', quote: 'quote' };
