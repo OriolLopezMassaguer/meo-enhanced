@@ -45,6 +45,7 @@ const completeInit = {
   boldHeadingsEnabled: true,
   criticMarkupEnabled: false,
   criticMarkupAuthor: '',
+  criticMarkupDates: false,
   editorAppearance: 'dark' as const,
   editorFontSizeMode: 'auto' as const,
   editorFontSize: 14,
@@ -108,6 +109,9 @@ assert.equal(decodeInitMessage({ ...completeInit, criticMarkupEnabled: 'yes' }),
 assert.equal(decodeInitMessage({ ...completeInit, criticMarkupAuthor: undefined })?.criticMarkupAuthor, '');
 assert.equal(decodeInitMessage({ ...completeInit, criticMarkupAuthor: 'Oriol' })?.criticMarkupAuthor, 'Oriol');
 assert.equal(decodeInitMessage({ ...completeInit, criticMarkupAuthor: 7 }), null);
+assert.equal(decodeInitMessage({ ...completeInit, criticMarkupDates: undefined })?.criticMarkupDates, false);
+assert.equal(decodeInitMessage({ ...completeInit, criticMarkupDates: true })?.criticMarkupDates, true);
+assert.equal(decodeInitMessage({ ...completeInit, criticMarkupDates: 'yes' }), null);
 assert.equal(decodeInitMessage({ ...completeInit, criticMarkupAuthor: 'x'.repeat(81) }), null);
 assert.equal(decodeInitMessage({ ...completeInit, previewShowComments: undefined })?.previewShowComments, false);
 assert.equal(decodeInitMessage({ ...completeInit, previewShowComments: 'yes' }), null);

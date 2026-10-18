@@ -8,9 +8,20 @@ import { uiLanguageFacet } from '../editor/uiLanguage';
 import { criticMarksInState } from './criticMarkupSyntax';
 
 let commentAuthor = '';
+let commentDates = false;
 /** Name written after @ in new comments; the host resolves the setting and its fallback. */
 export function setCriticCommentAuthor(author: string): void {
   commentAuthor = author;
+}
+
+/** Whether new comments carry today's date after the author. */
+export function setCriticCommentDates(enabled: boolean): void {
+  commentDates = enabled;
+}
+
+function todayIso(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
 /** Wrap the selection in a highlight with a new `#cNN` comment and leave the cursor in the note. */
@@ -19,7 +30,7 @@ export function insertCriticComment(view: EditorView): void {
   const selection = state.selection.main;
   const text = state.doc.toString();
   const id = nextCommentId(criticMarksInState(state), text);
-  const { insert, cursor } = buildCommentInsertion(state.doc.sliceString(selection.from, selection.to), id, commentAuthor);
+  const { insert, cursor } = buildCommentInsertion(state.doc.sliceString(selection.from, selection.to), id, commentAuthor, commentDates ? todayIso() : '');
   view.dispatch({
     changes: { from: selection.from, to: selection.to, insert },
     selection: { anchor: selection.from + cursor },

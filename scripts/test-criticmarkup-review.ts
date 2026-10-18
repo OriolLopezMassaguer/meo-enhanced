@@ -193,7 +193,7 @@ try {
     const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
     const text = ['Alpha {==anchor==}{>>#c01 @Oriol: first note<<} beta.', '', 'Gamma {>>#c02 loose note<<} delta.', '', 'Skip `{>>#c03 code<<}` here.'].join('\n');
     const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
-    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'Comments', empty: 'None' }) });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'Comments', empty: 'None', acceptAll: 'Accept all', rejectAll: 'Reject all', hideResolved: 'Hide resolved', markResolved: 'Resolved' }) });
     document.body.append(panel.element);
     panel.open();
     const rows = Array.from(panel.element.querySelectorAll('.meo-critic-comments-row')).map((row: any) => ({
@@ -224,6 +224,77 @@ try {
   assert.equal(list.closed, true, 'the panel closes after a jump');
   assert.equal(list.firstFrom, true, 'a glued comment selects from its highlight');
   assert.equal(list.empty, 'None', 'empty state');
+
+  // Resolved toggle, hide-resolved filter, accept/reject all (document or selection) and dates.
+  const extras = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
+    const text = 'A {++new++} b {--old--} c {==h==}{>>#c01 @O 2026-10-18: pending<<} d {>>#c02 [x] done<<}';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'Comments', empty: 'None', acceptAll: 'Accept all', rejectAll: 'Reject all', hideResolved: 'Hide resolved', markResolved: 'Resolved' }) });
+    document.body.append(panel.element);
+    panel.open();
+    const rows = () => Array.from(panel.element.querySelectorAll('.meo-critic-comments-item')).map((item: any) => ({
+      meta: item.querySelector('.meo-critic-comments-meta').textContent, resolved: item.classList.contains('is-resolved'),
+      body: item.querySelector('.meo-critic-comments-body').textContent
+    }));
+    const initial = rows();
+    (panel.element.querySelectorAll('.meo-critic-comments-check')[0] as HTMLInputElement).click();
+    await settle();
+    const afterToggle = editor.getText();
+    (panel.element.querySelectorAll('.meo-critic-comments-check')[0] as HTMLInputElement).click();
+    await settle();
+    const afterUntoggle = editor.getText();
+    (panel.element.querySelector('.meo-critic-comments-filter input') as HTMLInputElement).click();
+    const filtered = rows();
+    (panel.element.querySelector('.meo-critic-comments-filter input') as HTMLInputElement).click();
+    const action = (name: string) => (panel.element.querySelector(`.meo-critic-comments-action.${name}`) as HTMLElement).click();
+    action('is-accept');
+    await settle();
+    const acceptedAll = editor.getText();
+    editor.undo();
+    await settle();
+    const restored = editor.getText();
+    action('is-reject');
+    await settle();
+    const rejectedAll = editor.getText();
+    editor.undo();
+    await settle();
+    editor.view.dispatch({ selection: { anchor: 0, head: text.indexOf(' b ') } });
+    action('is-accept');
+    await settle();
+    const acceptedInSelection = editor.getText();
+    panel.element.remove();
+    editor.destroy();
+    return { text, initial, afterToggle, afterUntoggle, filtered, acceptedAll, restored, rejectedAll, acceptedInSelection };
+  });
+  assert.deepEqual(extras.initial, [
+    { meta: '#c01 @O 2026-10-18 L1', resolved: false, body: 'pending' },
+    { meta: '#c02 L1', resolved: true, body: 'done' }
+  ], 'the list shows date and resolved state');
+  assert.equal(extras.afterToggle, extras.text.replace('2026-10-18: pending', '2026-10-18: [x] pending'), 'toggle adds the marker');
+  assert.equal(extras.afterUntoggle, extras.text, 'toggling twice restores the text');
+  assert.deepEqual(extras.filtered.map((row: { body: string }) => row.body), ['pending'], 'hide resolved filters the list');
+  assert.equal(extras.acceptedAll, 'A new b  c h d ', 'accept all resolves every mark');
+  assert.equal(extras.restored, extras.text, 'accept all is one undo step');
+  assert.equal(extras.rejectedAll, 'A  b old c h d ', 'reject all keeps the originals');
+  assert.equal(extras.acceptedInSelection, extras.text.replace('{++new++}', 'new'), 'a selection limits accept all');
+
+  // Dates: the comment button writes today after the author.
+  const dated = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text: 'Pick this.', initialMode: 'source', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: 5, head: 9 } });
+    harness.setCriticCommentAuthor('Oriol');
+    harness.setCriticCommentDates(true);
+    editor.insertFormat('criticComment');
+    const withDate = editor.getText();
+    harness.setCriticCommentDates(false);
+    editor.destroy();
+    return withDate;
+  });
+  assert.match(dated, /^Pick \{==this==\}\{>>#c01 @Oriol \d{4}-\d{2}-\d{2}: <<\}\.$/, `date after the author: ${dated}`);
+
 } finally {
   await browser.close();
   fs.rmSync(tempDir, { recursive: true, force: true });

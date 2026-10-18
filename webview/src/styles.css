@@ -8617,3 +8617,15 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .meo-critic-comments-row:hover, .meo-critic-comments-row:focus-visible { background: color-mix(in srgb, var(--meo-critic-comment) 18%, transparent); outline: none; }
 .meo-critic-comments-meta { font-size: 11px; color: var(--meo-critic-comment); }
 .meo-critic-comments-body { font-size: 13px; overflow-wrap: anywhere; }
+
+.meo-critic-comments-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 6px; }
+.meo-critic-comments-header .meo-critic-comments-title { padding: 0; }
+.meo-critic-comments-filter { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; opacity: 0.8; cursor: pointer; }
+.meo-critic-comments-item { display: flex; align-items: flex-start; gap: 4px; }
+.meo-critic-comments-item.is-resolved .meo-critic-comments-row { opacity: 0.5; }
+.meo-critic-comments-item.is-resolved .meo-critic-comments-body { text-decoration: line-through; }
+.meo-critic-comments-check { margin: 9px 0 0 6px; flex: none; }
+.meo-critic-comments-footer { display: flex; gap: 6px; padding: 6px 4px 2px; border-top: 1px solid var(--meo-border, var(--vscode-editorWidget-border, #454545)); margin-top: 4px; }
+.meo-critic-comments-action { flex: 1; border: 0; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px; color: inherit; background: transparent; cursor: pointer; }
+.meo-critic-comments-action.is-accept:hover { background: color-mix(in srgb, var(--meo-critic-add) 24%, transparent); }
+.meo-critic-comments-action.is-reject:hover { background: color-mix(in srgb, var(--meo-critic-del) 24%, transparent); }
