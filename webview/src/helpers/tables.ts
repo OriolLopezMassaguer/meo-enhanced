@@ -954,6 +954,7 @@ function withTableCellVisualLineProbe<T>(
   run: (probe: {
     caret: number;
     lineHeight: number;
+    paddingBottom: number;
     lineTopAt(offset: number): number;
     value: string;
   }) => T
@@ -992,6 +993,7 @@ function withTableCellVisualLineProbe<T>(
     const parsedFontSize = Number.parseFloat(computed.fontSize);
     return run({
       caret,
+      paddingBottom: Number.parseFloat(computed.paddingBottom) || 0,
       lineHeight: Number.isFinite(parsedLineHeight)
         ? parsedLineHeight
         : (Number.isFinite(parsedFontSize) ? parsedFontSize * 1.2 : 16),
@@ -1027,12 +1029,17 @@ export function tableCellVisualLineBoundary(input: HTMLTextAreaElement): {
 }
 
 function tableCellCaretViewportBounds(input: HTMLTextAreaElement): { top: number; bottom: number } {
-  return withTableCellVisualLineProbe(input, ({ caret, lineHeight, lineTopAt }) => {
+  return withTableCellVisualLineProbe(input, ({ caret, lineHeight, lineTopAt, paddingBottom }) => {
     const inputRect = input.getBoundingClientRect();
     const measuredTop = inputRect.top + lineTopAt(caret) - input.scrollTop;
     const latestVisibleTop = Math.max(inputRect.top, inputRect.bottom - lineHeight);
     const top = Math.min(Math.max(measuredTop, inputRect.top), latestVisibleTop);
-    return { top, bottom: Math.min(inputRect.bottom, top + lineHeight) };
+    const bottom = Math.min(inputRect.bottom, top + lineHeight);
+    // At the final painted line, include the cell's fractional bottom border.
+    // A taller neighbouring cell must not pull a short input's caret downward.
+    const cellBottom = caret === input.value.length && bottom >= inputRect.bottom - paddingBottom - tableCellCaretRevealEpsilon
+      ? input.closest<HTMLElement>(tableCellSelector)?.getBoundingClientRect().bottom : undefined;
+    return { top, bottom: Math.max(bottom, cellBottom ?? bottom) };
   });
 }
 
