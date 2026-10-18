@@ -204,6 +204,48 @@ try {
     assert.deepEqual(note, { closed: 'none', opened: 'block', label: '1', tabbable: true }, 'Preview note opens on focus');
   } finally { await notePage.close(); }
 
+
+  // Nested syntax: emphasis, links and inner marks work inside a mark; a comment stays plain text.
+  const nestedPreview = exportRuntime.renderPreviewDocument({
+    markdownText: [
+      '{++**bold** and [link](https://example.com)++}',
+      '',
+      '{~~*old*~>**new**~~}',
+      '',
+      '{==outer {++inner++} text==}',
+      '',
+      '{>>#c9 note with **stars**<<}'
+    ].join('\n'),
+    sourceDocumentPath: 'C:/tmp/nested.md', uiLanguage: 'en', styleEnvironment: { previewFontFamily: '' }
+  }).html;
+  for (const expected of [
+    '<span class="critic-add"><strong>bold</strong> and <a href="https://example.com" target="_blank" rel="noopener noreferrer">link</a></span>',
+    '<span class="critic-del"><em>old</em></span><span class="critic-add"><strong>new</strong></span>',
+    '<span class="critic-hl">outer <span class="critic-add">inner</span> text</span>',
+    '<span class="critic-body">note with **stars**</span>'
+  ]) assert(nestedPreview.includes(expected), `nested preview missing ${expected}\n${nestedPreview}`);
+
+  const nestedEditor = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    document.getElementById('app')!.replaceChildren();
+    const text = ['{++**bold** inside++}', '', '{==outer {++inner++} text==}', '', 'Last paragraph.'].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: text.length } });
+    await settle();
+    const found = (selector: string) => Array.from(document.querySelectorAll(selector)).map((node) => node.textContent);
+    const result = {
+      strongInsideAdd: found('.meo-md-critic-add .meo-md-strong'),
+      addInsideHighlight: found('.meo-md-critic-hl .meo-md-critic-add'),
+      markers: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-critic-marker')).map((node) => getComputedStyle(node).display)
+    };
+    editor.destroy();
+    return result;
+  });
+  assert.deepEqual(nestedEditor.strongInsideAdd, ['bold'], 'emphasis renders inside a mark');
+  assert.deepEqual(nestedEditor.addInsideHighlight, ['inner'], 'a mark renders inside another');
+  assert(nestedEditor.markers.every((display) => display === 'none'), 'delimiters hide off the active line, nested ones included');
+
   console.log('CriticMarkup test passed');
 } finally {
   await browser.close();

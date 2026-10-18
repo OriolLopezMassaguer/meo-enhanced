@@ -44,11 +44,21 @@ export const criticMarkdownExtension: MarkdownConfig = {
       if (!match) return -1;
       const from = pos;
       const to = context.offset + match.to;
-      const children: Element[] = [context.elt('CriticMark', from, from + match.openLength)];
+      // Emphasis, links, code and inner marks keep working inside a mark; a comment is plain text.
+      const inner = (innerFrom: number, innerTo: number): Element[] => match.kind === 'comment' || innerTo <= innerFrom
+        ? []
+        : context.parser.parseInline(context.slice(innerFrom, innerTo), innerFrom);
+      const contentFrom = from + match.openLength;
+      const contentTo = to - match.closeLength;
+      const children: Element[] = [context.elt('CriticMark', from, contentFrom)];
       if (match.separator) {
-        children.push(context.elt('CriticSubSep', context.offset + match.separator.from, context.offset + match.separator.to));
+        const separatorFrom = context.offset + match.separator.from;
+        const separatorTo = context.offset + match.separator.to;
+        children.push(...inner(contentFrom, separatorFrom), context.elt('CriticSubSep', separatorFrom, separatorTo), ...inner(separatorTo, contentTo));
+      } else {
+        children.push(...inner(contentFrom, contentTo));
       }
-      children.push(context.elt('CriticMark', to - match.closeLength, to));
+      children.push(context.elt('CriticMark', contentTo, to));
       return context.addElement(context.elt(nodeNames[match.kind], from, to, children));
     }
   }]

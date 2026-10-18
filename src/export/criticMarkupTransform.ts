@@ -14,7 +14,8 @@ const spanClass: Readonly<Record<CriticMarkupKind, string>> = {
 function pushSpan(state: any, className: string, content: string, title?: string): void {
   const open = state.push('critic_open', 'span', 1);
   open.attrs = [['class', className], ...(title ? [['title', title]] : [])];
-  if (content) state.push('text', '', 0).content = content;
+  // Inline Markdown (emphasis, links, code, inner marks) renders inside the mark.
+  if (content) state.md.inline.parse(content, state.md, state.env, state.tokens);
   state.push('critic_close', 'span', -1);
 }
 
