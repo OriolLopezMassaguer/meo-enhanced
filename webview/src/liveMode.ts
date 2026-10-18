@@ -28,6 +28,7 @@ import {
 import { ImageGroupWidget, ImageWidget, getImageData, isImageUrl, type ImageGroupItem } from './helpers/images';
 import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
+import { criticContentClass, criticContentRanges, criticMarkDecoration, crossBlockCriticField } from './helpers/criticMarkupSyntax';
 import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
 import { currentSyntaxTree, getFencedCodeInfo, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
@@ -196,6 +197,12 @@ const highlightMarkerDeco = Decoration.mark({
 });
 const activeHighlightMarkerDeco = Decoration.mark({
   class: 'meo-md-marker-active meo-md-highlight-marker-active'
+});
+const criticMarkerDeco = Decoration.mark({
+  class: 'meo-md-marker meo-md-critic-marker'
+});
+const activeCriticMarkerDeco = Decoration.mark({
+  class: 'meo-md-marker-active meo-md-critic-marker-active'
 });
 const emMarkerDeco = Decoration.mark({
   class: 'meo-md-marker meo-md-em-marker'
@@ -1951,7 +1958,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       // Lezer can otherwise pair a TeX caret with one in a later formula or style code contents.
       if (htmlCodeBodies.some(body => node.from >= body.from && node.to <= body.to)
         || mathRanges.some(math => node.from >= math.from && node.to <= math.to
-          || ['Subscript', 'Superscript', 'Emphasis', 'StrongEmphasis', 'Strikethrough', 'Highlight'].includes(node.name)
+          || ['Subscript', 'Superscript', 'Emphasis', 'StrongEmphasis', 'Strikethrough', 'Highlight', 'CriticAdd', 'CriticDel', 'CriticSub', 'CriticHighlight', 'CriticComment'].includes(node.name)
             && node.from >= math.from && node.from < math.to)) return false;
       if (hasCodeBlockAncestor(node)) {
         if (node.name === 'QuoteMark') {
@@ -2080,6 +2087,8 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
         addStrikethroughDecorations(ranges, state, node);
       } else if (node.name === 'Highlight') {
         addHighlightDecorations(ranges, state, node);
+      } else if (criticContentClass[node.name] || node.name === 'CriticSub') {
+        for (const range of criticContentRanges(node)) addRange(ranges, range.from, range.to, criticMarkDecoration(range.className));
       } else if (node.name === 'InlineCode' || node.name === 'CodeText') {
         addRange(ranges, node.from, node.to, inlineStyleDecos.inlineCode);
       } else if (node.name === 'LinkLabel') {
@@ -2276,6 +2285,17 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
           node.to,
           strikeMarkerDeco,
           activeStrikeMarkerDeco,
+          node.node.parent?.to === node.to
+        );
+      } else if (node.name === 'CriticMark' || node.name === 'CriticSubSep') {
+        addInlineMarkerRange(
+          ranges,
+          activeLines,
+          line.number,
+          node.from,
+          node.to,
+          criticMarkerDeco,
+          activeCriticMarkerDeco,
           node.node.parent?.to === node.to
         );
       } else if (node.name === 'HighlightMark') {
@@ -3741,6 +3761,7 @@ export function liveModeExtensions(options: { readonly largeDocument?: boolean }
     editorMarkdownLanguage,
     syntaxHighlighting(liveHighlightStyle),
     markdownTagField,
+    crossBlockCriticField,
     livePointerSelectionActiveField,
     liveDocumentIdleField,
     mermaidEditingStateField,

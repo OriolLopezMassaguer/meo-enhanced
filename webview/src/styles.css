@@ -3156,6 +3156,44 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   background: transparent;
 }
 
+/* CriticMarkup: {++add++} {--del--} {~~old~>new~~} {==mark==} {>>note<<}
+   Styling applies only while html.meo-critic-markup is set (Settings > General, More tools).
+   Without it the decorations are muted so the marks read as plain Markdown text. */
+:root {
+  --meo-critic-add: #3fa564;
+  --meo-critic-del: #d9534f;
+  --meo-critic-hl: #c9971c;
+  --meo-critic-comment: #5a9fb8;
+}
+
+.cm-editor :is(.meo-md-critic-add, .meo-md-critic-del, .meo-md-critic-hl, .meo-md-critic-comment) {
+  border-radius: 0.14em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+html.meo-critic-markup .cm-editor .meo-md-critic-add { color: var(--meo-critic-add); -webkit-text-fill-color: var(--meo-critic-add); }
+html.meo-critic-markup .cm-editor .meo-md-critic-del { color: var(--meo-critic-del); -webkit-text-fill-color: var(--meo-critic-del); text-decoration: line-through; }
+html.meo-critic-markup .cm-editor .meo-md-critic-hl { color: var(--meo-critic-hl); -webkit-text-fill-color: var(--meo-critic-hl); }
+html.meo-critic-markup .cm-editor .meo-md-critic-comment { color: var(--meo-critic-comment); -webkit-text-fill-color: var(--meo-critic-comment); font-style: italic; }
+
+html.meo-critic-markup .cm-editor.meo-mode-live .meo-md-critic-add { background-color: color-mix(in srgb, var(--meo-critic-add) 16%, transparent); }
+html.meo-critic-markup .cm-editor.meo-mode-live .meo-md-critic-del { background-color: color-mix(in srgb, var(--meo-critic-del) 14%, transparent); }
+html.meo-critic-markup .cm-editor.meo-mode-live .meo-md-critic-hl { background-color: color-mix(in srgb, var(--meo-critic-hl) 28%, transparent); color: inherit; -webkit-text-fill-color: inherit; }
+html.meo-critic-markup .cm-editor.meo-mode-live .meo-md-critic-comment { background-color: color-mix(in srgb, var(--meo-critic-comment) 14%, transparent); }
+
+html.meo-critic-markup .cm-editor.meo-mode-source .meo-md-critic-marker {
+  color: var(--meo-semantic-markdownSyntax) !important;
+  -webkit-text-fill-color: var(--meo-semantic-markdownSyntax) !important;
+}
+
+/* Off: delimiters stay visible and inherit the text color, as in a document without CriticMarkup. */
+html:not(.meo-critic-markup) .cm-editor.meo-mode-live :is(.meo-md-critic-marker, .meo-md-critic-marker-active) {
+  display: inline !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
 .cm-editor.meo-mode-live .meo-md-strike-marker,
 .cm-editor.meo-mode-live .meo-md-strike-marker-active {
   color: var(--meo-semantic-markdownSyntax) !important;

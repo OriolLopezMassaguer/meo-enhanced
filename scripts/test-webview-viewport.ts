@@ -896,7 +896,7 @@ async function main() {
     if (
       JSON.stringify(moreToolsLayout.labels) !== JSON.stringify([
         '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色', '标题加粗',
-        '表格浮动表头'
+        '高亮 CriticMarkup', '表格浮动表头'
       ]) ||
       moreToolsLayout.topHeading !== '文档显示' ||
       moreToolsLayout.languageAutoLabel !== '自动' ||

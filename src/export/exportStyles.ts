@@ -775,6 +775,21 @@ mark {
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
+.critic-add, .critic-del, .critic-hl, .critic-comment {
+  border-radius: 0.14em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.critic-add { color: #3fa564; background-color: color-mix(in srgb, #3fa564 16%, transparent); }
+.critic-del { color: #d9534f; background-color: color-mix(in srgb, #d9534f 14%, transparent); text-decoration: line-through; }
+.critic-hl { color: inherit; background-color: color-mix(in srgb, #c9971c 28%, transparent); box-shadow: -0.18em 0 0 #c9971c; padding-left: 0.2em; }
+.critic-comment {
+  color: #5a9fb8;
+  background-color: color-mix(in srgb, #5a9fb8 14%, transparent);
+  font-style: italic;
+  font-size: 0.92em;
+  padding: 0 0.3em;
+}
 code {
   font-family: var(--meo-font-code);
   font-weight: inherit;

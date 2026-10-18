@@ -1,5 +1,6 @@
 import { markdownLanguage } from '@codemirror/lang-markdown';
 import type { MarkdownParser } from '@lezer/markdown';
+import { criticMarkdownExtension } from './criticMarkupSyntax';
 import { footnoteMarkdownExtension } from './footnotes';
 import { highlightMarkdownExtension } from './highlightSyntax';
 import { inlineScriptMarkdownExtension } from './inlineStyles';
@@ -7,7 +8,7 @@ import { collectInlineMathExcludedRanges, createMathLiteralSyntaxExtension, html
 import { createPunctuationInlineStyleExtension } from './punctuationSyntax';
 import { wikiImageMarkdownExtension } from '../../../src/foundation/wikiReference';
 
-const literalExtensions = [footnoteMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension, wikiImageMarkdownExtension];
+const literalExtensions = [footnoteMarkdownExtension, criticMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension, wikiImageMarkdownExtension];
 const literalParser = (markdownLanguage.parser as MarkdownParser).configure(literalExtensions);
 export const inlineMarkdownExtensions = [...literalExtensions, createMathLiteralSyntaxExtension(literalParser), createPunctuationInlineStyleExtension(literalParser)];
 const inlineParser = (markdownLanguage.parser as MarkdownParser).configure(inlineMarkdownExtensions);

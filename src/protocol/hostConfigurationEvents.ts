@@ -16,6 +16,7 @@ export type HostConfigurationEvent =
   | { readonly type: 'largeDocumentOptimizationChanged'; readonly enabled: boolean }
   | { readonly type: 'tableStickyHeaderChanged'; readonly enabled: boolean }
   | { readonly type: 'boldHeadingsChanged'; readonly enabled: boolean }
+  | { readonly type: 'criticMarkupChanged'; readonly enabled: boolean }
   | { readonly type: 'restoreReadingPositionOnOpenChanged'; readonly enabled: boolean }
   | {
       readonly type: 'vscodeCodeThemeChanged';
@@ -63,6 +64,7 @@ export function decodeHostConfigurationEvent(value: unknown): HostConfigurationE
     case 'largeDocumentOptimizationChanged':
     case 'tableStickyHeaderChanged':
     case 'boldHeadingsChanged':
+    case 'criticMarkupChanged':
     case 'restoreReadingPositionOnOpenChanged':
       return typeof value.enabled === 'boolean' ? value as HostConfigurationEvent : null;
     case 'vscodeCodeThemeChanged':

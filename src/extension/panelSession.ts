@@ -31,11 +31,13 @@ import {
   LARGE_DOCUMENT_OPTIMIZATION_SETTING_KEY,
   TABLE_STICKY_HEADER_SETTING_KEY,
   BOLD_HEADINGS_SETTING_KEY,
+  CRITIC_MARKUP_SETTING_KEY,
   RESTORE_READING_POSITION_SETTING_KEY,
   OUTLINE_WIDTH_KEY,
   getContentMaxWidthEnabled,
   getTableStickyHeaderEnabled,
   getBoldHeadingsEnabled,
+  getCriticMarkupEnabled,
   getRestoreReadingPositionOnOpen,
   getGitChangesGutterEnabled,
   getGitDiffDetailsVisible,
@@ -497,6 +499,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       largeDocumentOptimizationEnabled: getLargeDocumentOptimizationEnabled(),
       tableStickyHeaderEnabled: getTableStickyHeaderEnabled(),
       boldHeadingsEnabled: getBoldHeadingsEnabled(),
+      criticMarkupEnabled: getCriticMarkupEnabled(),
       restoreReadingPositionOnOpen,
       readingPositionRestore,
       findOptions: getFindOptions(),
@@ -774,6 +777,11 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await vscode.workspace
           .getConfiguration(EXTENSION_CONFIG_SECTION)
           .update(BOLD_HEADINGS_SETTING_KEY, raw.enabled === true, vscode.ConfigurationTarget.Global);
+        return;
+      case 'setCriticMarkup':
+        await vscode.workspace
+          .getConfiguration(EXTENSION_CONFIG_SECTION)
+          .update(CRITIC_MARKUP_SETTING_KEY, raw.enabled === true, vscode.ConfigurationTarget.Global);
         return;
       case 'setRestoreReadingPositionOnOpen':
         await vscode.workspace

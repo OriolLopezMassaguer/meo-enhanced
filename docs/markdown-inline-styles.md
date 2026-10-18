@@ -19,3 +19,18 @@ Preview/导出的 Markdown-it 适配器调用。`~文字~` 是下标，`^文字^
 
 修改后运行 `bun scripts/test-preview-rendering.ts` 和 `bun scripts/test-highlight.ts`。
 两项共享同一组行为样例，验证实际渲染、转义、表格、模式切换和基础样式。
+
+## CriticMarkup
+
+`{++增加++}`、`{--删除--}`、`{~~旧~>新~~}`、`{==标记==}`、`{>>批注<<}`。
+共同判定位于 `src/foundation/criticMarkup.ts`（`matchCriticMarkup`），由 Lezer
+(`webview/src/helpers/criticMarkupSyntax.ts`) 和 Preview/导出的 Markdown-it 适配器
+(`src/export/criticMarkupTransform.ts`) 调用。内容按文字处理；没有结束符或内容为空时保持原文；
+代码和反斜杠转义里的标记保持原文。替换由整体解析，因此其中的 `~~` 不会与删除线配对。
+
+- Live：分隔符在非活动行隐藏；内容使用 `meo-md-critic-*` 类。
+- Source：保留所有字符，只给内容和分隔符着色（`sourceCriticField`）。
+- Preview/导出：`critic-add`、`critic-del`、`critic-hl`、`critic-comment` 四个 `span`，样式在 `exportStyles.ts`。
+
+尚未支持：标题内的标记、嵌套标记、接受/拒绝操作。修改后运行 `bun scripts/test-criticmarkup.ts`。
+
