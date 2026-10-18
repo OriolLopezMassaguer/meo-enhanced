@@ -25,6 +25,12 @@ Windows is smoke checked against the installed font collection. Mac/Linux adapte
 need native platform verification before release; unavailable queries use fallback fonts.
 
 The user-facing inventory is in [testing-feature-coverage.md](testing-feature-coverage.md).
+`scripts/test-pdf-page-background.ts` runs in the browser gate and uses the production
+PDF renderer for every built-in preset and a custom dual-theme preset. It compares
+the final PDF's full-paper background drawing on every page against the rendered
+document color, including non-white light backgrounds, dark backgrounds, custom
+zero/variable margins and a partly filled last page. DOM color checks or a PDF file
+header alone cannot catch a contrasting frame in the printed page margins.
 `scripts/test-html-content.ts` covers shared HTML tag/style filtering in default
 HTML/PDF/DOCX output, adjacent and nested fragments, CommonMark boundaries, image
 dimensions, and Live source-above-result editing. Its browser checks preserve
