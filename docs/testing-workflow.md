@@ -39,6 +39,13 @@ source-mode keyboard entry, localized filtered-content details, preserved
 whitespace, invalid input and late-result protection. Its trusted-wheel scenario
 places rendered HTML above the viewport and checks every frame of HTML and math
 expansion, preventing unrelated reading-anchor restoration from shifting earlier content.
+Word HTML acceptance uses `scripts/test-docx-export-runtime.ts` for inline text,
+figure captions and explicit pre-wrap line breaks, and
+`scripts/test-docx-export-browser.ts` for hidden attributes, CSS visibility,
+transparent/zero-size text, closed details and visible child overrides. Inspect
+the final Word document in Word as well: its HTML converter retains editable
+text but approximates browser typography, repeated spaces, ruby and custom list
+numbering. Deliberately unclosed tags can still affect following HTML content.
 The Mermaid/formula inner-source matrix and findings are in
 [testing-rendered-block-source.md](testing-rendered-block-source.md). Run
 `bun run test:rendered-source` for its dedicated input, boundary and appearance
