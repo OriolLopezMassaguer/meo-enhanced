@@ -1,4 +1,4 @@
-import { Prec, StateEffect, StateField, type ChangeDesc, type EditorState } from '@codemirror/state';
+import { EditorState, Prec, StateEffect, StateField, type ChangeDesc } from '@codemirror/state';
 import {
   Decoration,
   EditorView,
@@ -9,10 +9,10 @@ import {
   type DecorationSet
 } from '@codemirror/view';
 import type { SyntaxNodeRef, Tree } from '@lezer/common';
-import { isolateHistory } from '@codemirror/commands';
+import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import { parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
-import { createElement, AlertTriangle, ListTree, Check } from 'lucide';
+import { createElement, AlertTriangle, BrushCleaning, Check } from 'lucide';
 import {
   getHtmlRootTagName,
   isSafeHtmlUrl,
@@ -42,6 +42,7 @@ import { mountProjectedLineNumbers } from '../editor/projectedLineNumbers';
 import { RenderedBlockPreviewHeight } from './renderedBlockPreview';
 import { createPreviewTableLayoutController, type PreviewTableLayoutController } from './previewTableLayout';
 import { formatHtmlFragment } from '../editor/htmlFormatting';
+import { isLivePointerSelectionActive, setLivePointerSelectionActiveEffect, sourcePresentationSelection } from '../editor/livePointerSelection';
 
 export interface RenderableHtmlBlock {
   from: number;
@@ -137,7 +138,7 @@ function htmlHasVisibleContent(source: string): boolean {
 }
 
 function selectedHtmlBlock(state: EditorState): HtmlEditingRange | undefined {
-  const { head } = state.selection.main;
+  const { head } = sourcePresentationSelection(state).main;
   const block = collectRenderableHtmlBlocks(state).find(block => head >= block.from && head < block.to);
   if (block) return block;
   const details = getDetailsBlocks(state).find(block => head >= block.anchorFrom && head < block.anchorTo
@@ -145,7 +146,9 @@ function selectedHtmlBlock(state: EditorState): HtmlEditingRange | undefined {
   return details ? { from: details.sectionFrom, to: details.sectionTo } : undefined;
 }
 
-export const setHtmlEditingRangeEffect = StateEffect.define<HtmlEditingRange | null>();
+export const setHtmlEditingRangeEffect = StateEffect.define<HtmlEditingRange | null>({
+  map: (range, changes) => range && ({ from: changes.mapPos(range.from, -1), to: changes.mapPos(range.to, 1) })
+});
 
 export const htmlEditingRangeField = StateField.define<HtmlEditingRange | null>({
   create() {
@@ -167,7 +170,9 @@ export const htmlEditingRangeField = StateField.define<HtmlEditingRange | null>(
         explicitlySet = true;
       }
     }
-    if (!next || explicitlySet || !transaction.selection) return next;
+    if (!next || explicitlySet || isLivePointerSelectionActive(transaction.state)) return next;
+    const pointerReleased = transaction.effects.some(effect => effect.is(setLivePointerSelectionActiveEffect) && !effect.value.active);
+    if (!transaction.selection && !pointerReleased) return next;
     const head = transaction.state.selection.main.head;
     return head >= next.from && head <= next.to ? next : null;
   }
@@ -176,6 +181,27 @@ export const htmlEditingRangeField = StateField.define<HtmlEditingRange | null>(
 export function getHtmlEditingRange(state: EditorState): HtmlEditingRange | null {
   return state.field(htmlEditingRangeField, false) ?? selectedHtmlBlock(state) ?? null;
 }
+
+// Keep the new fragment open in the paste transaction itself, including when
+// the native caret lands in trailing blank lines. The next selection/input owns exit.
+const htmlPasteSourceEditing = EditorState.transactionExtender.of(transaction => {
+  if (!transaction.isUserEvent('input.paste') || !transaction.docChanged || transaction.state.readOnly
+    || transaction.state.selection.ranges.length !== 1 || !transaction.state.selection.main.empty) return null;
+  const inserted: Array<{ from: number; to: number }> = [];
+  transaction.changes.iterChangedRanges((_from, _to, from, to) => {
+    if (transaction.state.doc.sliceString(from, to).includes('<')) inserted.push({ from, to });
+  });
+  if (!inserted.length) return null;
+  const head = transaction.state.selection.main.head;
+  const block = collectRenderableHtmlBlocks(transaction.state).filter(block => block.to <= head
+    && !transaction.state.doc.sliceString(block.to, head).trim()
+    && inserted.some(range => block.to > range.from && block.from < range.to && head <= range.to)).at(-1);
+  return block ? { effects: setHtmlEditingRangeEffect.of({ from: block.from, to: block.to }) } : null;
+});
+
+const htmlSourceEditingHistory = invertedEffects.of(transaction => transaction.docChanged
+  && transaction.effects.some(effect => effect.is(setHtmlEditingRangeEffect))
+  ? [setHtmlEditingRangeEffect.of(getHtmlEditingRange(transaction.startState))] : []);
 
 export function collectRenderableHtmlBlocks(state: EditorState, tree: Tree = resolvedSyntaxTree(state)): RenderableHtmlBlock[] {
   const cached = renderableHtmlBlockCache.get(state);
@@ -321,17 +347,22 @@ type HtmlFormattingOutcome = 'formatted' | 'unchanged' | 'preserved' | 'invalid'
 export async function formatActiveHtmlSource(view: EditorView, isCurrent: () => boolean = () => true): Promise<HtmlFormattingOutcome> {
   const range = getHtmlEditingRange(view.state);
   const { doc, selection, readOnly } = view.state;
-  if (!range || readOnly || selection.ranges.length !== 1 || selection.main.from < range.from || selection.main.to > range.to) return 'unavailable';
+  const trailingCaret = range && selection.main.empty && selection.main.head >= range.to
+    && !doc.sliceString(range.to, selection.main.head).trim();
+  if (!range || readOnly || selection.ranges.length !== 1 || selection.main.from < range.from
+    || selection.main.to > range.to && !trailingCaret) return 'unavailable';
   try {
-    const result = await formatHtmlFragment(doc.sliceString(range.from, range.to),
-      [selection.main.anchor - range.from, selection.main.head - range.from]);
+    const source = doc.sliceString(range.from, range.to);
+    const offsets = [selection.main.anchor - range.from, selection.main.head - range.from];
+    const result = await formatHtmlFragment(source, offsets.map(offset => Math.min(offset, source.length)));
     const current = getHtmlEditingRange(view.state);
     if (!isCurrent() || !view.dom.isConnected || view.state.readOnly || view.state.doc !== doc || !view.state.selection.eq(selection)
       || current?.from !== range.from || current.to !== range.to) return 'changed';
     if (result.kind !== 'formatted') return result.kind;
     preserveHtmlPosition(view, range.from, () => view.dispatch({
       changes: { from: range.from, to: range.to, insert: result.source },
-      selection: { anchor: range.from + result.offsets[0], head: range.from + result.offsets[1] },
+      selection: { anchor: range.from + result.offsets[0] + Math.max(0, offsets[0] - source.length),
+        head: range.from + result.offsets[1] + Math.max(0, offsets[1] - source.length) },
       effects: setHtmlEditingRangeEffect.of({ from: range.from, to: range.from + result.source.length }),
       annotations: isolateHistory.of('full'), userEvent: 'input.format'
     }));
@@ -364,6 +395,7 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
   toDOM(view: EditorView): HTMLElement {
     const root = document.createElement('span') as HtmlSourceActionsElement;
     root.className = 'meo-md-html-source-actions';
+    root.contentEditable = 'false';
     const warning = document.createElement('span');
     warning.className = 'meo-md-html-warning';
     warning.dataset.tooltipKind = 'description';
@@ -374,7 +406,7 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
     button.dataset.tooltipLiveUpdate = 'true';
     const icon = document.createElement('span');
     icon.setAttribute('aria-hidden', 'true');
-    icon.append(createElement(ListTree, { width: 14, height: 14 }));
+    icon.append(createElement(BrushCleaning, { width: 14, height: 14 }));
     const label = document.createElement('span');
     label.className = 'meo-format-html-label';
     button.append(icon, label);
@@ -405,7 +437,7 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
         { width: 14, height: 14, 'aria-hidden': 'true' }));
       resetTimer = setTimeout(() => {
         if (disposed) return;
-        icon.replaceChildren(createElement(ListTree, { width: 14, height: 14 }));
+        icon.replaceChildren(createElement(BrushCleaning, { width: 14, height: 14 }));
         this.refresh(root, view);
       }, 2500);
     });
@@ -1101,5 +1133,6 @@ const htmlSourceInputHandlers = Prec.highest(EditorView.domEventHandlers({
 }));
 
 export function htmlContentExtensions() {
-  return [htmlEditingRangeField, htmlEscapeKeymap, htmlBlockLineNumberMarker, htmlSourceInputHandlers];
+  return [htmlEditingRangeField, htmlPasteSourceEditing, htmlSourceEditingHistory,
+    htmlEscapeKeymap, htmlBlockLineNumberMarker, htmlSourceInputHandlers];
 }

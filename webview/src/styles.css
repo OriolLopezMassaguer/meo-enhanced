@@ -4475,11 +4475,22 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor .meo-md-html-content {
+  /* Keep descendant margins inside the widget CodeMirror measures. A hidden
+     last child can otherwise let an earlier paragraph's margin escape. */
+  display: flow-root;
   min-width: 0;
   color: inherit;
   white-space: normal;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.cm-editor.meo-mode-live .meo-md-html-live-result,
+.cm-editor.meo-mode-live .meo-md-html-live-result * {
+  /* The editing result is derived; source dragging must select each byte once.
+     Reading HTML outside this result keeps its native text selection. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .cm-editor .meo-md-html-comment {
@@ -4682,7 +4693,11 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   height: 22px;
   gap: 4px;
   cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
 }
+
+.cm-editor .meo-md-html-source-actions * { user-select: none; -webkit-user-select: none; }
 
 .cm-editor .meo-md-html-source-actions .meo-md-html-warning { margin-left: 0; }
 .cm-editor .meo-md-html-source-actions .meo-md-html-warning[hidden] { display: none; }

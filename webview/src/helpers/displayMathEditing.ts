@@ -5,10 +5,11 @@ import { collectDocumentMathRanges, getDisplayMathCopySource, getDisplayMathSour
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
 import { createRenderedBlockImageButton } from './renderedBlockImage';
 import { uiLanguageFacet } from '../editor/uiLanguage';
+import { sourcePresentationSelection } from '../editor/livePointerSelection';
 
 /** Formula editing belongs to the document selection, including both delimiters. */
 export function isDisplayMathEditing(state: EditorState, startLine: number, endLine: number): boolean {
-  return state.selection.ranges.some(range => {
+  return sourcePresentationSelection(state).ranges.some(range => {
     const first = state.doc.lineAt(range.from).number;
     const last = state.doc.lineAt(range.empty ? range.to : range.to - 1).number;
     return first <= endLine && last >= startLine;

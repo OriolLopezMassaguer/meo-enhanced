@@ -43,7 +43,26 @@ header alone cannot catch a contrasting frame in the printed page margins.
 HTML/PDF/DOCX output, adjacent and nested fragments, CommonMark boundaries, image
 dimensions, and Live source-above-result editing. Its browser checks preserve
 native text selection, disclosure/link actions, undo and mode continuity,
-tag/attribute completion, closing tags, literal paste and IME input, and
+tag/attribute completion, closing tags, literal paste and IME input. They
+verify pasted HTML opens source without reformatting or moving the native caret,
+including trailing blank lines, hidden fragments, sibling blocks and history.
+Source/Live transitions continue to respect the caret; inline HTML and code keep
+their own input paths. `bun scripts/test-html-content.ts --pointer-only` runs only
+the HTML layout/gutter alignment with hidden trailing nodes and nested containers,
+HTML/math final-row clicks, native source dragging and actual Ctrl+C/Ctrl+V round trips,
+the nonselectable format action and source presentation through pointer release. The checks also
+cover forward/reverse HTML/math cross-block drags, keyboard selection extension,
+source-only copying, exact cut/undo/redo and native HTML reading selection.
+`bun scripts/test-html-content.ts --selection-only` isolates those selection checks.
+Editing previews must not add a second copy of rendered text to the native source
+selection. Native VS Code clipboard acceptance has a separate disposable-profile
+launcher: `./scripts/test-vscode-html-copy.ps1 -CodePath <Code.exe>`. Build the
+current extension and Webview first; it checks mouse selection, Ctrl+C, the workbench copy command,
+Ctrl+V and whole-document copying through the system clipboard, restores previous
+clipboard text, and records results under `.local/probes/html-copy-*/`. The isolated
+launcher uses CDP rather than the host mouse/keyboard and writes only temporary
+fixture documents. This does not verify the user's existing profile or keybindings.
+The HTML browser checks also
 verify that empty/hidden fragments remain discoverable as muted source without
 adding an empty preview. Screenshots under `.local/html-fragment-acceptance/`
 cover Chinese/English, light/dark and narrow layouts. Existing gutter, mode,

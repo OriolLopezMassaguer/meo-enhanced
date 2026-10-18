@@ -150,6 +150,285 @@ async function checkSourceExpansionAnchor(page: Page): Promise<void> {
   }
 }
 
+async function checkHtmlPointerEditing(page: Page): Promise<void> {
+  const html = '<ul>\n  <li>First</li>\n  <li>Second</li>\n</ul>';
+  for (const kind of ['html', 'math'] as const) {
+    await page.evaluate(({ kind, html }) => {
+      const editor = (window as any).__htmlEditor;
+      const text = 'Before.\n\n' + (kind === 'html' ? html : '$$\nx^2 + 1\n$$') + '\n\nBelow paragraph.\n\nTail.';
+      editor.setText(text, true);
+      editor.view.dispatch({ selection: { anchor: text.indexOf(kind === 'html' ? 'First' : 'x^2') + 1 } }); editor.view.focus();
+    }, { kind, html });
+    await frames(page);
+    if (kind === 'html') {
+      const points = await page.evaluate(() => {
+        const lines = Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-source-range'));
+        const first = lines[0].getBoundingClientRect(), last = lines.at(-1)!.getBoundingClientRect();
+        return { x: last.left + 14, y: last.top + last.height / 2, fromX: first.left + 1, fromY: first.top + first.height / 2 };
+      });
+      await page.mouse.click(points.x, points.y); await frames(page);
+      assert.equal(await page.evaluate(() => {
+        const view = (window as any).__htmlEditor.view; return view.state.doc.lineAt(view.state.selection.main.head).text;
+      }), '</ul>', 'The closing HTML source row accepts a native caret');
+      await page.mouse.move(points.fromX, points.fromY); await page.mouse.down(); await page.mouse.move(points.x + 25, points.y, { steps: 8 });
+      assert.doesNotMatch(await page.evaluate(() => window.getSelection()?.toString() ?? ''), /Format|格式化/);
+      assert.equal(await page.$eval('.meo-md-html-source-actions', e => getComputedStyle(e).userSelect), 'none');
+      await page.mouse.up(); await frames(page);
+    }
+    const below = await page.evaluate(() => {
+      const line = Array.from(document.querySelectorAll<HTMLElement>('.cm-line')).find(n => n.textContent === 'Below paragraph.')!;
+      const rect = line.getBoundingClientRect(); return { x: rect.left + 25, y: rect.top + rect.height / 2 };
+    });
+    const selector = kind === 'html' ? '.meo-md-html-live-result' : '.meo-math-live-result';
+    await page.mouse.move(below.x, below.y); await page.mouse.down(); await frames(page);
+    assert.ok(await page.$(selector), `${kind}: source and preview stay mounted while the pointer is held`);
+    await page.mouse.up(); await frames(page);
+    assert.equal(await page.$(selector), null, `${kind}: source collapses after release outside the block`);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.selection.main.empty), true, `${kind}: clicking below creates no unintended selection`);
+  }
+  await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+}
+
+async function checkHtmlLayoutAndSourceCopy(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const g = window as any;
+    g.__htmlCopyShortcutHandler = (event: KeyboardEvent) => g.HtmlContentHarness.handleEditorShortcut(event, {
+      editor: g.__htmlEditor, editableMode: 'live', editorSurfaceActive: true, shortcuts: {},
+      platform: 'other', requestSave() {}, openFindPanel() {}, requestMode() {}
+    });
+    document.addEventListener('keydown', g.__htmlCopyShortcutHandler, true);
+  });
+  // A hidden last child leaves the preceding paragraph's bottom margin exposed.
+  // Every pixel must stay inside the widget measured by CodeMirror.
+  for (const tail of ['<p hidden>Hidden tail.</p>', '<span style="display:none">Hidden tail.</span>',
+    '<div><p>Nested last paragraph.</p><p hidden>Hidden tail.</p></div>']) {
+    const prefix = `Before.\n\n<div><p>Visible paragraph.</p>${tail}</div>\n\n`;
+    for (const kind of ['html', 'math'] as const) {
+      const block = kind === 'html'
+        ? '<ul>\n  <li>First.</li>\n  <li>Second.</li>\n</ul>'
+        : '$$\nx^2 + 1\n+ y^2\n$$';
+      await page.evaluate(({ prefix, block }) => {
+        const editor = (window as any).__htmlEditor;
+        const text = prefix + block + '\n\nAfter.';
+        editor.setText(text, true);
+        editor.view.dispatch({ selection: { anchor: prefix.length + 5 } }); editor.view.focus();
+        editor.view.scrollDOM.scrollTop = 0;
+      }, { prefix, block });
+      await frames(page);
+      const geometry = await page.evaluate(() => {
+        const view = (window as any).__htmlEditor.view;
+        return Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.cm-line')).map(line => {
+          const pos = view.posAtDOM(line, 0), number = view.state.doc.lineAt(pos).number;
+          const block = view.lineBlockAt(pos);
+          const textBlock = Array.isArray(block.type) ? block.type.find((part: any) => part.type === 0) : block;
+          const top = line.getBoundingClientRect().top;
+          const gutter = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-lineNumbers > .cm-gutterElement'))
+            .find(node => node.textContent === String(number) && node.style.visibility !== 'hidden');
+          return { number, top, measuredTop: view.documentTop + textBlock.top,
+            gutterTop: gutter?.getBoundingClientRect().top };
+        });
+      });
+      for (const row of geometry) {
+        assert.ok(Math.abs(row.top - row.measuredTop) <= 1, `${kind}: line ${row.number} layout differs from editor measurement by ${row.top - row.measuredTop}px`);
+        assert.ok(row.gutterTop !== undefined && Math.abs(row.top - row.gutterTop) <= 1, `${kind}: line ${row.number} gutter must align with source`);
+      }
+      const points = await page.evaluate(({ prefix, block }) => {
+        const view = (window as any).__htmlEditor.view;
+        const lines = Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.cm-line'));
+        const first = lines.find(node => view.posAtDOM(node, 0) === prefix.length)!;
+        const last = lines.find(node => view.posAtDOM(node, 0) === prefix.length + block.lastIndexOf('\n') + 1)!;
+        const a = first.getBoundingClientRect(), b = last.getBoundingClientRect();
+        const range = document.createRange(); range.selectNodeContents(last);
+        return { fromX: a.left + 1, fromY: a.top + a.height / 2,
+          toX: range.getBoundingClientRect().right + 1, toY: b.top + b.height / 2 };
+      }, { prefix, block });
+      await page.mouse.click(points.toX, points.toY); await frames(page);
+      assert.equal(await page.evaluate(() => {
+        const view = (window as any).__htmlEditor.view; return view.state.doc.lineAt(view.state.selection.main.head).text;
+      }), kind === 'html' ? '</ul>' : '$$', `${kind}: click the actual final source row`);
+      await page.mouse.move(points.fromX, points.fromY); await page.mouse.down();
+      await page.mouse.move(points.toX, points.toY, { steps: 12 }); await page.mouse.up(); await frames(page);
+      assert.equal(await page.evaluate(() => {
+        const view = (window as any).__htmlEditor.view; return view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to);
+      }), block, `${kind}: native dragging selects the entire source`);
+      await page.evaluate(() => {
+        const input = document.createElement('textarea'); input.id = 'html-copy-roundtrip';
+        input.style.cssText = 'position:fixed;right:0;bottom:0;width:100px;height:30px'; document.body.append(input);
+      });
+      try {
+        await page.keyboard.down('Control'); await page.keyboard.press('KeyC'); await page.keyboard.up('Control');
+        await page.click('#html-copy-roundtrip');
+        await page.keyboard.down('Control'); await page.keyboard.press('KeyV'); await page.keyboard.up('Control');
+        assert.equal(await page.$eval('#html-copy-roundtrip', node => (node as HTMLTextAreaElement).value), block,
+          `${kind}: Ctrl+C and Ctrl+V preserve the complete raw source`);
+      } finally { await page.$eval('#html-copy-roundtrip', node => node.remove()); }
+    }
+  }
+  await page.evaluate(() => {
+    const g = window as any; document.removeEventListener('keydown', g.__htmlCopyShortcutHandler, true);
+    delete g.__htmlCopyShortcutHandler;
+  });
+}
+
+async function checkHtmlCrossBlockSelection(page: Page): Promise<void> {
+  const html = '<div>\n<p>HTML_RENDERED</p>\n</div>';
+  const math = '$$\nx^2 + y^2\n$$';
+  const text = `Before.\n\n${html}\n\nBetween.\n\n${math}\n\nAfter.`;
+  const setup = async (kind: 'html' | 'math') => {
+    await page.evaluate(({ text, kind }) => {
+      const editor = (window as any).__htmlEditor;
+      editor.setText(text, true);
+      editor.view.dispatch({ selection: { anchor: text.indexOf(kind === 'html' ? 'HTML_RENDERED' : 'x^2') + 1 } });
+      editor.view.focus(); editor.view.scrollDOM.scrollTop = 0;
+    }, { text, kind });
+    await frames(page);
+  };
+  const copiedSource = () => page.evaluate(() => {
+    const view = (window as any).__htmlEditor.view, data = new DataTransfer();
+    const event = new ClipboardEvent('copy', { bubbles: true, cancelable: true, clipboardData: data });
+    view.contentDOM.dispatchEvent(event);
+    const range = view.state.selection.main;
+    return { source: view.state.sliceDoc(range.from, range.to), copied: data.getData('text/plain'),
+      native: window.getSelection()?.toString() ?? '', anchor: range.anchor, head: range.head };
+  });
+  for (const kind of ['html', 'math'] as const) for (const backwards of [false, true]) {
+    await setup(kind);
+    const points = await page.evaluate(({ kind, backwards }) => {
+      const view = (window as any).__htmlEditor.view, source = view.state.doc.toString();
+      const from = source.indexOf(kind === 'html' ? '<div>' : '$$');
+      const to = source.length;
+      const point = (pos: number) => { const r = view.coordsAtPos(pos)!; return { x: r.left + 0.5, y: (r.top + r.bottom) / 2 }; };
+      const ends = [point(from), point(to)]; return backwards ? ends.reverse() : ends;
+    }, { kind, backwards });
+    await page.mouse.move(points[0].x, points[0].y); await page.mouse.down();
+    await page.mouse.move(points[1].x, points[1].y, { steps: 20 });
+    const nativeDuring = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+    await page.mouse.up(); await frames(page);
+    const selected = await copiedSource();
+    assert.equal(selected.source, text.slice(text.indexOf(kind === 'html' ? '<div>' : '$$')), `${kind}: cross-block drag range`);
+    assert.equal(selected.copied, selected.source, `${kind}: cross-block copy uses document source`);
+    assert.equal(selected.anchor > selected.head, backwards, `${kind}: cross-block drag direction`);
+    assert.doesNotMatch(nativeDuring, /预览|Preview/, `${kind}: result label must not enter a source drag`);
+    if (kind === 'html') assert.equal((nativeDuring.match(/HTML_RENDERED/g) ?? []).length, 1, 'HTML result must not duplicate selected source');
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyX'); await page.keyboard.up('Control'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), text.slice(0, text.indexOf(kind === 'html' ? '<div>' : '$$')),
+      `${kind}: cross-block cut preserves preceding unselected content`);
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyZ'); await page.keyboard.up('Control'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), text, `${kind}: one undo restores a partial cross-block cut`);
+  }
+  for (const backwards of [false, true]) {
+    await setup('html');
+    const start = backwards ? text.length : 0;
+    await page.evaluate(start => {
+      const view = (window as any).__htmlEditor.view; view.dispatch({ selection: { anchor: start } }); view.focus();
+    }, start);
+    await page.keyboard.down('Control'); await page.keyboard.down('Shift');
+    await page.keyboard.press(backwards ? 'Home' : 'End');
+    await page.keyboard.up('Shift'); await page.keyboard.up('Control'); await frames(page);
+    const selected = await copiedSource();
+    assert.equal(selected.source, text, 'Keyboard extension crosses HTML and math without losing source');
+    assert.equal(selected.copied, text, 'Keyboard cross-block copy is exact');
+    assert.equal(selected.anchor > selected.head, backwards, 'Keyboard extension retains direction');
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyX'); await page.keyboard.up('Control'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), '', 'Cross-block cut removes the exact selection');
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyZ'); await page.keyboard.up('Control'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), text, 'One undo restores the entire cross-block cut');
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyY'); await page.keyboard.up('Control'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), '', 'One redo reapplies the cross-block cut');
+  }
+  await setup('html');
+  await page.evaluate(() => {
+    const view = (window as any).__htmlEditor.view; view.dispatch({ selection: { anchor: 0 } }); view.focus();
+  }); await frames(page);
+  const word = await page.evaluate(() => {
+    const node = document.querySelector('.meo-md-html-block:not(.meo-md-html-live-result) p')!;
+    const range = document.createRange(); range.selectNodeContents(node); const r = range.getBoundingClientRect();
+    return { x: r.left + 0.5, y: (r.top + r.bottom) / 2, end: r.right - 0.5 };
+  });
+  await page.mouse.move(word.x, word.y); await page.mouse.down(); await page.mouse.move(word.end, word.y, { steps: 8 }); await page.mouse.up(); await frames(page);
+  assert.match(await page.evaluate(() => window.getSelection()?.toString() ?? ''), /HTML_RENDERED/, 'Reading HTML retains native text selection');
+  assert.equal(await page.$('.meo-md-html-live-result'), null, 'Reading selection does not enter HTML source');
+  await page.screenshot({ path: path.join(artifacts, 'html-reading-selection.png') });
+  await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+}
+
+async function checkHtmlPasteEditing(page: Page): Promise<void> {
+  const before = 'Before.\n\n\n\nAfter.';
+  const insertAt = before.indexOf('\n\n') + 2;
+  const fragment = '<div id="pasted-html"><p>First</p><p>Second</p></div>';
+  for (const [name, pasted, plain] of [
+    ['block', fragment, false], ['trailing-lines', fragment + '\n\n', false],
+    ['plain-paste', fragment + '\n', true],
+    ['invisible', '<div id="pasted-html"></div>', false],
+    ['siblings', '<p>Earlier sibling</p>\n\n' + fragment, false]
+  ] as const) {
+    await page.evaluate(({ before, insertAt }) => {
+      const editor = (window as any).__htmlEditor;
+      editor.setText(before, true); editor.view.dispatch({ selection: { anchor: insertAt } }); editor.view.focus();
+    }, { before, insertAt });
+    await frames(page);
+    const top = await page.$eval('.cm-line', e => e.getBoundingClientRect().top);
+    await page.evaluate(({ pasted, plain }) => {
+      const editor = (window as any).__htmlEditor;
+      if (plain) editor.pastePlainText(pasted);
+      else {
+        const clipboardData = new DataTransfer(); clipboardData.setData('text/plain', pasted);
+        editor.view.contentDOM.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+      }
+    }, { pasted, plain });
+    await frames(page);
+    const expected = before.slice(0, insertAt) + pasted + before.slice(insertAt);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), expected, `${name}: paste retains the original text`);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.selection.main.head), insertAt + pasted.length, `${name}: paste retains the native caret`);
+    assert.ok(await page.$('.meo-md-html-source-range-start'), `${name}: pasted HTML stays in source editing`);
+    assert.equal(await page.$$eval('.meo-md-html-live-result', nodes => nodes.length), name === 'invisible' ? 0 : 1);
+    assert.ok(Math.abs(await page.$eval('.cm-line', e => e.getBoundingClientRect().top) - top) <= 1, `${name}: content above stays fixed`);
+    if (name === 'trailing-lines') {
+      await page.click('.meo-format-html-btn');
+      await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
+      await page.waitForFunction(text => (window as any).__htmlEditor.getText() !== text, {}, expected);
+      const caret = await page.evaluate(() => {
+        const view = (window as any).__htmlEditor.view; return view.state.doc.sliceString(view.state.selection.main.head - 2, view.state.selection.main.head);
+      });
+      assert.equal(caret, '\n\n', 'Explicit formatting preserves the caret after pasted trailing lines');
+      await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control'); await frames(page);
+      assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), expected);
+    }
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), before, `${name}: one undo removes the paste`);
+    await page.keyboard.down('Control'); await page.keyboard.press('y'); await page.keyboard.up('Control'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), expected);
+    assert.ok(await page.$('.meo-md-html-source-range-start'), `${name}: redo restores source editing`);
+    if (name === 'trailing-lines') {
+      await page.keyboard.type('Following prose'); await frames(page);
+      assert.equal(await page.$('.meo-md-html-source-range-start'), null, 'Typing after trailing blank lines leaves the pasted block');
+    }
+    await select(page, 'After.', 2);
+    assert.equal(await page.$('.meo-md-html-source-range-start'), null, `${name}: moving away collapses source`);
+    if (name === 'invisible') assert.ok(await page.$('.meo-md-html-invisible-source-text'));
+  }
+  for (const literal of ['<span>Inline</span>', '```html\n' + fragment + '\n```']) {
+    await page.evaluate(({ before, insertAt, literal }) => {
+      const editor = (window as any).__htmlEditor;
+      editor.setText(before, true); editor.view.dispatch({ selection: { anchor: insertAt } });
+      editor.pastePlainText(literal);
+    }, { before, insertAt, literal });
+    await frames(page);
+    assert.equal(await page.$('.meo-md-html-source-range-start'), null, 'Inline HTML and fenced code do not gain block previews');
+    assert.equal(await page.$('.meo-md-html-live-result'), null);
+  }
+  await page.evaluate(async ({ before, insertAt, fragment }) => {
+    const editor = (window as any).__htmlEditor;
+    await editor.setMode('source'); editor.setText(before, true);
+    editor.view.dispatch({ selection: { anchor: insertAt } }); editor.pastePlainText(fragment + '\n');
+    editor.view.dispatch({ selection: { anchor: insertAt + fragment.indexOf('First') + 2 } });
+    await editor.setMode('live');
+  }, { before, insertAt, fragment });
+  await frames(page);
+  assert.ok(await page.$('.meo-md-html-source-range-start'), 'Source paste respects the caret inside HTML on entering Live');
+  await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+}
+
 async function checkHtmlEditingTools(page: Page): Promise<void> {
   await page.evaluate(() => {
     const g = window as any;
@@ -312,6 +591,16 @@ async function main(): Promise<void> {
     }, source);
     await frames(page, 12);
     assert.deepEqual(errors, [], 'Editor initialization');
+    await checkHtmlCrossBlockSelection(page);
+    if (process.argv.includes('--selection-only')) {
+      assert.deepEqual(errors, []); console.log('HTML/math cross-block dragging, keyboard extension, copy/cut history and HTML reading selection passed.'); return;
+    }
+    await checkHtmlLayoutAndSourceCopy(page);
+    await checkHtmlPointerEditing(page);
+    if (process.argv.includes('--pointer-only')) {
+      assert.deepEqual(errors, []); console.log('HTML/math cross-block selection, layout/gutter, source copy, unselectable actions and pointer-release checks passed.'); return;
+    }
+    await checkHtmlPasteEditing(page);
     const initial = await page.evaluate(() => {
       const root = document.querySelector('.cm-editor')!;
       const empty = root.querySelector<HTMLElement>('.meo-md-html-invisible-source-text');

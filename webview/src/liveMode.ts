@@ -1,4 +1,5 @@
 import { blockStickyHeaderExtension } from './helpers/blockStickyHeader';
+import { livePointerSelectionActiveField } from './editor/livePointerSelection';
 import { countColumn, RangeSetBuilder, StateEffect, StateField, EditorState, type ChangeDesc, type Range, type RangeSet, type Extension, type EditorSelection, type Transaction } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxHighlighting } from '@codemirror/language';
@@ -360,29 +361,9 @@ type DecorationCollector = Array<Range<Decoration>>;
 type SourceRange = { from: number; to: number };
 type ActiveImageGroup = { line: ReturnType<EditorState['doc']['line']>; items: ImageGroupItem[] };
 
-type LivePointerSelectionState = {
-  active: boolean;
-  preservedLine: number | null;
-};
-
-export const setLivePointerSelectionActiveEffect = StateEffect.define<LivePointerSelectionState>();
 export const setLiveDocumentIdleEffect = StateEffect.define<boolean>();
 export const preserveLiveDecorationsForSearchEffect = StateEffect.define<true>();
 export const refreshLiveDecorationsAfterSearchEffect = StateEffect.define<true>();
-
-const livePointerSelectionActiveField = StateField.define<LivePointerSelectionState>({
-  create() {
-    return { active: false, preservedLine: null };
-  },
-  update(value, transaction) {
-    for (const effect of transaction.effects) {
-      if (effect.is(setLivePointerSelectionActiveEffect)) {
-        return effect.value;
-      }
-    }
-    return value;
-  }
-});
 
 const liveDocumentIdleField = StateField.define<boolean>({
   create() {
