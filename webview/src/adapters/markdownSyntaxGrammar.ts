@@ -6,8 +6,8 @@ import block from './grammars/md-math-block.json';
 /** VS Code's math-body scopes, also used for exposed Live formula source. */
 export const mathSyntaxGrammar: LanguageRegistration = { ...math, name: 'meo-math' };
 
-/** Keep Markdown's multiline stack while adding math in its original contexts. */
-export function withMarkdownMath(grammars: readonly LanguageRegistration[]): LanguageRegistration[] {
+/** Keep Markdown's multiline stack, standard fence endings and embedded math. */
+export function withMarkdownSyntax(grammars: readonly LanguageRegistration[]): LanguageRegistration[] {
   const single = structuredClone(inline.repository.math_inline_single);
   const double = structuredClone(inline.repository.math_inline_double);
   // Escaped dollars remain prose; an unfinished inline formula stops at EOL.
@@ -41,7 +41,13 @@ export function withMarkdownMath(grammars: readonly LanguageRegistration[]): Lan
   };
   const markdown = grammars.map(grammar => {
     if (grammar.name !== 'markdown') return grammar;
-    const fence = grammar.repository!.fenced_code_block_latex;
+    // TextMate's bundled rules require the exact opening fence length. Markdown
+    // accepts a longer closer of the same type; keep the existing capture slots.
+    const repository = Object.fromEntries(Object.entries(grammar.repository!).map(([name, rule]) => [name,
+      name.startsWith('fenced_code_block') && typeof rule.end === 'string'
+        ? { ...rule, end: rule.end.replace(String.raw`(\3)`, String.raw`((?=\3)(?:\x60+|~+))`) } : rule
+    ]));
+    const fence = repository.fenced_code_block_latex;
     return { ...grammar,
       // Local injections survive later lazy language loads in Shiki's registry.
       injections: { ...grammar.injections,
@@ -52,7 +58,7 @@ export function withMarkdownMath(grammars: readonly LanguageRegistration[]): Lan
         [block.injectionSelector.replace('text.html.markdown', 'meta.math.recovery.markdown')]: { patterns: [displayRule] }
       },
       repository: {
-        ...grammar.repository, math_inline_single: single, math_inline_double: double,
+        ...repository, math_inline_single: single, math_inline_double: double,
         double_dollar_math_block: {
           name: 'meta.math.recovery.markdown',
           begin: `(?=${display.begin})`,

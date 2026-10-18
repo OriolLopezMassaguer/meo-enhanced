@@ -46,6 +46,7 @@ import {
   type EditorInteractionContinuity
 } from '../editor/interactionContinuity';
 import { shikiDocumentHighlight } from './shikiDecorations';
+import type { SyntaxNode } from '@lezer/common';
 
 export type MermaidBlockMode = RenderedBlockMode;
 
@@ -104,9 +105,9 @@ const innerMermaidSearchField = StateField.define<DecorationSet>({
 });
 
 const mermaidOpeningLineRegex = /^[ \t]{0,3}(?:`{3,}|~{3,})\s*mermaid\b/i;
-// Registered anchors come from parsed fences and retain enclosing list indentation.
+// Registered anchors come from parsed fences and may share a list marker's line.
 // Keep that validation separate from classifying a standalone opening candidate.
-const mermaidAnchorLineRegex = /^[ \t]*(?:`{3,}|~{3,})\s*mermaid\b/i;
+const mermaidAnchorLineRegex = /^[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?(?:`{3,}|~{3,})\s*mermaid\b/i;
 
 export function isMermaidOpeningLine(lineText: string): boolean {
   return mermaidOpeningLineRegex.test(lineText);
@@ -222,6 +223,15 @@ export function getMermaidBlockViewport(state: EditorState, anchor: number): Mer
     viewports?.set(anchor, viewport);
   }
   return viewport;
+}
+
+/** Do not replace the native input target while its outer fence is unfinished. */
+export function isUnfinishedMermaidSourceActive(state: EditorState, node: SyntaxNode): boolean {
+  const opening = state.doc.lineAt(node.from);
+  const closing = node.lastChild;
+  if (closing?.name === 'CodeMark' && closing.from > opening.to) return false;
+  if (state.field(mermaidEditingStateField, false)?.modes.has(opening.from)) return false;
+  return state.selection.ranges.some(range => range.to > opening.to && range.from <= node.to);
 }
 
 export function getMermaidBlockMode(

@@ -6,6 +6,7 @@ import type { MermaidConfig } from 'mermaid';
 import { getMermaidPalette } from '../../../src/shared/mermaidPalette';
 import { getViewportController } from './viewportController';
 import { applyLiveBlockIndent, getCodeBlockSourceLines } from './blockIndent';
+import { getFencedCodeBodyRange } from './markdownSyntax';
 import type { MermaidDiagramRenderRequest } from '../application/mermaidDiagramRenderResources';
 import type {
   MermaidDiagramPresentationConsumer,
@@ -557,15 +558,10 @@ export function normalizeMermaidDiagramText(diagramText: string): string {
 }
 
 export function getFencedCodeContent(state: EditorState, node: SyntaxNodeRef): string {
-  const startLine = state.doc.lineAt(node.from);
-  const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
-  const lastChild = node.node.lastChild;
-  const hasClosingFence = lastChild?.name === 'CodeMark' &&
-    state.doc.lineAt(lastChild.from).number === endLine.number;
-  const lastContentLine = endLine.number - (hasClosingFence ? 1 : 0);
+  const body = getFencedCodeBodyRange(state, node.node);
+  if (!body) return '';
   return getCodeBlockSourceLines(state, node.node)
-    .filter((line) => state.doc.lineAt(line.from).number > startLine.number
-      && state.doc.lineAt(line.from).number <= lastContentLine)
+    .filter((line) => line.from >= body.from && line.to <= body.to)
     .map((line) => state.doc.sliceString(line.prefixTo, line.to))
     .join('\n');
 }

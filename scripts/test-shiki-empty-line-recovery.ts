@@ -62,6 +62,27 @@ for (const theme of [darkPlus, lightPlus]) {
         assert.deepEqual(projection(tokens[2]), projection(baseline[0]), 'Blank lines end quote/list continuations');
         checked++;
       }
+      for (const marker of ['`', '~']) for (const width of [3, 4]) {
+        for (const [language, payload] of [
+          ['javascript', '/* unfinished comment'], ['python', 'value = """unfinished string'],
+          ['text', 'literal payload'], ['mermaid', 'flowchart LR'], ['math', String.raw`\frac{x`]
+        ]) {
+          const opening = marker.repeat(width);
+          const text = [opening + language, payload, opening + marker.repeat(2), '', ...markdownTail].join('\n');
+          const tokens = await tokensFor(surface, 'markdown', text);
+          for (let index = 0; index < markdownTail.length; index++) {
+            assert.deepEqual(projection(tokens[4 + index]), projection(baseline[index]),
+              `${surface} ${theme.name}: ${language} must end at a longer ${marker} fence`);
+          }
+          checked++;
+        }
+      }
+      for (const [opening, invalidClose] of [['````', '```'], ['~~~~', '~~~'], ['```', '~~~'], ['~~~', '```'], ['```', '```~']]) {
+        const tokens = await tokensFor(surface, 'markdown', opening + 'text\nliteral\n' + invalidClose + '\n## still literal');
+        assert.ok(tokens[3].every(syntax => !syntax.scopeNames?.some(scope => scope.startsWith('markup.heading'))),
+          `${opening}: a short or mismatched fence cannot close the block`);
+        checked++;
+      }
       // Empty lines must advance the grammar, without resetting open constructs.
       for (const [language, text, scope] of [
         ['typescript', '/* start\n\ncontinued\n*/\nconst value = 1;', 'comment'],

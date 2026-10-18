@@ -1,6 +1,6 @@
 import type { HighlighterCore } from 'shiki/core';
 import { bundledLanguages, bundledLanguagesInfo } from 'shiki/langs';
-import { mathSyntaxGrammar, withMarkdownMath } from '../adapters/mathSyntaxGrammar';
+import { mathSyntaxGrammar, withMarkdownSyntax } from '../adapters/markdownSyntaxGrammar';
 
 export type RawVscodeTheme = {
   name: string;
@@ -344,7 +344,7 @@ async function ensureLang(
   }
   const grammar = (await loader()).default;
   record.grammarVersion += 1;
-  await highlighter.loadLanguage(lang === 'markdown' ? withMarkdownMath(grammar as any) : grammar as any);
+  await highlighter.loadLanguage(lang === 'markdown' ? withMarkdownSyntax(grammar as any) : grammar as any);
   record.loadedLangs.add(lang);
   return true;
 }

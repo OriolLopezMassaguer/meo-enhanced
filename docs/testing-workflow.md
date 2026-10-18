@@ -359,6 +359,13 @@ pie charts are checked in both themes, Word drawing bounds against actual page
 margins, and PDF heading/description/diagram pagination. Build first.
 This focused pack typically takes less than a minute.
 
+`bun scripts/test-fenced-code-boundaries.ts` checks Source/Live coloring and real
+Mermaid source typing at unfinished fences, including quote/list exits, nested
+quotes, ordered lists, deleting a closer, authoring an unfinished diagram, and exact document undo/redo. It also
+captures light/dark screenshots. `test:rendered-source` includes this contract.
+The quick Shiki recovery contract checks longer same-type closing fences and
+rejects short or mismatched closers, including unfinished embedded syntax.
+
 1. Reproduce the reported behavior with the smallest relevant contract.
 2. While implementing, rerun only that contract.
 3. For a coherent change within the Light UI boundary, complete that path.

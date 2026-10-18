@@ -25,7 +25,7 @@ import {
   mapLiveInputDerivedDecorations,
   shouldDeferLiveInputDerivedWork
 } from '../editor/liveInputDerivedWork';
-import { getFencedCodeInfo, syntaxTreeChanged } from './markdownSyntax';
+import { getFencedCodeBodyRange, getFencedCodeInfo, syntaxTreeChanged } from './markdownSyntax';
 import { getViewportController } from './viewportController';
 import { collectDocumentMathRanges, getDisplayMathCopySource, getDisplayMathSource, getMathCompletionBody } from './displayMathBlocks';
 
@@ -326,14 +326,9 @@ function addBlockDecorations(
     return;
   }
   const info = getFencedCodeInfo(state, node);
-  const startLine = state.doc.lineAt(node.from);
-  const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
-  if (endLine.number - startLine.number < 2) {
-    return;
-  }
-
-  const contentFrom = state.doc.line(startLine.number + 1).from;
-  const contentTo = state.doc.line(endLine.number - 1).to;
+  const body = getFencedCodeBodyRange(state, node.node);
+  if (!body) return;
+  const { from: contentFrom, to: contentTo } = body;
   if (contentFrom >= contentTo) {
     return;
   }
@@ -346,7 +341,7 @@ function addBlockDecorations(
       deco = Decoration.mark({ attributes: { style } });
       markCache.set(style, deco);
     }
-    for (let lineNumber = startLine.number + 1; lineNumber < endLine.number; lineNumber += 1) {
+    for (let lineNumber = state.doc.lineAt(contentFrom).number; lineNumber <= state.doc.lineAt(contentTo).number; lineNumber += 1) {
       const line = state.doc.line(lineNumber);
       if (line.from < line.to) builder.add(line.from, line.to, deco);
     }
