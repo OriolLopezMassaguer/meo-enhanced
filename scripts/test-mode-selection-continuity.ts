@@ -198,7 +198,7 @@ try {
   const html = 'intro\n\n<div>\n<p>alpha beta gamma</p>\n</div>\n\ntail';
   const htmlHead = html.indexOf('beta') + 2;
   await create(html);
-  await click('.meo-md-html-source-toggle');
+  await page.click('.meo-md-html-content');
   await page.evaluate((head) => {
     const view = (window as any).editor.view;
     view.dispatch({ selection: { anchor: head + 2, head } });
@@ -206,12 +206,12 @@ try {
   }, htmlHead);
   await switchMode('source');
   await switchMode('live');
-  check('HTML returns to rendered content', await page.evaluate(() => ({
+  check('HTML restores source and live result', await page.evaluate(() => ({
     preview: !!document.querySelector('.meo-md-html-block'),
-    source: !!document.querySelector('.meo-md-html-source-control')
-  })), { preview: true, source: false });
+    source: !!document.querySelector('.meo-md-html-source-range')
+  })), { preview: true, source: true });
   check('HTML keeps logical selection', await outerSelection(), { anchor: htmlHead + 2, head: htmlHead, focused: true });
-  await click('.meo-md-html-source-toggle');
+  await page.click('.meo-md-html-live-result');
   check('Reopening HTML source keeps selection', await outerSelection(), { anchor: htmlHead + 2, head: htmlHead, focused: true });
 
   for (const operation of ['type', 'Enter', 'Backspace', 'Delete', 'paste', 'cut', 'composition']) {
@@ -245,7 +245,7 @@ try {
     const to = htmlHead + (operation === 'Delete' ? 1 : operation === 'cut' ? 2 : 0);
     const text = html.slice(0, from) + replacement + html.slice(to);
     check('HTML reveals source before ' + operation, await page.evaluate(() => ({
-      source: !!document.querySelector('.meo-md-html-source-control'),
+      source: !!document.querySelector('.meo-md-html-source-range'),
       text: (window as any).editor.view.state.doc.toString()
     })), { source: true, text });
   }
@@ -258,7 +258,7 @@ try {
   await page.keyboard.type('Z');
   await frames();
   check('New position outside HTML wins', await page.evaluate(() => ({
-    source: !!document.querySelector('.meo-md-html-source-control'),
+    source: !!document.querySelector('.meo-md-html-source-range'),
     text: (window as any).editor.view.state.doc.toString()
   })), { source: false, text: html.slice(0, 2) + 'Z' + html.slice(2) });
 

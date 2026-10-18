@@ -28,7 +28,7 @@ try {
       (window as any).__commentTooltips = (window as any).HtmlContentHarness.bindTooltips(document.body);
       (window as any).__commentEditor = (window as any).HtmlContentHarness.createEditor({
         parent: document.getElementById('app'),
-        text: 'Intro\n\nInline <!-- secret --> text\n\nInline <strong>before<!-- inline html note -->after</strong>.\n\n<!-- block\nsecret -->\n\n<div>before<!-- nested -->after</div>\n\n<div>\n<p>First paragraph</p>\n<!-- nested multiline\ncomment -->\n<p>Second paragraph</p>\n<!-- second <script>window.__commentInjected=true</script> note -->\n</div>\n\n<table>\n<tbody>\n<!-- table note -->\n<tr><td>Cell</td></tr>\n</tbody>\n</table>\n\n<ul>\n<!-- list note -->\n<li>Item</li>\n</ul>\n\n<div><p>Adjacent</p></div>\n<!-- trailing note -->\n\n<section><!-- unsafe note --><p>Unsupported</p></section>\n\n```html\n<!-- example -->\n```',
+        text: 'Intro\n\nInline <!-- secret --> text\n\nInline <strong>before<!-- inline html note -->after</strong>.\n\n<!-- block\nsecret -->\n\n<div>before<!-- nested -->after</div>\n\n<div>\n<p>First paragraph</p>\n<!-- nested multiline\ncomment -->\n<p>Second paragraph</p>\n<!-- second <script>window.__commentInjected=true</script> note -->\n</div>\n\n<table>\n<tbody>\n<!-- table note -->\n<tr><td>Cell</td></tr>\n</tbody>\n</table>\n\n<ul>\n<!-- list note -->\n<li>Item</li>\n</ul>\n\n<div><p>Adjacent</p></div>\n<!-- trailing note -->\n\n<custom-html><!-- unsafe note --><p>Unsupported</p></custom-html>\n\n```html\n<!-- example -->\n```',
         initialMode: 'live',
         uiLanguage: 'en',
         onApplyChanges() {}
@@ -145,7 +145,7 @@ try {
     });
     assert.equal(await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
       .some(block => block.textContent?.includes('Unsupported'))), false);
-    assert.match(await page.$eval('.cm-content', element => element.textContent ?? ''), /<section>/);
+    assert.match(await page.$eval('.cm-content', element => element.textContent ?? ''), /<custom-html>/);
     assert.equal((await page.$$('.meo-md-html-warning')).length, 1);
     await page.click('.meo-md-html-strong .meo-md-html-comment');
     assert.equal(await page.evaluate(() => {

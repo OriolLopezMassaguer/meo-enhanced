@@ -166,7 +166,6 @@ export type UiStrings = Readonly<{
   missingLocalLink: string;
   expandDetails: string;
   collapseDetails: string;
-  showHtmlSource: string;
   jumpToFootnote: (number: number) => string;
   jumpToFootnoteReference: (number: number) => string;
   indentedCodeBlockLabel: string;
@@ -216,7 +215,6 @@ export type UiStrings = Readonly<{
   closeColorControls: string;
   cancelColorAdjustment: string;
   applyColorAdjustment: string;
-  showHtmlPreview: string;
   unsupportedHtmlSource: string;
   acceptCurrent: string;
   acceptIncoming: string;
@@ -444,7 +442,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpWithinDocument: 'Jump within document', openLink: 'Open link',
     linkDestination: (href: string) => 'Go to: ' + href,
     missingWikiLink: 'Wiki link target not found locally', missingLocalLink: 'Local file link target not found',
-    expandDetails: 'Expand details', collapseDetails: 'Collapse details', showHtmlSource: 'Show HTML source',
+    expandDetails: 'Expand details', collapseDetails: 'Collapse details',
     jumpToFootnote: (number: number) => `Jump to footnote ${number}`,
     jumpToFootnoteReference: (number: number) => `Jump to footnote reference ${number}`,
     indentedCodeBlockLabel: 'Indented code block',
@@ -471,7 +469,6 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     hexColorValue: 'HEX color value', hue: 'Hue', saturation: 'Saturation',
     brightness: 'Brightness', opacity: 'Opacity', closeColorControls: 'Close color controls',
     cancelColorAdjustment: 'Cancel', applyColorAdjustment: 'Apply',
-    showHtmlPreview: 'Show HTML preview',
     unsupportedHtmlSource: 'Invalid or unsupported HTML; source retained',
     acceptCurrent: 'Accept Current', acceptIncoming: 'Accept Incoming', acceptBoth: 'Accept Both',
     currentVersion: (label: string) => `Current: ${label},`,
@@ -664,7 +661,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpWithinDocument: '在文档内跳转', openLink: '打开链接',
     linkDestination: (href: string) => '跳转到：' + href,
     missingWikiLink: '本地未找到 Wiki 链接目标', missingLocalLink: '未找到本地文件链接目标',
-    expandDetails: '展开详细信息', collapseDetails: '折叠详细信息', showHtmlSource: '显示 HTML 源码',
+    expandDetails: '展开详细信息', collapseDetails: '折叠详细信息',
     jumpToFootnote: (number: number) => `跳转到脚注 ${number}`,
     jumpToFootnoteReference: (number: number) => `跳转到脚注引用 ${number}`,
     indentedCodeBlockLabel: '缩进代码块',
@@ -691,7 +688,6 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     hexColorValue: 'HEX 色值', hue: '色相', saturation: '饱和度',
     brightness: '明度', opacity: '透明度', closeColorControls: '关闭颜色调整器',
     cancelColorAdjustment: '取消', applyColorAdjustment: '应用',
-    showHtmlPreview: '显示 HTML 预览',
     unsupportedHtmlSource: 'HTML 标记无效或不受支持，已保留源码',
     acceptCurrent: '接受当前更改', acceptIncoming: '接受传入更改', acceptBoth: '接受两者',
     currentVersion: (label: string) => `当前：${label}，`,

@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,671 +8,338 @@ import { renderMarkdownToHtml } from '../src/export/renderMarkdown';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-html-content-'));
+const artifacts = path.join(repoRoot, '.local', 'html-fragment-acceptance');
+fs.mkdirSync(artifacts, { recursive: true });
+const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2n5QAAAAASUVORK5CYII=';
+const source = [
+  'HTML fragment acceptance', '', 'Prelude paragraph.', '',
+  'Inline <span style="color:red">**bold** <span>nested</span></span>, <u>underlined</u>, <kbd>Ctrl</kbd>, and <ruby>字<rt>zi</rt></ruby>.', '',
+  '<p id="center" align="center" style="color:red;position:fixed;background-image:url(https://example.com/x)" onclick="alert(1)">',
+  '  <a href="#target">English</a> · <strong>简体中文</strong>',
+  '  <a href="https://example.com/docs">Docs</a>',
+  '</p>', '',
+  '<div id="html-test-top"></div>',
+  '<div id="target"><p>Adjacent visible fragment</p></div>', '',
+  '<div hidden>Hidden content</div>', '',
+  '<div style="display:none">Styled hidden content</div>', '',
+  '<div style="color:transparent">Transparent content</div>', '',
+  '<div style="color:#1230">Transparent short hex</div>', '',
+  '<div style="color:#12345600">Transparent hex</div>', '',
+  '<div style="color:transparent;background-color:currentColor"><span style="color:inherit">Inherited transparent content</span></div>', '',
+  '<div style="font-size:0">Zero-size content</div>', '',
+  '<div style="height:12px"></div>', '',
+  '<div id="color-box" style="height:12px;background-color:red"></div>', '',
+  '<h2>HTML heading</h2>', '',
+  '<section><p>Semantic section</p></section>', '',
+  '<details open>',
+  '<summary><strong>Rich summary</strong> <kbd>Enter</kbd></summary>',
+  '<p>First details paragraph.</p>',
+  '<p>Second details paragraph.</p>',
+  '</details>', '',
+  '<blockquote><p><strong>HTML quote:</strong> quoted text.</p></blockquote>', '',
+  '<table><caption>HTML table caption</caption><thead><tr><th>Type</th><th>Result</th></tr></thead>',
+  '<tbody><tr><td rowspan="2">HTML</td><td>Rendered</td></tr><tr><td>Second row</td></tr></tbody></table>', '',
+  `<figure><img src="${image}" alt="Nested image" width="40" style="width:60px"><figcaption>Image caption</figcaption></figure>`, '',
+  `<div id="hidden-children">Visible sibling <a hidden href="https://example.com/hidden">Hidden link</a><img hidden src="${image}"><a hidden href="https://example.com/image"><img src="${image}"></a></div>`, '',
+  `<img id="standalone-image" src="${image}" width="24" height="24">`, '',
+  `Inline image <img id="inline-image" src="${image}" width="16" height="16"> in prose.`, '',
+  '<pre><code>**literal** &lt;tag&gt;</code></pre>', '',
+  '<div><p>First raw paragraph.</p>', '', '<p>Second raw paragraph.</p></div>', '',
+  '<script>window.__htmlExecuted=1;const raw="<div>";</script>', '',
+  '<p id="after-script">After unsupported script</p>', '',
+  '<custom-html>Unsupported source remains visible</custom-html>', '',
+  '<!-- visible comment -->', '', 'Tail paragraph.'
+].join('\n');
 
-async function waitForFrames(page: Page, count = 8): Promise<void> {
-  await page.evaluate(async (frameCount) => {
-    for (let index = 0; index < frameCount; index += 1) {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-  }, count);
+async function frames(page: Page, count = 6): Promise<void> {
+  await page.evaluate(async n => { for (let i = 0; i < n; i++) await new Promise(requestAnimationFrame); }, count);
 }
 
-async function main() {
-  const rendered = renderMarkdownToHtml({
-    markdownText: [
-      '<p align="center" style="color:red" onclick="return false">',
-      '  <a href="#target">English</a> · <strong>简体中文</strong>',
-      '</p>',
-      '',
-      '<p><a href="javascript:alert(1)">Unsafe link</a></p>',
-      '',
-      'Inline <kbd>Ctrl</kbd> and <strong>bold</strong>.',
-      '',
-      '<details open><summary>Existing details</summary><p>Body</p></details>',
-      '',
-      '<section>Unsupported HTML</section>'
-    ].join('\n'),
-    markdownFilePath: path.join(tempDir, 'source.md'),
-    target: 'html'
-  }).html;
-  if (
-    !rendered.includes('<p align="center">') ||
-    !rendered.includes('<a href="#target">English</a>') ||
-    !rendered.includes('<strong>简体中文</strong>') ||
-    rendered.includes('onclick=') ||
-    rendered.includes('style="color:red"') ||
-    rendered.includes('javascript:') ||
-    !rendered.includes('<kbd>Ctrl</kbd>') ||
-    !rendered.includes('<strong>bold</strong>') ||
-    !rendered.includes('<details open><summary>Existing details</summary><p>Body</p></details>') ||
-    !rendered.includes('&lt;section&gt;Unsupported HTML&lt;/section&gt;')
-  ) {
-    throw new Error(`Preview/export HTML policy was inconsistent: ${rendered}`);
+async function select(page: Page, needle: string, offset = 0): Promise<void> {
+  await page.evaluate(({ needle, offset }) => {
+    const view = (window as any).__htmlEditor.view;
+    const position = view.state.doc.toString().indexOf(needle);
+    if (position < 0) throw new Error(`Missing source: ${needle}`);
+    view.dispatch({ selection: { anchor: position + offset }, scrollIntoView: true });
+    view.focus();
+  }, { needle, offset });
+  await frames(page);
+}
+
+function checkExport(): void {
+  for (const target of ['html', 'pdf', 'docx'] as const) {
+    const html = renderMarkdownToHtml({ markdownText: source, markdownFilePath: path.join(tempDir, 'source.md'), target }).html;
+    assert.match(html, /<p[^>]*id="center"[^>]*style="color:red"/);
+    assert.match(html, /<h2>HTML heading<\/h2>/);
+    assert.match(html, /<section><p>Semantic section<\/p><\/section>/);
+    assert.match(html, /<ruby>字<rt>zi<\/rt><\/ruby>/);
+    assert.match(html, /<caption>HTML table caption<\/caption>/);
+    assert.match(html, /<strong>bold<\/strong>/);
+    assert.match(html, /<code>\*\*literal\*\* &lt;tag&gt;<\/code>/);
+    assert.match(html, /<div id="html-test-top"><\/div>/);
+    assert.match(html, /<div hidden="hidden">Hidden content<\/div>/);
+    assert.match(html, /&lt;custom-html&gt;/);
+    assert.doesNotMatch(html, /onclick=|position:fixed|background-image|meo-md-html-invisible-source/);
+    assert.doesNotMatch(html, /visible comment/);
   }
+  const unsafe = renderMarkdownToHtml({ markdownText: '<p style="constructor:bad;__proto__:bad;color:expression(alert(1));width:10px;background:url(javascript:alert(1))"><a href="javascript:alert(1)">safe text</a></p>', markdownFilePath: path.join(tempDir, 'unsafe.md'), target: 'html' }).html;
+  assert.doesNotMatch(unsafe, /javascript:|expression\(|background:/);
+  assert.match(unsafe, /width:10px/);
+  const mixed = renderMarkdownToHtml({ markdownText: '<div>\n\n**Markdown body**\n\n</div>', markdownFilePath: path.join(tempDir, 'mixed.md'), target: 'html' }).html;
+  assert.match(mixed, /<div[^>]*>\s*<p[^>]*><strong>Markdown body<\/strong><\/p>\s*<\/div>/);
+}
 
-  const build = await Bun.build({
-    entrypoints: [path.join(repoRoot, 'scripts', 'test-html-content-entry.ts')],
-    outdir: tempDir,
-    target: 'browser',
-    format: 'iife',
-    naming: 'bundle.js'
-  });
-  if (!build.success) throw new Error(build.logs.map(String).join('\n'));
-
+async function main(): Promise<void> {
+  checkExport();
+  const build = await Bun.build({ entrypoints: [path.join(repoRoot, 'scripts/test-html-content-entry.ts')], outdir: tempDir,
+    target: 'browser', format: 'iife', naming: 'bundle.js' });
+  assert.ok(build.success, build.logs.map(String).join('\n'));
   const browser = await launchTestBrowser();
   try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 920, height: 1600, deviceScaleFactor: 1 });
-    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0} blockquote{background:#24292e}</style><body class="vscode-light"><div id="app"></div></body>');
-    await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
-    await page.addStyleTag({
-      content: ':root { --vscode-editor-background:#f7f8fa; --vscode-editor-foreground:#1f2328; --meo-code-palette-background:#eff1f3; --meo-code-palette-foreground:#1f2328; --meo-background:#f7f8fa; --meo-foreground:#1f2328; --meo-border:#c8d1dc; --meo-color-base03:#c8d1dc; --meo-semantic-kbdBorder:#8c959f; --meo-semantic-blockquoteBorder:#8c959f; --meo-semantic-blockquoteForeground:#57606a; --meo-semantic-tableBorder:#c8d1dc; --meo-semantic-tableHeaderBackground:#e3e9f0; --meo-semantic-inlineCodeBackground:#eff1f3; --meo-font-live:Arial; --meo-font-live-weight:400; --meo-font-live-size:16px; --meo-font-source:"Courier New"; --meo-font-source-weight:500; --meo-font-source-size:14px; --vscode-editor-font-family:monospace; --vscode-editor-font-size:14px; --vscode-editor-line-height:20px; }'
-    });
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(String(error)));
+    await page.setViewport({ width: 1000, height: 1200, deviceScaleFactor: 1 });
+    await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><body class="vscode-light"><div id="app"></div></body>');
+    await page.addStyleTag({ path: path.join(repoRoot, 'webview/src/styles.css') });
     await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
-
-    const source = [
-      ...Array.from({ length: 20 }, (_, index) => `prelude ${index + 1}`),
-      'Inline <strong>bold</strong>, <u>underlined</u>, and <a href="https://example.com">external</a>.',
-      '',
-      '<p align="center">',
-      '  <a href="#html-target">English</a> ·',
-      '  <a href="https://example.com/docs">Docs</a> ·',
-      '  <strong>简体中文</strong>',
-      '</p>',
-      '',
-      '<div id="html-target">',
-      '  <p title="target">HTML target</p>',
-      '</div>',
-      '',
-      '<p style="color:red" onclick="return false">Safe visible text</p>',
-      '',
-      '<section><p>Unsupported source remains visible</p></section>',
-      '',
-      '<details open>',
-      '  <summary><strong>Rich summary</strong> <kbd>Enter</kbd></summary>',
-      '  <p>Rendered details body with <mark>highlight</mark>.</p>',
-      '  <p>Second details paragraph.</p>',
-      '</details>',
-      '',
-      '<blockquote>',
-      '  <p><strong>HTML quote:</strong> quoted text.</p>',
-      '</blockquote>',
-      '',
-      '<table>',
-      '  <thead><tr><th>Type</th><th>Result</th></tr></thead>',
-      '  <tbody><tr><td>HTML</td><td>Rendered</td></tr></tbody>',
-      '</table>',
-      '',
-      '<p align="center">',
-      '  <a href="https://example.com/image"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2n5QAAAAASUVORK5CYII=" alt="Nested image" width="40"></a>',
-      '  <br>',
-      '  <strong>Image caption</strong>',
-      '</p>',
-      '',
-      '<p><kbd>Ctrl</kbd> <code>inline()</code></p>',
-      '',
-      '<p>Compact paragraph one.</p>',
-      '',
-      '<p>Compact paragraph two.</p>',
-      '',
-      '<div title="> <script>">',
-      '  <p>Quoted tag attribute text</p>',
-      '</div>',
-      '',
-      ...Array.from({ length: 80 }, (_, index) => `tail ${index + 1}`)
-    ].join('\n');
-
-    await page.evaluate((text) => {
-      (window as any).__openedHtmlLinks = [];
-      (window as any).__htmlSelectionState = { visible: false };
-      (window as any).__htmlContentEditor = (window as any).HtmlContentHarness.createEditor({
-        parent: document.getElementById('app')!,
-        text,
-        initialMode: 'live',
-        uiLanguage: 'zh-CN',
-        onApplyChanges() {},
-        onSelectionChange(state: any) {
-          (window as any).__htmlSelectionState = state;
-        },
-        onOpenLink(href: string) {
-          (window as any).__openedHtmlLinks.push(href);
-        }
-      });
-      (window as any).__htmlContentEditor.scrollToLine(23, 'center');
+    await page.evaluate(text => {
+      (window as any).__htmlLinks = [];
+      (window as any).__htmlEditor = (window as any).HtmlContentHarness.createEditor({ parent: document.getElementById('app'),
+        text, initialMode: 'live', uiLanguage: 'zh-CN', onApplyChanges() {},
+        onOpenLink(href: string) { (window as any).__htmlLinks.push(href); } });
     }, source);
-    await waitForFrames(page, 12);
-
+    await frames(page, 12);
+    assert.deepEqual(errors, [], 'Editor initialization');
     const initial = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      const block = document.querySelector<HTMLElement>('.meo-md-html-block[data-meo-rendered-block-start-line]');
-      const blockStyle = block ? getComputedStyle(block) : null;
-      const inlineStrong = document.querySelector<HTMLElement>('.meo-md-html-strong');
-      const inlineUnderline = document.querySelector<HTMLElement>('.meo-md-html-u');
-      const unsupportedLine = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-        .find((line) => line.textContent?.includes('Unsupported source remains visible'));
-      const safeBlock = Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
-        .find((element) => element.textContent?.includes('Safe visible text'));
-      const details = document.querySelector<HTMLElement>('.meo-md-html-block details');
-      const detailsIcon = details?.querySelector<HTMLElement>(':scope > summary > .meo-md-details-summary-icon[aria-hidden="true"]') ?? null;
-      const detailsSummary = details?.querySelector<HTMLElement>(':scope > summary') ?? null;
-      const detailsBody = details?.querySelector<HTMLElement>(':scope > p') ?? null;
-      const detailsIconRect = detailsIcon?.getBoundingClientRect() ?? null;
-      const detailsSummaryRect = detailsSummary?.getBoundingClientRect() ?? null;
-      const detailsBodyRect = detailsBody?.getBoundingClientRect() ?? null;
-      const detailsLineNumbers = Array.from(
-        document.querySelectorAll<HTMLElement>('.meo-md-html-details-line-number')
-      ).map((element) => ({
-        line: Number(element.textContent),
-        top: element.getBoundingClientRect().top
-      }));
-      const quote = document.querySelector<HTMLElement>('.meo-md-html-block blockquote');
-      const table = document.querySelector<HTMLElement>('.meo-md-html-block table');
-      const tableHeader = table?.querySelector<HTMLElement>('th') ?? null;
-      const tableBodyCell = table?.querySelector<HTMLElement>('tbody td') ?? null;
-      const image = document.querySelector<HTMLElement>('.meo-md-html-block .meo-md-image');
-      const kbd = document.querySelector<HTMLElement>('.meo-md-html-block kbd');
-      const compactBlocks = Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
-        .filter((element) => element.textContent?.includes('Compact paragraph'));
-      const quotedAttributeBlock = Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
-        .find((element) => element.textContent?.includes('Quoted tag attribute text'));
-      const sourceButton = block?.querySelector<HTMLElement>('.meo-md-html-source-toggle') ?? null;
-      const content = block?.querySelector<HTMLElement>('.meo-md-html-content') ?? block;
-      const sourceButtonStyle = sourceButton ? getComputedStyle(sourceButton) : null;
-      const blockLinks = block ? Array.from(block.querySelectorAll<HTMLElement>('.meo-md-html-link')) : [];
-      const sourceButtonRect = sourceButton?.getBoundingClientRect() ?? null;
-      const contentRect = content?.getBoundingClientRect() ?? null;
-      const scrollerRect = editor.view.scrollDOM.getBoundingClientRect();
-      const visibleZeroHeightLineNumbers = Array.from(
-        document.querySelectorAll<HTMLElement>('.cm-lineNumbers .cm-gutterElement')
-      ).filter((element) => {
-        const style = getComputedStyle(element);
-        return /^\d+$/.test(element.textContent?.trim() ?? '') &&
-          element.getBoundingClientRect().height < 1 &&
-          style.visibility !== 'hidden' &&
-          style.display !== 'none' &&
-          style.color !== 'rgba(0, 0, 0, 0)';
-      }).map((element) => element.textContent?.trim() ?? '');
-      const blockRect = block?.getBoundingClientRect() ?? null;
-      const htmlBlockLineNumber = blockRect
-        ? Array.from(document.querySelectorAll<HTMLElement>('.cm-lineNumbers .cm-gutterElement'))
-          .find((element) => {
-            const rect = element.getBoundingClientRect();
-            return rect.height > 0 && Math.abs(rect.top - blockRect.top) < 2;
-          })?.textContent?.trim() ?? null
-        : null;
-      return {
-        source: editor.view.state.doc.toString(),
-        blockText: block?.textContent ?? '',
-        blockTop: block?.getBoundingClientRect().top ?? null,
-        blockBackground: blockStyle?.backgroundColor ?? '',
-        blockBorderTop: blockStyle?.borderTopWidth ?? '',
-        blockAlign: blockStyle?.textAlign ?? '',
-        blockWhiteSpace: blockStyle?.whiteSpace ?? '',
-        blockLinkButtons: block?.querySelectorAll('.meo-md-link-open-btn').length ?? 0,
-        inlineStrongText: inlineStrong?.textContent ?? '',
-        inlineUnderlineText: inlineUnderline?.textContent ?? '',
-        inlineUnderlineDecoration: inlineUnderline ? getComputedStyle(inlineUnderline).textDecorationLine : '',
-        inlineLinkButtons: document.querySelectorAll('.meo-md-html-inline-link-button').length,
-        unsupportedText: unsupportedLine?.textContent ?? '',
-        unsupportedWarning: Boolean(unsupportedLine?.querySelector('.meo-md-html-warning')),
-        safeStyle: safeBlock?.querySelector<HTMLElement>('p')?.getAttribute('style') ?? null,
-        safeOnclick: safeBlock?.querySelector<HTMLElement>('p')?.getAttribute('onclick') ?? null,
-        sourceToggleCount: document.querySelectorAll('.meo-md-html-source-toggle').length,
-        detailsRendered: Boolean(details?.textContent?.includes('Rendered details body')),
-        detailsIconVisible: (detailsIcon?.getBoundingClientRect().width ?? 0) > 0,
-        detailsIconWidth: detailsIconRect?.width ?? 0,
-        detailsIconContained: Boolean(
-          detailsIconRect && detailsSummaryRect &&
-          detailsIconRect.top >= detailsSummaryRect.top - 1 &&
-          detailsIconRect.bottom <= detailsSummaryRect.bottom + 1
-        ),
-        detailsIconTransform: detailsIcon ? getComputedStyle(detailsIcon).transform : '',
-        detailsLineNumbers,
-        detailsSummaryTop: detailsSummaryRect?.top ?? null,
-        detailsBodyTop: detailsBodyRect?.top ?? null,
-        detailsSourceVisible: Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-          .some((line) => line.textContent?.includes('<details open>')),
-        quoteBorderWidth: quote ? getComputedStyle(quote).borderLeftWidth : '',
-        quoteBackground: quote ? getComputedStyle(quote).backgroundColor : '',
-        tableCellCount: table?.querySelectorAll('th, td').length ?? 0,
-        tableHeaderBackground: tableHeader ? getComputedStyle(tableHeader).backgroundColor : '',
-        tableBodyBackground: tableBodyCell ? getComputedStyle(tableBodyCell).backgroundColor : '',
-        imageControls: image?.querySelectorAll('.meo-md-image-controls button').length ?? 0,
-        kbdBackground: kbd ? getComputedStyle(kbd).backgroundColor : '',
-        kbdBorder: kbd ? getComputedStyle(kbd).borderBottomWidth : '',
-        kbdRadius: kbd ? getComputedStyle(kbd).borderRadius : '',
-        kbdShadow: kbd ? getComputedStyle(kbd).boxShadow : '',
-        compactGap: compactBlocks.length === 2
-          ? compactBlocks[1].getBoundingClientRect().top - compactBlocks[0].getBoundingClientRect().bottom
-          : null,
-        quotedAttributeRendered: Boolean(quotedAttributeBlock),
-        sourceButtonSameRow: Boolean(
-          sourceButtonRect && contentRect &&
-          sourceButtonRect.top < contentRect.bottom && sourceButtonRect.bottom > contentRect.top
-        ),
-        sourceButtonOutsideContent: Boolean(
-          sourceButtonRect && contentRect && sourceButtonRect.left >= contentRect.right + 4
-        ),
-        sourceButtonInsideViewport: Boolean(sourceButtonRect && sourceButtonRect.right <= scrollerRect.right + 1),
-        sourceButtonTopDelta: sourceButtonRect && contentRect ? sourceButtonRect.top - contentRect.top : null,
-        sourceButtonBackground: sourceButtonStyle?.backgroundColor ?? '',
-        htmlActionRailOffset: blockStyle
-          ? Number.parseFloat(blockStyle.getPropertyValue('--meo-html-action-rail-offset'))
-          : null,
-        editorInlineEndPadding: Number.parseFloat(getComputedStyle(editor.view.contentDOM).paddingRight),
-        collapsedAdjacentBlankLines: document.querySelectorAll('.meo-md-html-adjacent-blank-line').length,
-        visibleZeroHeightLineNumbers,
-        htmlBlockLineNumber,
-        linkLineTops: blockLinks.map((link) => Math.round(link.getBoundingClientRect().top)),
-        htmlRenderedBlock: (window as any).HtmlContentHarness.getLiveRenderedBlocks(editor.view.state)
-          .find((candidate: any) => candidate.kind === 'html' && candidate.startLine === 23) ?? null,
-        scrollTop: editor.view.scrollDOM.scrollTop
-      };
+      const root = document.querySelector('.cm-editor')!;
+      const empty = root.querySelector<HTMLElement>('.meo-md-html-invisible-source-text');
+      const center = root.querySelector<HTMLElement>('#center');
+      const image = root.querySelector<HTMLImageElement>('.meo-md-html-content img');
+      return { raw: (window as any).__htmlEditor.view.state.doc.toString(),
+        buttons: root.querySelectorAll('.meo-md-html-source-toggle, .meo-md-html-preview-toggle').length,
+        center: center?.textContent, red: center?.style.color, position: center?.style.position,
+        onclick: center?.getAttribute('onclick'), empty: empty?.textContent, emptyHeight: empty?.getBoundingClientRect().height,
+        emptyBackground: empty ? getComputedStyle(empty).backgroundColor : null,
+        heading: root.querySelector('.meo-md-html-content h2')?.textContent,
+        section: root.querySelector('.meo-md-html-content section')?.textContent,
+        caption: root.querySelector('.meo-md-html-content caption')?.textContent,
+        quote: root.querySelector('.meo-md-html-content blockquote')?.textContent,
+        inlineBold: root.querySelector('.meo-md-html-inline strong')?.textContent,
+        ruby: root.querySelector('.meo-md-html-inline ruby')?.textContent,
+        code: root.querySelector('.meo-md-html-content pre code')?.textContent,
+        adjacent: root.querySelector('#target')?.textContent,
+        afterScript: root.querySelector('#after-script')?.textContent,
+        executed: (window as any).__htmlExecuted ?? 0,
+        blankLines: Array.from(root.querySelectorAll('.meo-md-html-content')).some(node => node.textContent?.includes('First raw paragraph.') && node.textContent.includes('Second raw paragraph.')),
+        imageWidth: image?.getBoundingClientRect().width,
+        standaloneImageWidth: root.querySelector('#standalone-image')?.getBoundingClientRect().width,
+        inlineImageWidth: root.querySelector('#inline-image')?.getBoundingClientRect().width,
+        hiddenImageHeights: Array.from(root.querySelectorAll('.meo-md-html-content #hidden-children .meo-md-html-image'))
+          .map(node => node.getBoundingClientRect().height),
+        hiddenLinkButtons: root.querySelectorAll('#hidden-children .meo-md-html-link-button').length,
+        hiddenRows: root.querySelectorAll('.meo-md-html-invisible-source').length,
+        unsupported: root.textContent?.includes('<custom-html>'),
+        warning: Boolean(root.querySelector('.meo-md-html-warning')),
+        comment: root.textContent?.includes('<!-- visible comment -->') };
     });
+    assert.equal(initial.raw, source);
+    assert.equal(initial.buttons, 0);
+    assert.ok(initial.center?.includes('English'));
+    assert.equal(initial.red, 'red');
+    assert.equal(initial.position, '');
+    assert.equal(initial.onclick, null);
+    assert.equal(initial.empty, '<div id="html-test-top"></div>');
+    assert.ok(initial.emptyHeight! > 5);
+    assert.equal(initial.emptyBackground, 'rgba(0, 0, 0, 0)');
+    assert.equal(initial.heading, 'HTML heading');
+    assert.equal(initial.section, 'Semantic section');
+    assert.equal(initial.caption, 'HTML table caption');
+    assert.ok(initial.quote?.includes('quoted text'));
+    assert.equal(initial.inlineBold, 'bold');
+    assert.equal(initial.ruby, '字zi');
+    assert.equal(initial.code, '**literal** <tag>');
+    assert.equal(initial.adjacent, 'Adjacent visible fragment');
+    assert.equal(initial.afterScript, 'After unsupported script');
+    assert.equal(initial.executed, 0);
+    assert.equal(initial.blankLines, true);
+    assert.ok(Math.abs(initial.imageWidth! - 60) < 1, `HTML image width: ${initial.imageWidth}`);
+    assert.ok(Math.abs(initial.standaloneImageWidth! - 24) < 1, 'Standalone HTML image renders at its authored size');
+    assert.ok(Math.abs(initial.inlineImageWidth! - 16) < 1, 'Inline HTML image renders in prose');
+    assert.deepEqual(initial.hiddenImageHeights, [0, 0], 'Image enhancements retain hidden attributes on images and their links');
+    assert.equal(initial.hiddenLinkButtons, 0, 'Hidden links do not gain visible helper controls');
+    assert.equal(initial.hiddenRows, 9);
+    assert.equal(initial.unsupported, true);
+    assert.equal(initial.warning, true);
+    assert.equal(initial.comment, true);
+    await page.screenshot({ path: path.join(artifacts, 'light-reading.png') });
 
-    if (
-      !initial.blockText.includes('English') ||
-      !initial.blockText.includes('简体中文') ||
-      initial.blockText.includes('<p') ||
-      initial.blockAlign !== 'center' ||
-      initial.blockWhiteSpace !== 'normal' ||
-      initial.blockBackground !== 'rgba(0, 0, 0, 0)' ||
-      initial.blockBorderTop !== '0px' ||
-      initial.blockLinkButtons !== 2 ||
-      initial.inlineStrongText !== 'bold' ||
-      initial.inlineUnderlineText !== 'underlined' ||
-      initial.inlineUnderlineDecoration !== 'underline' ||
-      initial.inlineLinkButtons !== 1 ||
-      !initial.unsupportedText.includes('<section>') ||
-      !initial.unsupportedWarning ||
-      initial.safeStyle !== null ||
-      initial.safeOnclick !== null ||
-      initial.sourceToggleCount < 3 ||
-      !initial.detailsRendered ||
-      !initial.detailsIconVisible ||
-      !initial.detailsIconContained ||
-      initial.detailsIconTransform === 'none' ||
-      initial.detailsLineNumbers.length !== 3 ||
-      initial.detailsLineNumbers[0].line !== 38 ||
-      initial.detailsLineNumbers[1].line !== 39 ||
-      initial.detailsLineNumbers[2].line !== 40 ||
-      Math.abs(
-        (initial.detailsLineNumbers[2].top - initial.detailsLineNumbers[1].top) -
-        (initial.detailsLineNumbers[1].top - initial.detailsLineNumbers[0].top)
-      ) > 1 ||
-      initial.detailsSummaryTop === null ||
-      initial.detailsBodyTop === null ||
-      Math.abs(initial.detailsLineNumbers[0].top - initial.detailsSummaryTop) > 1 ||
-      Math.abs(initial.detailsLineNumbers[1].top - initial.detailsBodyTop) > 1 ||
-      initial.detailsSourceVisible ||
-      initial.quoteBorderWidth === '0px' ||
-      initial.quoteBackground !== 'rgba(0, 0, 0, 0)' ||
-      initial.tableCellCount !== 4 ||
-      initial.tableHeaderBackground === 'rgba(0, 0, 0, 0)' ||
-      initial.tableHeaderBackground === initial.tableBodyBackground ||
-      initial.imageControls < 3 ||
-      initial.kbdBackground !== 'rgba(0, 0, 0, 0)' ||
-      initial.kbdBorder !== '2px' || initial.kbdRadius === '0px' || !initial.kbdShadow.includes('inset') ||
-      initial.compactGap === null || initial.compactGap < 20 || initial.compactGap > 30 ||
-      !initial.quotedAttributeRendered ||
-      !initial.sourceButtonSameRow ||
-      !initial.sourceButtonOutsideContent ||
-      !initial.sourceButtonInsideViewport ||
-      initial.sourceButtonTopDelta === null || Math.abs(initial.sourceButtonTopDelta) > 1 ||
-      initial.sourceButtonBackground !== 'rgba(0, 0, 0, 0)' ||
-      initial.htmlActionRailOffset === null ||
-      initial.editorInlineEndPadding < initial.htmlActionRailOffset ||
-      initial.collapsedAdjacentBlankLines !== 0 ||
-      initial.visibleZeroHeightLineNumbers.length !== 0 ||
-      initial.htmlBlockLineNumber !== '23' ||
-      initial.linkLineTops.length !== 2 ||
-      Math.max(...initial.linkLineTops) - Math.min(...initial.linkLineTops) > 1 ||
-      initial.htmlRenderedBlock?.lineNumberHiddenFrom !== 24 ||
-      initial.htmlRenderedBlock?.lineNumberHiddenTo !== 27 ||
-      initial.source !== source
-    ) {
-      throw new Error(`Initial HTML document-flow rendering was incorrect: ${JSON.stringify(initial)}`);
-    }
-
-    await page.hover('.meo-md-html-block[data-meo-rendered-block-start-line] .meo-md-html-source-toggle');
-    const hoveredBlockRange = await page.$eval('.meo-md-html-block[data-meo-rendered-block-start-line]', (element) => {
-      const style = getComputedStyle(element);
-      return { background: style.backgroundColor, boxShadow: style.boxShadow };
-    });
-    if (hoveredBlockRange.background === 'rgba(0, 0, 0, 0)' && hoveredBlockRange.boxShadow === 'none') {
-      throw new Error(`Hovering the HTML source button did not reveal its content range: ${JSON.stringify(hoveredBlockRange)}`);
-    }
-
-    const actionRailPoint = await page.evaluate(() => {
-      const block = Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block[data-meo-rendered-block-start-line]'))
-        .find((candidate) => {
-          const button = candidate.querySelector<HTMLElement>('.meo-md-html-source-toggle');
-          return Boolean(button && candidate.getBoundingClientRect().height > button.getBoundingClientRect().height + 24);
-        });
-      if (!block) throw new Error('Missing a tall HTML block action-rail fixture');
-      const button = block.querySelector<HTMLElement>('.meo-md-html-source-toggle')!;
-      const blockRect = block.getBoundingClientRect();
-      const buttonRect = button.getBoundingClientRect();
-      return {
-        x: buttonRect.left + buttonRect.width / 2,
-        y: Math.min(blockRect.bottom - 2, buttonRect.bottom + 16)
-      };
-    });
-    await page.mouse.move(actionRailPoint.x, actionRailPoint.y);
-    await page.waitForFunction(({ x, y }) => {
-      const hit = document.elementFromPoint(x, y);
-      const block = hit?.closest<HTMLElement>('.meo-md-html-block');
-      const button = block?.querySelector<HTMLElement>('.meo-md-html-source-toggle');
-      return button ? getComputedStyle(button).opacity === '1' : false;
-    }, { polling: 'raf', timeout: 1_000 }, actionRailPoint);
-    const actionRailHover = await page.evaluate(({ x, y }) => {
-      const hit = document.elementFromPoint(x, y);
-      const block = hit?.closest<HTMLElement>('.meo-md-html-block');
-      const button = block?.querySelector<HTMLElement>('.meo-md-html-source-toggle');
-      return { opacity: button ? getComputedStyle(button).opacity : '', hit: hit?.className ?? '' };
-    }, actionRailPoint);
-    if (actionRailHover.opacity !== '1') {
-      throw new Error(`HTML action rail below the edit button did not keep the button visible: ${JSON.stringify(actionRailHover)}`);
-    }
-
-    const selectionPoints = await page.$eval('.meo-md-html-block[data-meo-rendered-block-start-line] .meo-md-html-link', (element) => {
-      const text = element.firstChild;
-      if (!text) return null;
-      const start = document.createRange();
-      start.setStart(text, 0);
-      start.setEnd(text, 1);
-      const end = document.createRange();
-      end.setStart(text, Math.max(0, (text.textContent?.length ?? 1) - 1));
-      end.setEnd(text, text.textContent?.length ?? 1);
-      const startRect = start.getBoundingClientRect();
-      const endRect = end.getBoundingClientRect();
-      return {
-        startX: startRect.left + 1,
-        startY: startRect.top + startRect.height / 2,
-        endX: endRect.right - 1,
-        endY: endRect.top + endRect.height / 2
-      };
-    });
-    if (!selectionPoints) throw new Error('Could not locate rendered HTML text for selection test');
-    await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      editor.view.dispatch({ selection: { anchor: 0, head: 7 } });
-    });
-    await waitForFrames(page, 2);
-    await page.mouse.move(selectionPoints.startX, selectionPoints.startY);
-    await page.mouse.down();
-    await page.mouse.move(selectionPoints.endX, selectionPoints.endY, { steps: 8 });
-    await page.mouse.up();
-    const selectedPreviewText = await page.evaluate(() => window.getSelection()?.toString() ?? '');
-    if (!selectedPreviewText.includes('English')) {
-      throw new Error(`Rendered HTML text could not be selected: ${JSON.stringify(selectedPreviewText)}`);
-    }
-    const selectionMenuState = await page.evaluate(() => (window as any).__htmlSelectionState);
-    if (selectionMenuState?.visible !== false) {
-      throw new Error(`HTML native selection left the Markdown formatting menu visible: ${JSON.stringify(selectionMenuState)}`);
-    }
-    await page.evaluate(() => window.getSelection()?.removeAllRanges());
-
-    const detailsBeforeToggle = await page.$eval('.meo-md-html-block details', (element) => ({
-      open: (element as HTMLDetailsElement).open,
-      top: element.closest('.meo-md-html-block')?.getBoundingClientRect().top ?? null
-    }));
-    await page.click('.meo-md-html-block details > summary');
-    await waitForFrames(page, 8);
-    const detailsAfterCollapse = await page.$eval('.meo-md-html-block details', (element) => ({
-      open: (element as HTMLDetailsElement).open,
-      top: element.closest('.meo-md-html-block')?.getBoundingClientRect().top ?? null,
-      bodyVisible: (element.querySelector('p')?.getBoundingClientRect().height ?? 0) > 0,
-      lineNumbers: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-details-line-number'))
-        .map(marker => Number(marker.textContent)),
-      iconTransform: getComputedStyle(element.querySelector<HTMLElement>(':scope > summary > .meo-md-details-summary-icon[aria-hidden="true"]')!).transform,
-      iconWidth: element.querySelector<HTMLElement>(':scope > summary > .meo-md-details-summary-icon[aria-hidden="true"]')!.getBoundingClientRect().width
-    }));
-    if (
-      !detailsBeforeToggle.open ||
-      detailsAfterCollapse.open ||
-      detailsAfterCollapse.bodyVisible ||
-      detailsAfterCollapse.lineNumbers.length !== 1 ||
-      detailsAfterCollapse.lineNumbers[0] !== 38 ||
-      detailsAfterCollapse.iconTransform === initial.detailsIconTransform ||
-      Math.abs(detailsAfterCollapse.iconWidth - initial.detailsIconWidth) > 0.5 ||
-      detailsBeforeToggle.top === null ||
-      detailsAfterCollapse.top === null ||
-      Math.abs(detailsAfterCollapse.top - detailsBeforeToggle.top) > 1
-    ) {
-      throw new Error(`Rendered details did not collapse in place: ${JSON.stringify({
-        detailsBeforeToggle,
-        detailsAfterCollapse,
-        expandedIconWidth: initial.detailsIconWidth
-      })}`);
-    }
-    await page.click('.meo-md-html-block details > summary');
-    await waitForFrames(page, 8);
-
-    const blockRect = await page.$eval('.meo-md-html-block[data-meo-rendered-block-start-line]', (element) => {
-      const rect = element.getBoundingClientRect();
-      return { x: rect.left + 8, y: rect.top + Math.min(10, rect.height / 2) };
-    });
-    await page.mouse.click(blockRect.x, blockRect.y);
-    await waitForFrames(page, 4);
-    const afterOrdinaryClick = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      return {
-        blockVisible: Boolean(document.querySelector('.meo-md-html-block[data-meo-rendered-block-start-line]')),
-        scrollTop: editor.view.scrollDOM.scrollTop
-      };
-    });
-    if (!afterOrdinaryClick.blockVisible || Math.abs(afterOrdinaryClick.scrollTop - initial.scrollTop) > 1) {
-      throw new Error(`Ordinary HTML preview click changed mode or viewport: ${JSON.stringify(afterOrdinaryClick)}`);
-    }
-
-    const sourceButton = await page.$('.meo-md-html-block[data-meo-rendered-block-start-line] .meo-md-html-source-toggle');
-    if (!sourceButton) throw new Error('HTML source toggle was not rendered');
-    await sourceButton.click();
-    await waitForFrames(page, 10);
+    const beforeTop = await page.$eval('#center', node => node.getBoundingClientRect().top);
+    await page.click('#center', { offset: { x: 10, y: 10 } });
+    await frames(page);
     const editing = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      const sourceLine = Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-        .find((line) => line.textContent?.includes('<p align="center">'));
-      const sourceControl = document.querySelector<HTMLElement>('.meo-md-html-source-control');
-      const sourceLineRect = sourceLine?.getBoundingClientRect() ?? null;
-      const sourceControlRect = sourceControl?.getBoundingClientRect() ?? null;
-      const sourceRangeLines = Array.from(document.querySelectorAll<HTMLElement>('.cm-line.meo-md-html-source-range'));
-      return {
-        sourceVisible: Boolean(sourceLine),
-        previewControlVisible: Boolean(sourceControl),
-        blockVisible: Boolean(Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
-          .find((element) => element.textContent?.includes('English'))),
-        scrollTop: editor.view.scrollDOM.scrollTop,
-        selectedLine: editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number,
-        sourceRangeLineCount: sourceRangeLines.length,
-        sourceRangeStart: sourceRangeLines[0]?.classList.contains('meo-md-html-source-range-start') ?? false,
-        sourceRangeEnd: sourceRangeLines.at(-1)?.classList.contains('meo-md-html-source-range-end') ?? false,
-        sourceRangeBackgrounds: sourceRangeLines.map((line) => getComputedStyle(line).backgroundColor),
-        sourceControlSameRow: Boolean(
-          sourceLineRect && sourceControlRect &&
-          sourceControlRect.top < sourceLineRect.bottom && sourceControlRect.bottom > sourceLineRect.top
-        ),
-        sourceControlOutsideRange: Boolean(
-          sourceLineRect && sourceControlRect && sourceControlRect.left >= sourceLineRect.right + 4
-        ),
-        sourceControlTopDelta: sourceLineRect && sourceControlRect
-          ? sourceControlRect.top - sourceLineRect.top
-          : null
-      };
+      const source = document.querySelector<HTMLElement>('.meo-md-html-source-range-start');
+      const last = document.querySelector<HTMLElement>('.meo-md-html-source-range-end');
+      const result = document.querySelector<HTMLElement>('.meo-md-html-live-result');
+      return { source: source?.textContent, count: document.querySelectorAll('.meo-md-html-source-range').length,
+        top: source?.getBoundingClientRect().top, sourceBottom: last?.getBoundingClientRect().bottom,
+        previewTop: result?.getBoundingClientRect().top, preview: result?.textContent };
     });
-    if (
-      !editing.sourceVisible ||
-      !editing.previewControlVisible ||
-      editing.blockVisible ||
-      editing.selectedLine !== 23 ||
-      editing.sourceRangeLineCount !== 5 ||
-      !editing.sourceRangeStart ||
-      !editing.sourceRangeEnd ||
-      editing.sourceRangeBackgrounds.some((background) => background === 'rgba(0, 0, 0, 0)') ||
-      !editing.sourceControlSameRow ||
-      !editing.sourceControlOutsideRange ||
-      editing.sourceControlTopDelta === null || Math.abs(editing.sourceControlTopDelta) > 1 ||
-      Math.abs(editing.scrollTop - initial.scrollTop) > 1
-    ) {
-      throw new Error(`HTML source mode did not open in place: ${JSON.stringify({ initial, editing })}`);
-    }
-
-    const sourceEditPoint = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      const position = editor.view.state.doc.toString().indexOf('English') + 'English'.length;
-      const coords = editor.view.coordsAtPos(position);
-      return coords ? { x: coords.left, y: (coords.top + coords.bottom) / 2 } : null;
-    });
-    if (!sourceEditPoint) throw new Error('Could not locate editable HTML source text');
-    await page.mouse.click(sourceEditPoint.x, sourceEditPoint.y);
+    assert.ok(editing.source?.includes('<p id="center"'));
+    assert.equal(editing.count, 4);
+    assert.ok(editing.preview?.includes('English'));
+    assert.ok(editing.previewTop! >= editing.sourceBottom! - 1);
+    assert.ok(Math.abs(editing.top! - beforeTop) < 3, 'Opening source keeps its reading anchor');
+    await page.screenshot({ path: path.join(artifacts, 'light-editing.png') });
+    await select(page, 'English', 'English'.length);
     await page.keyboard.type('X');
-    await waitForFrames(page, 3);
-    const sourceAfterTyping = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      return {
-        text: editor.view.state.doc.toString(),
-        sourceControlVisible: Boolean(document.querySelector('.meo-md-html-source-control'))
-      };
-    });
-    if (!sourceAfterTyping.text.includes('EnglishX') || !sourceAfterTyping.sourceControlVisible) {
-      throw new Error(`HTML source was not editable in place: ${JSON.stringify(sourceAfterTyping)}`);
-    }
-    await page.keyboard.down('Control');
-    await page.keyboard.press('z');
-    await page.keyboard.up('Control');
-    await waitForFrames(page, 3);
-
+    await frames(page);
+    assert.ok(await page.$eval('.meo-md-html-live-result', node => node.textContent?.includes('EnglishX')));
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+    await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString()), source);
     await page.keyboard.press('Escape');
-    await waitForFrames(page, 10);
-    const afterEscape = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      const block = Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
-        .find((element) => element.textContent?.includes('English'));
-      return {
-        blockVisible: Boolean(block),
-        blockTop: block?.getBoundingClientRect().top ?? null,
-        scrollTop: editor.view.scrollDOM.scrollTop
-      };
+    await frames(page);
+    assert.equal(await page.$('.meo-md-html-source-range-start'), null);
+    assert.ok(Math.abs(await page.$eval('#center', node => node.getBoundingClientRect().top) - beforeTop) < 3);
+
+    // Dragging selects rendered words without entering HTML source.
+    const word = await page.$eval('#center .meo-md-html-link', node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const box = range.getBoundingClientRect(); return { x: box.left, y: box.top + box.height / 2, width: box.width };
     });
-    if (
-      !afterEscape.blockVisible ||
-      initial.blockTop === null ||
-      afterEscape.blockTop === null ||
-      Math.abs(afterEscape.blockTop - initial.blockTop) > 1 ||
-      Math.abs(afterEscape.scrollTop - initial.scrollTop) > 1
-    ) {
-      throw new Error(`Escape did not restore HTML preview in place: ${JSON.stringify({ initial, afterEscape })}`);
-    }
+    await page.mouse.move(word.x + 1, word.y); await page.mouse.down();
+    await page.mouse.move(word.x + word.width - 1, word.y, { steps: 8 }); await page.mouse.up();
+    await frames(page);
+    assert.ok(await page.evaluate(() => Boolean(document.getSelection()?.toString().trim())));
+    assert.equal(await page.$('.meo-md-html-source-range-start'), null);
+    await page.evaluate(() => document.getSelection()?.removeAllRanges());
+    await page.keyboard.down('Control'); await page.click('#center .meo-md-html-link[data-meo-link-href="https://example.com/docs"]'); await page.keyboard.up('Control');
+    await frames(page);
+    assert.deepEqual(await page.evaluate(() => (window as any).__htmlLinks), ['https://example.com/docs']);
+    assert.equal(await page.$('.meo-md-html-source-range-start'), null);
 
-    await page.evaluate(() => (window as any).__htmlContentEditor.scrollToLine(24, 'upper'));
-    await waitForFrames(page, 10);
-    const revealedInnerLine = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      return {
-        selectedLine: editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number,
-        sourceVisible: Array.from(document.querySelectorAll<HTMLElement>('.cm-line'))
-          .some((line) => line.textContent?.includes('English') && line.textContent?.includes('<a')),
-        htmlRenderedBlock: (window as any).HtmlContentHarness.getLiveRenderedBlocks(editor.view.state)
-          .find((candidate: any) => candidate.kind === 'html' && candidate.startLine === 23) ?? null
-      };
-    });
-    if (
-      revealedInnerLine.selectedLine !== 24 ||
-      !revealedInnerLine.sourceVisible ||
-      revealedInnerLine.htmlRenderedBlock !== null
-    ) {
-      throw new Error(`Jumping to an inner HTML line did not reveal exact source: ${JSON.stringify(revealedInnerLine)}`);
-    }
+    await page.click('.meo-md-html-content details > summary');
+    await frames(page);
+    assert.equal(await page.$eval('.meo-md-html-content details', node => (node as HTMLDetailsElement).open), false);
+    assert.equal(await page.$('.meo-md-html-source-range-start'), null);
+    await page.click('.meo-md-html-content details > summary');
+    await frames(page);
+    assert.equal(await page.$eval('.meo-md-html-content details', node => (node as HTMLDetailsElement).open), true);
 
-    await page.evaluate(() => (window as any).__htmlContentEditor.revealSelection(
-      (window as any).__htmlContentEditor.view.state.doc.line(
-        (window as any).__htmlContentEditor.view.state.doc.lines - 20
-      ).from,
-      undefined,
-      { focusEditor: true, align: 'nearest' }
-    ));
-    await waitForFrames(page, 8);
-    await page.evaluate(() => (window as any).__htmlContentEditor.scrollToLine(23, 'center'));
-    await waitForFrames(page, 8);
-    const afterLeavingSource = await page.evaluate(() => ({
-      blockVisible: Boolean(Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
-        .find((element) => element.textContent?.includes('English'))),
-      sourceControlVisible: Boolean(document.querySelector('.meo-md-html-source-control'))
-    }));
-    if (!afterLeavingSource.blockVisible || afterLeavingSource.sourceControlVisible) {
-      throw new Error(`Leaving the HTML source range did not restore preview: ${JSON.stringify(afterLeavingSource)}`);
-    }
+    // Keyboard navigation reaches an otherwise invisible anchor as ordinary source.
+    await select(page, '<div id="html-test-top"', 9);
+    assert.equal(await page.evaluate(() => Array.from(document.querySelectorAll('.meo-md-html-invisible-source-text'))
+      .some(node => node.textContent?.includes('html-test-top'))), false);
+    assert.ok(await page.$eval('.meo-md-html-source-range-start', node => node.textContent?.includes('html-test-top')));
+    assert.equal(await page.$('.meo-md-html-live-result'), null, 'No empty preview frame');
+    await page.keyboard.type('X');
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+    await select(page, 'Tail paragraph.');
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString()), source);
+    assert.ok(await page.$('.meo-md-html-invisible-source-text'));
 
-    const externalButton = await page.$('.meo-md-html-inline-link-button');
-    if (!externalButton) throw new Error('Always-visible inline HTML link button was not rendered');
-    const externalButtonLabel = await externalButton.evaluate((button) => button.getAttribute('aria-label'));
-    if (externalButtonLabel !== '打开链接') {
-      throw new Error(`HTML link action did not use the editor UI language: ${externalButtonLabel}`);
-    }
-    await externalButton.click();
-    await waitForFrames(page, 2);
-    const openedLinks = await page.evaluate(() => (window as any).__openedHtmlLinks);
-    if (JSON.stringify(openedLinks) !== JSON.stringify(['https://example.com'])) {
-      throw new Error(`HTML link button did not use the existing link path: ${JSON.stringify(openedLinks)}`);
-    }
-
+    // Incomplete HTML stays editable and current safe content can still render.
+    await select(page, 'English', 2);
     await page.evaluate(() => {
-      (window as any).__htmlContentEditor.destroy();
-      document.getElementById('app')!.replaceChildren();
-      (window as any).__htmlContentEditor = (window as any).HtmlContentHarness.createEditor({
-        parent: document.getElementById('app')!,
-        text: ['previous', '<div id="empty"></div>', 'next'].join('\n'),
-        initialMode: 'live',
-        onApplyChanges() {}
-      });
+      const view = (window as any).__htmlEditor.view;
+      const end = view.state.doc.toString().indexOf('</p>');
+      view.dispatch({ changes: { from: end, to: end + 4, insert: '</p' } });
     });
-    await waitForFrames(page, 10);
-    const emptyHtmlGutter = await page.evaluate(() => {
-      const editor = (window as any).__htmlContentEditor;
-      const gutterElements = Array.from(
-        document.querySelectorAll<HTMLElement>('.cm-lineNumbers .cm-gutterElement')
-      );
-      const readLineNumber = (lineNumber: string) => gutterElements
-        .filter((element) => element.textContent?.trim() === lineNumber)
-        .map((element) => {
-          const rect = element.getBoundingClientRect();
-          return { height: rect.height, top: rect.top };
-        });
-      const emptyBlock = document.querySelector<HTMLElement>('.meo-md-html-block');
-      return {
-        first: readLineNumber('1'),
-        empty: readLineNumber('2'),
-        last: readLineNumber('3'),
-        blockHeight: emptyBlock?.getBoundingClientRect().height ?? null,
-        source: editor.view.state.doc.toString()
-      };
-    });
-    if (
-      emptyHtmlGutter.first.every((entry) => entry.height < 1) ||
-      emptyHtmlGutter.empty.length !== 0 ||
-      emptyHtmlGutter.last.every((entry) => entry.height < 1) ||
-      emptyHtmlGutter.blockHeight === null || emptyHtmlGutter.blockHeight >= 1 ||
-      emptyHtmlGutter.source !== ['previous', '<div id="empty"></div>', 'next'].join('\n')
-    ) {
-      throw new Error(`Zero-height HTML retained an overlapping line number: ${JSON.stringify(emptyHtmlGutter)}`);
+    await frames(page);
+    assert.ok(await page.$('.meo-md-html-source-range-start'));
+    assert.ok(await page.$eval('.meo-md-html-live-result', node => node.textContent?.includes('English')));
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+    await select(page, 'Tail paragraph.');
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString()), source);
+    for (const mode of ['source', 'live'] as const) {
+      await page.evaluate(mode => (window as any).__htmlEditor.setMode(mode), mode); await frames(page);
+      assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString()), source);
     }
 
-    await page.evaluate(() => (window as any).__htmlContentEditor.setMode('source'));
-    await waitForFrames(page, 8);
-    const emptyHtmlSourceGutter = await page.evaluate(() => Array.from(
-      document.querySelectorAll<HTMLElement>('.cm-lineNumbers .cm-gutterElement')
-    ).filter((element) => element.textContent?.trim() === '2')
-      .map((element) => element.getBoundingClientRect().height));
-    if (emptyHtmlSourceGutter.every((height) => height < 1)) {
-      throw new Error(`Source mode did not restore the empty HTML source line number: ${JSON.stringify(emptyHtmlSourceGutter)}`);
+    const htmlFrom = source.indexOf('<p id="center"'), htmlTo = source.indexOf('</p>') + 4;
+    for (const [key, position] of [['ArrowDown', htmlFrom - 1], ['ArrowRight', htmlFrom - 1],
+      ['ArrowUp', htmlTo + 1], ['ArrowLeft', htmlTo]] as const) {
+      await select(page, 'Prelude paragraph.');
+      await page.evaluate(position => {
+        const view = (window as any).__htmlEditor.view;
+        view.dispatch({ selection: { anchor: position }, scrollIntoView: true }); view.focus();
+      }, position);
+      await frames(page);
+      await page.keyboard.press(key); await frames(page);
+      assert.ok(await page.$('.meo-md-html-source-range-start'), `${key} enters HTML source`);
+      assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString()), source);
     }
 
-    console.log('HTML content browser tests passed');
-  } finally {
-    await browser.close();
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
+    await select(page, '<p id="center"', 2);
+    await page.keyboard.type(' ti');
+    await page.keyboard.down('Control'); await page.keyboard.press('Space'); await page.keyboard.up('Control');
+    await page.waitForFunction(() => document.querySelector('.cm-tooltip-autocomplete')?.textContent?.includes('title'), { timeout: 3000 });
+    await frames(page);
+    await page.keyboard.press('Enter'); await frames(page);
+    const completed = await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString());
+    assert.ok(completed.includes('<p title id="center"'), `HTML attribute completion edits the main document: ${completed.slice(htmlFrom, htmlFrom + 60)}`);
+    await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+    await select(page, '  <a href="#target">');
+    await page.keyboard.type('<span>'); await frames(page);
+    assert.ok(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString().includes('<span></span>')),
+      'HTML tags close automatically in the main source');
+    await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+    await select(page, '<div id="target">', '<div id="target">'.length);
+    await page.keyboard.type('<div>'); await frames(page);
+    assert.ok(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString()
+      .includes('<div id="target"><div></div><p>')),
+      'Nested tags do not consume an existing same-name parent closing tag');
+    await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+    await select(page, 'English', 7);
+    const input = await page.createCDPSession();
+    try {
+      await input.send('Input.imeSetComposition', { text: '中文', selectionStart: 2, selectionEnd: 2 });
+      await input.send('Input.insertText', { text: '中文' });
+    } finally { await input.detach(); }
+    await frames(page);
+    assert.ok(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString().includes('English中文')));
+    assert.ok(await page.$eval('.meo-md-html-live-result', node => node.textContent?.includes('English中文')));
+    await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+    await select(page, 'English', 7);
+    await page.evaluate(() => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData('text/plain', 'Pasted');
+      clipboardData.setData('text/html', '<strong>Pasted</strong>');
+      (window as any).__htmlEditor.view.contentDOM.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    });
+    await frames(page);
+    assert.ok(await page.evaluate(() => (window as any).__htmlEditor.view.state.doc.toString().includes('EnglishPasted')),
+      'HTML source paste retains literal text instead of converting it to Markdown');
+    await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+    await select(page, 'English', 2);
+    await page.evaluate(({ from, to }) => {
+      const view = (window as any).__htmlEditor.view;
+      view.dispatch({ changes: { from, to, insert: 'Replacement paragraph.' }, selection: { anchor: from + 8 } });
+    }, { from: htmlFrom, to: htmlTo });
+    await frames(page);
+    assert.equal(await page.$('.meo-md-html-source-range-start'), null, 'Replacing the complete HTML fragment releases its source range');
+    await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
+
+    for (const appearance of ['light', 'dark'] as const) for (const language of ['zh-CN', 'en'] as const) {
+      await page.evaluate(({ appearance, language }) => {
+        const style = document.documentElement.style;
+        style.setProperty('--meo-foreground', appearance === 'dark' ? '#d4d4d4' : '#1f2328');
+        style.setProperty('--vscode-editor-foreground', appearance === 'dark' ? '#d4d4d4' : '#1f2328');
+        style.setProperty('--vscode-editor-background', appearance === 'dark' ? '#121314' : '#ffffff');
+        (window as any).HtmlContentHarness.applyUiTheme(appearance, true);
+        (window as any).__htmlEditor.setUiLanguage(language);
+      }, { appearance, language });
+      await select(page, 'Prelude paragraph.');
+      await page.setViewport({ width: language === 'en' ? 520 : 1000, height: 1000 });
+      await frames(page);
+      await page.screenshot({ path: path.join(artifacts, `${appearance}-${language}-reading.png`) });
+      await select(page, 'English', 2);
+      await page.screenshot({ path: path.join(artifacts, `${appearance}-${language}-editing.png`) });
+    }
+    assert.deepEqual(errors, [], 'No runtime errors');
+    console.log(`HTML fragment rendering, source editing and invisible-source tests passed. Screenshots: ${artifacts}`);
+  } finally { await browser.close(); }
 }
 
 await main();

@@ -3126,27 +3126,6 @@ html[data-editor-appearance='dark'] .meo-tooltip-shortcut { background: rgba(255
   -webkit-text-fill-color: var(--meo-semantic-markdownSyntax) !important;
 }
 
-.cm-editor .meo-md-details-source-toggle {
-  position: absolute;
-  top: 0;
-  right: -28px;
-  z-index: 10;
-  opacity: 0;
-  transition: opacity 100ms ease;
-}
-
-.cm-editor .cm-line.meo-md-details-summary-line:hover .meo-md-details-source-toggle,
-.cm-editor .cm-line.meo-md-details-summary-line:focus-within .meo-md-details-source-toggle {
-  opacity: 1;
-}
-
-.cm-editor .cm-line.meo-md-details-summary-line:has(.meo-md-details-source-toggle:hover),
-.cm-editor .cm-line.meo-md-details-summary-line:has(.meo-md-details-source-toggle:focus-visible) {
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--meo-foreground) 5%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--meo-border) 72%, transparent);
-}
-
 .cm-editor.meo-mode-live .meo-md-highlight,
 .outline-item mark {
   color: inherit;
@@ -4461,7 +4440,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor .meo-md-html-block {
   position: relative;
   box-sizing: border-box;
-  --meo-html-action-rail-offset: 28px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -4478,15 +4456,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   user-select: text;
   -webkit-user-select: text;
   transition: background-color 100ms ease, box-shadow 100ms ease;
-}
-
-.cm-editor .meo-md-html-block::after {
-  position: absolute;
-  top: 0;
-  right: calc(-1 * var(--meo-html-action-rail-offset));
-  bottom: 0;
-  width: var(--meo-html-action-rail-offset);
-  content: '';
 }
 
 .cm-editor .meo-md-html-content {
@@ -4672,59 +4641,20 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   margin-left: auto;
 }
 
-.cm-editor .meo-md-html-mode-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(var(--meo-active-editor-line-height) * 1em);
-  height: calc(var(--meo-active-editor-line-height) * 1em);
-  padding: 0;
-  border: 1px solid var(--meo-document-border-control);
-  border-radius: 6px;
-  color: var(--meo-semantic-codeCopyForeground);
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
+.cm-editor .meo-md-html-image > .meo-md-image-img {
+  width: var(--meo-html-image-width, auto);
+  height: var(--meo-html-image-height, auto);
+  max-height: var(--meo-html-image-max-height, 240px);
 }
 
-.cm-editor .meo-md-html-mode-btn:hover {
-  color: var(--meo-semantic-codeCopyHoverForeground, var(--meo-foreground));
-  background: var(--meo-document-block-hover);
-}
-
-.cm-editor .meo-md-html-mode-btn:active {
-  color: var(--meo-semantic-codeCopyHoverForeground, var(--meo-foreground));
+.cm-editor :is(.meo-copy-code-btn, .meo-copy-image-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
+  .meo-latex-math-mode-btn, .meo-long-code-action):active {
   background: var(--meo-document-block-pressed);
 }
 
 .cm-editor :is(.meo-copy-code-btn, .meo-copy-image-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
-  .meo-latex-math-mode-btn, .meo-md-html-mode-btn, .meo-long-code-action):active {
-  background: var(--meo-document-block-pressed);
-}
-
-.cm-editor :is(.meo-copy-code-btn, .meo-copy-image-btn, .meo-select-all-code-btn, .meo-mermaid-mode-btn,
-  .meo-latex-math-mode-btn, .meo-md-html-mode-btn, .meo-long-code-action):focus-visible:not([data-meo-pointer-focus]) {
+  .meo-latex-math-mode-btn, .meo-long-code-action):focus-visible:not([data-meo-pointer-focus]) {
   box-shadow: inset 0 0 0 1px var(--meo-document-focus);
-}
-
-.cm-editor .meo-md-html-block > .meo-md-html-source-toggle {
-  position: absolute;
-  top: 0;
-  right: calc(-1 * var(--meo-html-action-rail-offset));
-  z-index: 10;
-  opacity: 0;
-  transition: opacity 100ms ease;
-}
-
-.cm-editor .meo-md-html-block:hover > .meo-md-html-source-toggle,
-.cm-editor .meo-md-html-block:focus-within > .meo-md-html-source-toggle {
-  opacity: 1;
-}
-
-.cm-editor .meo-md-html-block:has(> .meo-md-html-source-toggle:hover),
-.cm-editor .meo-md-html-block:has(> .meo-md-html-source-toggle:focus-visible) {
-  background: color-mix(in srgb, var(--meo-foreground) 5%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--meo-border) 72%, transparent);
 }
 
 .cm-editor .cm-line.meo-md-html-source-line {
@@ -4733,6 +4663,9 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor .cm-line.meo-md-html-source-range {
   background: var(--meo-code-background) !important;
+  font-family: var(--meo-font-source);
+  font-size: var(--meo-active-editor-font-size);
+  line-height: var(--meo-active-editor-line-height);
 }
 
 .cm-editor .cm-line.meo-md-html-source-range-start {
@@ -4747,12 +4680,25 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   border-radius: 6px;
 }
 
-.cm-editor .meo-md-html-source-control {
-  position: absolute;
-  top: 0;
-  right: -28px;
-  z-index: 10;
-  display: inline-flex;
+.cm-editor .meo-md-html-live-result {
+  padding: 0.5em 0;
+  border-top: 1px solid var(--meo-document-separator, var(--meo-border));
+}
+
+.cm-editor .cm-line.meo-md-html-invisible-source {
+  font-family: var(--meo-font-source);
+  font-size: var(--meo-active-editor-font-size);
+  line-height: var(--meo-active-editor-line-height);
+  background: transparent;
+}
+
+.cm-editor .meo-md-html-invisible-source-text,
+.cm-editor .meo-md-html-invisible-source-text * {
+  color: var(--meo-ui-text-muted, var(--meo-token-comment-color)) !important;
+  -webkit-text-fill-color: currentColor !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  background: transparent !important;
 }
 
 .cm-editor .meo-md-html-warning {
@@ -4767,6 +4713,20 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor .meo-md-html-inline {
   display: inline;
   font-family: inherit;
+}
+
+.cm-editor .cm-tooltip-autocomplete {
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-raised);
+  border: 1px solid var(--meo-ui-border-float);
+  border-radius: 6px;
+  box-shadow: var(--meo-ui-shadow);
+  font-family: var(--meo-font-source);
+}
+
+.cm-editor .cm-tooltip-autocomplete > ul > li[aria-selected] {
+  color: var(--meo-ui-text);
+  background: var(--meo-ui-surface-selected);
 }
 
 .cm-editor .meo-md-html-inline .meo-md-html-strong,
@@ -4798,13 +4758,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor .meo-md-html-inline-link-button {
   margin-top: 0;
   vertical-align: -2px;
-}
-
-@media (hover: none) {
-  .cm-editor .meo-md-html-block > .meo-md-html-source-toggle,
-  .cm-editor .meo-md-details-source-toggle {
-    opacity: 1;
-  }
 }
 
 .cm-editor.meo-mode-live .cm-line.meo-md-code-line-numbered {

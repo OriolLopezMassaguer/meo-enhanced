@@ -108,10 +108,14 @@ async function main(): Promise<void> {
     }));
     assert.deepEqual(immediateDetailsPresentation, {
       summary: 'Remote details summary',
-      sourceToggle: true,
-      rawDetails: false,
+      sourceToggle: false,
+      rawDetails: true,
       history: { undo: 0, redo: 0 }
     });
+    await page.evaluate(position => (window as any).__immediateDetailsEditor.view.dispatch({
+      selection: { anchor: position - '<details>\n'.length - 1 }
+    }), immediateDetailsPosition);
+    await waitForFrames(page, 2);
     await page.click('.meo-md-details-summary');
     await waitForFrames(page, 2);
     const immediateDetailsToggle = await page.evaluate(() => ({

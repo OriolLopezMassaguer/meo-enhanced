@@ -41,7 +41,7 @@ checkCompatibility('GitHub heading with inline link and underscore', render('# T
 checkCompatibility('GitHub heading with math', render('# P06 Heading with spaces $a+b$').html.includes('id="p06-heading-with-spaces-ab"'), true);
 checkCompatibility('GitHub heading with literal TeX', render('# Formula:$\\alpha + \\beta$').html.includes('id="formulaalpha--beta"'), true);
 checkCompatibility('GitHub raw del', render('<del>deleted text</del>').html.includes('<del>deleted text</del>'), true);
-checkCompatibility('Default raw del unchanged', render('<del>deleted text</del>', 'default').html.includes('<del>'), false);
+checkCompatibility('Default raw del supported', render('<del>deleted text</del>', 'default').html.includes('<del>'), true);
 const mathCount = (markdown: string, preset: 'default' | 'github-readme' = 'github-readme') =>
   (render(markdown, preset).html.match(/class="meo-export-math /g) ?? []).length;
 for (const preset of ['default', 'github-readme'] as const) {

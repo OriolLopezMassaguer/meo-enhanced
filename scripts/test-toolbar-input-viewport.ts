@@ -497,7 +497,7 @@ async function runComponentFocusReturn(browser: Browser): Promise<void> {
     { kind: 'code', text: 'intro\n\n```js\nconst value = 1;\n```\n\ntail',
       selector: '.cm-content', line: 'const value = 1;', from: 'const value = 1;', to: 'const value = 1;R' },
     { kind: 'html', text: 'intro\n\n<div>\n<p>alpha beta</p>\n</div>\n\ntail',
-      selector: '.cm-content', button: '.meo-md-html-source-toggle', clicks: 1,
+      selector: '.cm-content',
       line: '<p>alpha beta</p>', from: '<p>alpha beta</p>', to: '<p>alpha beta</p>R' },
     ...[1, 2].map((clicks) => ({ kind: `mermaid-${clicks === 1 ? 'split' : 'source'}`,
       text: 'intro\n\n```mermaid\ngraph TD\nA --> B\n```\n\ntail',
@@ -511,6 +511,7 @@ async function runComponentFocusReturn(browser: Browser): Promise<void> {
     const page = await open(browser, 'mode' in fixture ? fixture.mode : 'live', fixture.text, fixture.kind.startsWith('mermaid'));
     try {
       if (fixture.kind === 'math-live') await page.click('.meo-md-math-fenced-display');
+      if (fixture.kind === 'html') await page.click('.meo-md-html-content');
       if ('button' in fixture) {
         for (let step = 0; step < fixture.clicks; step += 1) {
           await page.evaluate((selector) => document.querySelector<HTMLButtonElement>(selector)!.click(), fixture.button);

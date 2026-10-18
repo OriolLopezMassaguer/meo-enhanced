@@ -79,7 +79,10 @@ try {
         try {
           const errors: string[] = [];
           page.on('pageerror', error => errors.push(error.message));
-          await page.setViewport({ width, height: 1800, deviceScaleFactor: 1 });
+          // Open the side pane before narrowing the host: toolbar hit testing
+          // has its own coverage, while this test measures the formula layout.
+          await page.setViewport({ width: surface === 'source' ? Math.max(width, 800) : width,
+            height: 1800, deviceScaleFactor: 1 });
           if (surface === 'html') {
             const rendered = await exportRuntime.renderExportHtmlDocument({
               readingSnapshot: {
@@ -128,11 +131,13 @@ try {
               await page.waitForSelector('.meo-md-math-fenced-display .katex-html .tag');
             } else {
               if (surface === 'source') {
-                await page.waitForSelector('.source-preview-button');
+                await page.waitForSelector('.source-preview-button', { visible: true });
                 await page.click('.source-preview-button');
+                await page.setViewport({ width, height: 1800, deviceScaleFactor: 1 });
               }
               await page.waitForFunction(count => document.querySelector<HTMLIFrameElement>('.preview-frame')
                 ?.contentDocument?.querySelectorAll('.katex-html > .tag').length === count, {}, expectedTagCount);
+              await page.evaluate(async () => { for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame); });
             }
           }
           const context = `${surface}, ${appearance}, ${width}px`;

@@ -447,7 +447,7 @@ async function main(): Promise<void> {
       '  <del>HTML 第 51 行式目标</del>',
       '</p>',
       ...matrixSuffix
-    ].join('\n'), '<del>HTML 第 51 行式目标</del>', '.meo-md-html-source-toggle');
+    ].join('\n'), '<del>HTML 第 51 行式目标</del>');
 
     const numericBurstText = [
       ...Array.from({ length: 799 }, (_, index) => `数字前正文 ${index + 1}`),

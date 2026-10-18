@@ -473,29 +473,8 @@ async function prepareHtmlSource(page: import('puppeteer-core').Page, operation:
     const editor = (window as any).__fullUatEditor;
     const sourcePosition = editor.getText().indexOf(needle);
     if (sourcePosition < 0) throw new Error(`Missing HTML edit needle: ${needle}`);
-    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-md-html-source-toggle'));
-    const ranked = buttons.map((button) => {
-      const block = button.closest<HTMLElement>('.meo-md-html-block[data-meo-rendered-block-start-line]');
-      const startLine = Number(block?.dataset.meoRenderedBlockStartLine);
-      const endLine = Number(block?.dataset.meoRenderedBlockEndLine);
-      const blockFrom = Number.isInteger(startLine) && startLine >= 1 && startLine <= editor.view.state.doc.lines
-        ? editor.view.state.doc.line(startLine).from : NaN;
-      const blockTo = Number.isInteger(endLine) && endLine >= 1 && endLine <= editor.view.state.doc.lines
-        ? editor.view.state.doc.line(endLine).to : NaN;
-      if (Number.isFinite(blockFrom) && Number.isFinite(blockTo) && sourcePosition >= blockFrom && sourcePosition <= blockTo) {
-        return { button, distance: 0 };
-      }
-      try {
-        return { button, distance: Math.abs(editor.view.posAtDOM(button) - sourcePosition) };
-      } catch {
-        return { button, distance: Number.POSITIVE_INFINITY };
-      }
-    }).sort((left, right) => left.distance - right.distance);
-    const target = ranked[0];
-    if (!target || !Number.isFinite(target.distance)) {
-      throw new Error(`Missing HTML source toggle for: ${needle}`);
-    }
-    target.button.click();
+    editor.view.dispatch({ selection: { anchor: sourcePosition }, scrollIntoView: true });
+    editor.view.focus();
   }, operation.needle);
   await page.waitForFunction((needle) => {
     const editor = (window as any).__fullUatEditor;

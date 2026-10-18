@@ -268,6 +268,7 @@ function discoverRenderedBlocks(state: EditorState, tree: Tree): DiscoveredBlock
   }
 
   for (const htmlBlock of collectRenderableHtmlBlocks(state, tree)) {
+    if (!htmlBlock.visible) continue;
     const block = createRenderedBlock('html', htmlBlock.startLine, htmlBlock.endLine, null);
     if (!block) continue;
     block.lineNumberHiddenFrom = htmlBlock.startLine + 1;

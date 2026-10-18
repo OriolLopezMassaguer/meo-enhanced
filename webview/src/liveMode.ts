@@ -12,7 +12,7 @@ import {
   type DecorationSet
 } from '@codemirror/view';
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
-import { createElement, AlertCircle, Code2, Delete } from 'lucide';
+import { createElement, AlertCircle, Delete } from 'lucide';
 import {
   resolveCodeLanguage,
   isFenceMarker,
@@ -103,7 +103,6 @@ import { mountProjectedLineNumbers } from './editor/projectedLineNumbers';
 import { createDisplayMathActions, displayMathResultField, getPreviousDisplayMathResult, isDisplayMathEditing } from './helpers/displayMathEditing';
 import {
   addHtmlContentDecorations,
-  enterHtmlSource,
   getHtmlEditingRange,
   htmlContentExtensions
 } from './helpers/htmlContent';
@@ -1311,42 +1310,6 @@ function addMarkdownLinkDecorations(builder: DecorationCollector, state: EditorS
   }
 }
 
-class DetailsSourceToggleWidget extends UiLanguageSensitiveWidget {
-  constructor(readonly from: number, readonly to: number) {
-    super();
-  }
-
-  eq(other: WidgetType): boolean {
-    return other instanceof DetailsSourceToggleWidget &&
-      this.hasSameUiLanguageEpoch(other) &&
-      other.from === this.from && other.to === this.to;
-  }
-
-  toDOM(view: EditorView): HTMLElement {
-    const strings = getUiStrings(view.state.facet(uiLanguageFacet));
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'meo-md-html-mode-btn meo-md-html-source-toggle meo-md-details-source-toggle';
-    button.dataset.tooltip = strings.showHtmlSource;
-    button.setAttribute('aria-label', strings.showHtmlSource);
-    button.appendChild(createElement(Code2, { width: 18, height: 18, 'aria-hidden': 'true' }));
-    button.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      enterHtmlSource(view, { from: this.from, to: this.to });
-    });
-    return button;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
 function addFootnoteReferenceDecorations(builder: DecorationCollector, state: EditorState, reference: FootnoteReference, activeLines: Set<number>): boolean {
   if (!shouldRenderFootnoteReference(state, reference, activeLines)) {
     return false;
@@ -1566,13 +1529,6 @@ function addDetailsBlockDecorations(builder: DecorationCollector, state: EditorS
         )
       }).range(detailsBlock.summaryFrom, detailsBlock.summaryTo)
     );
-    builder.push(
-      Decoration.widget({
-        widget: new DetailsSourceToggleWidget(detailsBlock.sectionFrom, detailsBlock.sectionTo),
-        side: 1
-      }).range(detailsBlock.lineFrom)
-    );
-
     if (detailsBlock.anchorTo > detailsBlock.summaryTo) {
       builder.push(
         hiddenDetailsSourceDeco.range(detailsBlock.summaryTo, detailsBlock.anchorTo)
@@ -1940,7 +1896,9 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
   const htmlCodeBodies = literalRanges.flatMap(range => range.htmlCode ? [range.htmlCode] : []);
   for (const body of htmlCodeBodies) addRange(ranges, body.from, body.to, inlineStyleDecos.inlineCode);
   const inlineHtmlRanges: Array<{ from: number; to: number }> = [];
+  const htmlDecorationStart = ranges.length;
   const renderedHtmlBlocks = addHtmlContentDecorations(ranges, state, activeLines, previous, changes, inlineHtmlRanges);
+  const htmlDecorations = new Set(ranges.slice(htmlDecorationStart).map(range => range.value));
 
   tree.iterate({
     enter: (node: SyntaxNodeRef) => {
@@ -2498,7 +2456,8 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
     ))
   );
   preserveRenderedBlockPreviewHeights(ranges, changes ? previous?.map(changes) : previous);
-  const result = Decoration.set(ranges, true);
+  const result = Decoration.set(htmlEditingRange ? ranges.filter(range =>
+    range.from < htmlEditingRange.from || range.to > htmlEditingRange.to || htmlDecorations.has(range.value)) : ranges, true);
   return filterDecorationsOutsideMergeConflicts(state, result);
 }
 

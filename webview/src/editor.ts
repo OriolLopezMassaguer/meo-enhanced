@@ -124,6 +124,9 @@ import {
 import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
 import { parseBlockLinePrefix } from './helpers/blockIndent';
 import { displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
+import { createHtmlSourceEditing } from './editor/htmlSource';
+import { getHtmlEditingRange } from './helpers/htmlContent';
+import { supportedHtmlTags } from '../../src/shared/htmlPolicy';
 import { getMathCompletionBody } from './helpers/displayMathBlocks';
 import {
   ViewportController,
@@ -2598,6 +2601,7 @@ export function createEditor({
       ),
       markdownInlineStyleTheme,
       sourceSyntaxPreparation,
+      createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument })] : sourceMode()),
       searchQueryField,
       searchAnchorField,

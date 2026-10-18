@@ -25,6 +25,15 @@ Windows is smoke checked against the installed font collection. Mac/Linux adapte
 need native platform verification before release; unavailable queries use fallback fonts.
 
 The user-facing inventory is in [testing-feature-coverage.md](testing-feature-coverage.md).
+`scripts/test-html-content.ts` covers shared HTML tag/style filtering in default
+HTML/PDF/DOCX output, adjacent and nested fragments, CommonMark boundaries, image
+dimensions, and Live source-above-result editing. Its browser checks preserve
+native text selection, disclosure/link actions, undo and mode continuity,
+tag/attribute completion, closing tags, literal paste and IME input, and
+verify that empty/hidden fragments remain discoverable as muted source without
+adding an empty preview. Screenshots under `.local/html-fragment-acceptance/`
+cover Chinese/English, light/dark and narrow layouts. Existing gutter, mode,
+focus and layout contracts use main-document selection to enter HTML source.
 The Mermaid/formula inner-source matrix and findings are in
 [testing-rendered-block-source.md](testing-rendered-block-source.md). Run
 `bun run test:rendered-source` for its dedicated input, boundary and appearance
