@@ -1,5 +1,6 @@
 import type { HighlighterCore } from 'shiki/core';
 import { bundledLanguages, bundledLanguagesInfo } from 'shiki/langs';
+import { mathSyntaxGrammar, withMarkdownMath } from '../adapters/mathSyntaxGrammar';
 
 export type RawVscodeTheme = {
   name: string;
@@ -332,12 +333,18 @@ async function ensureLang(
     return true;
   }
   const loader = LANG_LOADERS[lang];
+  if (lang === mathSyntaxGrammar.name) {
+    record.grammarVersion += 1;
+    await highlighter.loadLanguage(mathSyntaxGrammar);
+    record.loadedLangs.add(lang);
+    return true;
+  }
   if (!loader) {
     return false;
   }
   const grammar = (await loader()).default;
   record.grammarVersion += 1;
-  await highlighter.loadLanguage(grammar as any);
+  await highlighter.loadLanguage(lang === 'markdown' ? withMarkdownMath(grammar as any) : grammar as any);
   record.loadedLangs.add(lang);
   return true;
 }

@@ -169,6 +169,7 @@ function targetedCommands(
         script('scripts/test-appearance-webview-adapter.ts'),
         script('scripts/test-appearance-settings.ts'),
         script('scripts/test-vscode-theme-transition.ts'),
+        script('scripts/test-math-syntax-production.ts'),
         script('scripts/test-highlight.ts'),
         script('scripts/test-preview-code-highlight-layout.ts')
       ];
@@ -301,6 +302,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-shiki-empty-line-recovery.ts'),
           script('scripts/test-source-syntax-stability.ts'),
           script('scripts/test-source-syntax-first-paint.ts'),
+          script('scripts/test-math-syntax-production.ts'),
           script('scripts/test-preview-presets.ts'),
           script('scripts/test-export-links.ts'),
           script('scripts/test-export-links-browser.ts'),

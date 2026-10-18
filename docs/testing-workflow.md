@@ -496,6 +496,17 @@ targets, clicks, explicit dismissal, blur, removal, owner disposal, keyboard foc
 and stateful updates. It runs in the targeted appearance and release browser
 gates alongside the compositor timing and production control checks.
 
+## Math source highlighting
+
+`bun scripts/test-math-syntax-production.ts` checks math syntax through the production
+Source and Live editor in both themes: inline and display delimiters, all four math
+fence aliases, quoted/list containers, unfinished formulas, escaped/currency/code
+boundaries, comments, lazy language loads, multiline token batches, independent
+Source customizations and typing/undo/redo. It saves real-theme screenshots under
+`.local/test-artifacts/math-syntax/`. This contract belongs to the quick, targeted
+appearance and release browser gates. Source first-paint coverage also includes
+inline math so preparation and mode roundtrips retain its syntax colors.
+
 ## Math autocomplete
 
 `bun run test:math-completion` checks formula command contexts, replacement and
