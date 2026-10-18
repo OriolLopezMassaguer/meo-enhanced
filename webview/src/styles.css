@@ -6741,13 +6741,13 @@ body.outline-resizing .preview-frame {
 }
 
 html[data-editor-appearance='light'] .cm-editor .meo-md-html-table {
-  --meo-table-editing-outline-opacity: 1;
+  --meo-table-editing-outline-color: var(--meo-semantic-tableSelectionBorder);
 }
 
 html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table {
   --meo-semantic-tableSelectionBorder: var(--meo-ui-focus);
   --meo-table-editing-outline-width: 1.5px;
-  --meo-table-editing-outline-opacity: 1;
+  --meo-table-editing-outline-color: var(--meo-semantic-tableSelectionBorder);
 }
 
 .cm-editor .meo-md-html-table th,
@@ -6761,16 +6761,15 @@ html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table {
   white-space: normal;
 }
 
-/* Frame the full cell even when another cell makes the row taller. */
+/* Cover the collapsed grid on all four sides, including a taller row's full height. */
 .cm-editor .meo-md-html-table :is(th, td):not(.meo-md-html-table-cell-selected):has(> .meo-md-html-table-cell-content.is-editing > textarea:focus)::after {
   content: '';
   position: absolute;
   z-index: 3;
-  inset: 0;
+  inset: -0.5px;
   pointer-events: none;
-  outline: var(--meo-table-editing-outline-width, 1px) solid var(--meo-semantic-tableSelectionBorder);
-  outline-offset: calc(-1 * var(--meo-table-editing-outline-width, 1px));
-  opacity: var(--meo-table-editing-outline-opacity, 0.8);
+  box-shadow: inset 0 0 0 var(--meo-table-editing-outline-width, 1px)
+    var(--meo-table-editing-outline-color, color-mix(in srgb, var(--meo-semantic-tableSelectionBorder) 80%, var(--meo-background)));
 }
 
 .cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected,
