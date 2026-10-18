@@ -8403,6 +8403,8 @@ html[data-meo-ui-contrast='normal'] .meo-input-suggestions:not(.meo-narrow-sugge
   position: absolute;
   right: 0;
   top: 50%;
+  /* Include thin borders and glyph overhang in the existing fit measurement. */
+  padding: 2px;
   font-size: 1em;
   white-space: nowrap;
   transform: translateY(-50%) scale(var(--meo-math-preview-scale, 1));

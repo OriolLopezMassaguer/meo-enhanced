@@ -166,15 +166,25 @@ try {
         const row = node as HTMLElement, preview = row.querySelector<HTMLElement>('.meo-math-completion-preview')!;
         const formula = preview.querySelector<HTMLElement>('.katex')!, bounds = preview.getBoundingClientRect(), math = formula.getBoundingClientRect();
         const fontSize = parseFloat(getComputedStyle(row).fontSize);
+        const bordersFit = [...formula.querySelectorAll<HTMLElement>('.katex-html span')].every(element => {
+          const style = getComputedStyle(element), border = element.getBoundingClientRect();
+          if (![style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some(width => parseFloat(width) > 0)
+            || border.width === 0 || border.height === 0) return true;
+          // Thin rules need space inside the clipping edge, including at fractional zoom.
+          return border.left >= bounds.left + 0.5 && border.right <= bounds.right - 0.5
+            && border.top >= bounds.top + 0.5 && border.bottom <= bounds.bottom - 0.5;
+        });
         return { command: row.dataset.mathCommand!, label: row.querySelector('.meo-suggestion-label')!.textContent,
           height: row.getBoundingClientRect().height, expectedHeight: Math.max(28, 1.45 * fontSize + 6),
-          valid: !preview.querySelector('.katex-error'), fits: math.left >= bounds.left - 1 && math.right <= bounds.right + 1 && math.top >= bounds.top - 1 && math.bottom <= bounds.bottom + 1 };
+          valid: !preview.querySelector('.katex-error'), bordersFit,
+          fits: math.left >= bounds.left - 1 && math.right <= bounds.right + 1 && math.top >= bounds.top - 1 && math.bottom <= bounds.bottom + 1 };
       }));
       for (const row of rows) {
         const index = catalog.findIndex(item => item.label === row.command), item = catalog[index]!;
         assert.ok(item, row.command + ': belongs to the catalog');
         assert.equal(row.label, item.insert.replace(/\s*\n\s*/g, ' '), row.command + ': fixed insertion template');
         assert.ok(row.valid && row.fits, row.command + ': complete, valid preview within the row');
+        assert.ok(row.bordersFit, row.command + ': visible rules stay clear of clipping edges');
         assert.ok(Math.abs(row.height - row.expectedHeight) < 0.1, row.command + ': equal row height');
         if (capture && !seen.has(row.command)) {
           const selector = '[data-math-command=' + JSON.stringify(row.command) + ']';
