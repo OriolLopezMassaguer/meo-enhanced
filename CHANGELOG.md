@@ -7,6 +7,7 @@ Optimized project. New MEO Enhanced releases start from version 0.1.0.
 - Added in-place HTML fragment editing with syntax-colored source, live previews, visible placeholders for non-rendering fragments, and feedback for filtered content. Improved fragment rendering, inline styles, tables, images and disclosure elements.
 - Added explicit HTML and block-math source formatting with a configurable shortcut. Formatting preserves protected content, command spelling and local source structure, and remains a single undoable edit.
 - Unified HTML and formula editing frames and preview dividers. Stabilized expansion, pointer selections, final-line hit testing, copying, line numbers and viewport positions; kept source actions visible only when their source is shown.
+- Kept HTML and formula source at the selected font size, prevented edited tables from jumping during layout changes, and kept pressed Mermaid controls attached during background updates.
 - Added LaTeX completion previews and syntax coloring in Source and Live, with better handling of unfinished formulas, fenced blocks and currency-like text.
 - Added Save As and undo/redo toolbar actions, configurable shortcuts and safer recovery from document-action failures. Improved saved-copy state and link navigation within MEO.
 - Added table actions and refined cell selection, active-cell borders, responsive column widths, paste handling and caret visibility.

@@ -98,13 +98,15 @@ Markdown tables are displayed as interactive tables with support for:
 
 Images can use local paths, workspace-relative paths, Windows absolute paths, or remote URLs. Configure pasted images in **Settings → Input → Paste → Image save location**: beside the document, beside the document by file name, or a custom path (advanced). Each choice expands its own path controls when selected. The fixed ./ prefix starts in the current Markdown directory; no workspace is required. Valid changes save automatically and existing images stay in place. See [image folder settings](docs/image-storage.md).
 
-Supported safe inline and block HTML can be rendered in Live and Preview modes or switched to source for editing. The rendered output is also used for Preview, HTML export, and PDF export.
+Supported safe inline and block HTML renders in Live and Preview. In Live, click an HTML block to edit its syntax-colored source in place; visible output is previewed below the source. Standalone fragments with no visible output remain discoverable as faint source text. The format action preserves protected content and can be undone. HTML and PDF exports use the supported rendered output.
 
 ![An interactive Markdown table with images and HTML rendered in Live mode](docs/readme/en/tables-images-html.png)
 
 ### Mermaid, LaTeX, and code blocks
 
-Mermaid diagrams and block LaTeX formulas provide **Source**, **Split**, and **Preview** display options within the block. Users can switch between source, side-by-side, and rendered views and use zoom controls. Larger diagrams and formulas adapt to the available Preview and export area.
+Mermaid diagrams provide **Source**, **Split**, and **Preview** display options, with zoom, fullscreen viewing, and image/source copying.
+
+Click a block LaTeX formula to edit its syntax-colored source in the main document, with a live preview below. Completion suggestions include formula previews. Select-all and layout-formatting buttons appear while the source is shown. Larger diagrams and formulas adapt to the available Preview and export area.
 
 Code blocks support syntax highlighting, select all, copy, and folding for long code. Preview and exported documents can retain syntax colors.
 
