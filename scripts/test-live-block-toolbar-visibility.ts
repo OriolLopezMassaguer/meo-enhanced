@@ -70,6 +70,38 @@ async function main(): Promise<void> {
       && !document.querySelector('[data-meo-mermaid-rendering="true"]')
     ));
 
+    const settleMode = () => page.evaluate(async () => {
+      for (let i = 0; i < 8; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    });
+    const modeButton = '.meo-mermaid-toolbar .meo-mermaid-mode-btn';
+    const readModeFocus = () => page.$eval(modeButton, button => {
+      const style = getComputedStyle(button);
+      return { focused: document.activeElement === button, visible: button.matches(':focus-visible'),
+        shadow: style.boxShadow, outline: style.outlineStyle };
+    });
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await page.click(modeButton); await settleMode();
+      await page.click(modeButton); await settleMode();
+      await page.keyboard.press('ArrowRight');
+      await page.click(modeButton); await settleMode();
+      const pointer = await readModeFocus();
+      assert.equal(pointer.shadow, 'none', 'Mouse source-to-preview switch must not paint a focus ring: ' + JSON.stringify(pointer));
+      assert.equal(pointer.outline, 'none', 'Mouse source-to-preview switch must not paint an outline');
+      if (cycle === 0) {
+        fs.mkdirSync(path.join(repoRoot, '.local', 'probes', 'mermaid-mode-focus'), { recursive: true });
+        await (await page.$(modeButton))!.screenshot({ path: path.join(repoRoot, '.local', 'probes', 'mermaid-mode-focus', 'pointer.png') });
+      }
+      await page.keyboard.press('Tab');
+      await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+      const keyboard = await readModeFocus();
+      assert.ok(keyboard.focused && keyboard.visible, 'Keyboard return still exposes the mode button focus');
+      assert.ok(keyboard.shadow !== 'none' || keyboard.outline !== 'none', 'Keyboard mode focus remains visible');
+    }
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    if (process.argv.includes('--mode-focus-only')) {
+      console.log('Mermaid mode pointer/keyboard focus checks passed'); return;
+    }
+
     for (const appearance of ['light', 'dark'] as const) {
       await page.evaluate((theme) => {
         const style = document.documentElement.style;
