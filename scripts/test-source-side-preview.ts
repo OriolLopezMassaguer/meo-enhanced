@@ -1576,8 +1576,9 @@ try {
     `Source-to-Preview must not move after its first visible frame: ${JSON.stringify(sourceToFullPreviewFrames)}`
   );
   assert.ok(
-    Math.abs(finalFullPreviewFrame.offset as number) <= 20,
-    `Source-to-Preview must project the complex anchor after full-width layout: ${JSON.stringify(sourceToFullPreviewFrames)}`
+    lastSplitFrame.offset !== null
+      && Math.abs((finalFullPreviewFrame.offset as number) - lastSplitFrame.offset) <= 20,
+    `Source-to-Preview must retain the existing complex reading position after full-width layout: ${JSON.stringify(sourceToFullPreviewFrames)}`
   );
   const finalReadingAnchorOffset = await page.evaluate(anchor => {
     const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;

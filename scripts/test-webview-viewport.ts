@@ -476,7 +476,7 @@ async function main() {
       };
     });
     if (
-      JSON.stringify(toolbarLayout.left.slice(0, 5)) !== JSON.stringify(['outline-left', 'line-jump', 'save', 'discard', 'separator']) ||
+      JSON.stringify(toolbarLayout.left.slice(0, 8)) !== JSON.stringify(['outline-left', 'line-jump', 'save', 'saveAs', 'undo', 'redo', 'discard', 'separator']) ||
       JSON.stringify(toolbarLayout.right) !== JSON.stringify(['split-preview', 'changes', 'separator', 'find', 'outline-right', 'more']) ||
       JSON.stringify(toolbarLayout.changes) !== JSON.stringify(['changes-review-trigger', 'changes-review-panel'])
     ) {

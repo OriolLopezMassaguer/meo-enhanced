@@ -284,7 +284,7 @@ try {
     editorInert: false,
     previewHidden: true,
     previewInert: true,
-    liveImageCount: 2,
+    liveImageCount: 4,
     liveImagesReady: true,
     tableWidths: undefined,
     firstImageTop: undefined

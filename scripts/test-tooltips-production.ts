@@ -397,6 +397,9 @@ try {
   await page.keyboard.press('Tab');
   await page.mouse.move(0, 0);
   const formulaSelect = '.meo-math-copy-actions .meo-select-all-code-btn';
+  assert.equal(await page.$(formulaSelect), null, 'Reading formulas hide source selection actions');
+  await page.click('.meo-md-math-fenced-display .katex');
+  await page.waitForSelector('.meo-math-source-actions');
   await page.focus(formulaSelect);
   await page.waitForFunction(() => !!document.querySelector('.meo-tooltip.is-visible'));
   assert.equal(await page.$eval(formulaSelect, element => document.getElementById(element.getAttribute('aria-describedby')!)?.querySelector('.meo-tooltip-label')?.textContent), 'Select formula source');
