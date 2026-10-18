@@ -302,6 +302,24 @@ function annotateHtmlSourceLines(root: ParentNode, source: string, startLine: nu
   }
 }
 
+function bindHtmlReadingClick(root: HTMLElement, activate: (event: MouseEvent) => void): void {
+  let pointer: { x: number; y: number } | null = null;
+  root.addEventListener('pointerdown', event => {
+    if (event.button === 0) pointer = { x: event.clientX, y: event.clientY };
+  });
+  root.addEventListener('click', event => {
+    const start = pointer;
+    pointer = null;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
+      || !start && event.detail > 0
+      || start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4) return;
+    const selection = root.ownerDocument.getSelection();
+    if (selection && !selection.isCollapsed
+      && (root.contains(selection.anchorNode) || root.contains(selection.focusNode))) return;
+    activate(event);
+  });
+}
+
 function showHtmlComments(
   root: DocumentFragment,
   comments: readonly HtmlCommentRange[],
@@ -318,8 +336,6 @@ function showHtmlComments(
   for (const [index, comment] of comments.entries()) {
     const note = document.createElement('span');
     note.className = 'meo-md-html-comment';
-    note.setAttribute('role', 'button');
-    note.tabIndex = 0;
     note.dataset.meoHtmlSourceLine = String(sourceStartLine + source.slice(0, comment.from).split('\n').length - 1);
     note.textContent = source.slice(comment.from, comment.to);
     const openSource = (event: Event): void => {
@@ -333,10 +349,7 @@ function showHtmlComments(
       const current = currentHtmlBlock(view, source, sourceStartLine);
       if (current) enterHtmlSource(view, current, current.from + comment.from);
     };
-    note.addEventListener('click', openSource);
-    note.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') openSource(event);
-    });
+    bindHtmlReadingClick(note, openSource);
     const node = nodes[index];
     if (!node) {
       note.dataset.display = 'block';
@@ -537,6 +550,12 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
     root.dataset.meoRenderedBlockStartLine = String(this.block.startLine);
     root.dataset.meoRenderedBlockEndLine = String(this.block.endLine);
     root.classList.toggle('meo-md-html-live-result', this.editing);
+    if (this.editing) {
+      const label = document.createElement('span');
+      label.className = 'meo-md-html-result-status';
+      label.textContent = getUiStrings(view.state.facet(uiLanguageFacet)).preview;
+      root.append(label);
+    }
     const contentRoot = document.createElement('div');
     contentRoot.className = 'meo-md-html-content';
     const content = createSanitizedHtml(
@@ -581,21 +600,13 @@ class HtmlBlockWidget extends UiLanguageSensitiveWidget {
 
     // Wait until pointerup/click so native dragging can select rendered text.
     // Interactive HTML keeps its own reading action and never opens source.
-    let pointer: { x: number; y: number } | null = null;
     root.addEventListener('pointerdown', event => {
-      if (event.button !== 0) return;
-      pointer = { x: event.clientX, y: event.clientY };
-      if (this.editing) event.preventDefault();
+      if (event.button === 0 && this.editing) event.preventDefault();
     });
-    root.addEventListener('click', event => {
-      const start = pointer;
-      pointer = null;
+    bindHtmlReadingClick(root, event => {
       const target = event.target instanceof Element ? event.target : null;
-      if (this.editing || !start || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
-        || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4
+      if (this.editing
         || target?.closest('summary, button, a, input, select, textarea, .meo-md-html-comment, .meo-md-image')) return;
-      const selection = root.ownerDocument.getSelection();
-      if (selection && !selection.isCollapsed && root.contains(selection.anchorNode)) return;
       const currentBlock = currentHtmlBlock(view, this.block.source, this.block.startLine);
       if (!currentBlock) return;
       const line = Number(target?.closest<HTMLElement>('[data-meo-html-source-line]')?.dataset.meoHtmlSourceLine);
@@ -799,7 +810,7 @@ export function addHtmlContentDecorations(
 ): RenderableHtmlBlock[] {
   const editingRange = getHtmlEditingRange(state);
   const blocks = collectRenderableHtmlBlocks(state);
-  const addSourceRange = (range: HtmlEditingRange, invalid = false, invisible = false): void => {
+  const addSourceRange = (range: HtmlEditingRange, invalid = false, invisible = false, preview = false): void => {
     const startLine = state.doc.lineAt(Math.min(range.from, state.doc.length));
     const inclusiveEnd = range.to > range.from ? range.to - 1 : range.to;
     const endLine = state.doc.lineAt(Math.max(range.from, Math.min(inclusiveEnd, state.doc.length)));
@@ -808,6 +819,7 @@ export function addHtmlContentDecorations(
       const classes = [invisible ? 'meo-md-html-invisible-source' : 'meo-md-html-source-range'];
       if (!invisible && lineNumber === startLine.number) classes.push('meo-md-html-source-line', 'meo-md-html-source-range-start');
       if (!invisible && lineNumber === endLine.number) classes.push('meo-md-html-source-range-end');
+      if (preview && lineNumber === endLine.number) classes.push('meo-md-html-source-has-preview');
       if (invalid) classes.push('meo-md-html-source-invalid');
       ranges.push(Decoration.line({ class: classes.join(' ') }).range(line.from));
     }
@@ -821,7 +833,7 @@ export function addHtmlContentDecorations(
     const isEditing = editingRange && editingRange.from === block.from;
     if (isEditing) {
       editingBlockFound = true;
-      addSourceRange(editingRange);
+      addSourceRange(editingRange, false, false, block.visible);
       if (block.visible) {
         const followingLine = block.endLine < state.doc.lines ? state.doc.line(block.endLine + 1) : null;
         ranges.push(Decoration.widget({ widget: new HtmlBlockWidget(block, true), block: true, side: followingLine ? -1 : 1 })
@@ -845,10 +857,11 @@ export function addHtmlContentDecorations(
     }).range(block.from, block.to));
   }
   if (editingRange && !editingBlockFound) {
-    addSourceRange(editingRange, true);
     const source = state.doc.sliceString(editingRange.from, editingRange.to);
     const rendered = renderHtmlMarkdown(source);
-    if (isSupportedHtmlWithComments(rendered) && htmlHasVisibleContent(rendered)) {
+    const preview = isSupportedHtmlWithComments(rendered) && htmlHasVisibleContent(rendered);
+    addSourceRange(editingRange, true, false, preview);
+    if (preview) {
       const endLine = state.doc.lineAt(Math.max(editingRange.from, editingRange.to - 1));
       const followingLine = endLine.number < state.doc.lines ? state.doc.line(endLine.number + 1) : null;
       ranges.push(Decoration.widget({ widget: new HtmlBlockWidget({ ...editingRange, source,

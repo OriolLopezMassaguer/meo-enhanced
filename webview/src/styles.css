@@ -4025,7 +4025,8 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   color: var(--meo-code-action-hover-foreground);
 }
 
-.meo-math-result-status {
+.meo-math-result-status,
+.meo-md-html-result-status {
   position: absolute;
   top: 3px;
   left: 8px;
@@ -4478,11 +4479,6 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   display: block;
 }
 
-.cm-editor .meo-md-html-comment:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
-}
-
 .cm-editor .meo-md-html-content > :first-child {
   margin-top: 0;
 }
@@ -4666,23 +4662,30 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   font-family: var(--meo-font-source);
   font-size: var(--meo-active-editor-font-size);
   line-height: var(--meo-active-editor-line-height);
+  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border);
 }
 
 .cm-editor .cm-line.meo-md-html-source-range-start {
   border-radius: 6px 6px 0 0;
+  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 1px var(--meo-document-block-border);
 }
 
-.cm-editor .cm-line.meo-md-html-source-range-end {
+.cm-editor .cm-line.meo-md-html-source-range-end:not(.meo-md-html-source-has-preview) {
   border-radius: 0 0 6px 6px;
+  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 -1px var(--meo-document-block-border);
 }
 
-.cm-editor .cm-line.meo-md-html-source-range-start.meo-md-html-source-range-end {
+.cm-editor .cm-line.meo-md-html-source-range-start.meo-md-html-source-range-end:not(.meo-md-html-source-has-preview) {
   border-radius: 6px;
+  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 1px var(--meo-document-block-border), inset 0 -1px var(--meo-document-block-border);
 }
 
 .cm-editor .meo-md-html-live-result {
-  padding: 0.5em 0;
+  padding: 24px 8px 12px;
+  background: var(--meo-code-background);
   border-top: 1px solid var(--meo-document-separator, var(--meo-border));
+  border-radius: 0 0 6px 6px;
+  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 -1px var(--meo-document-block-border);
 }
 
 .cm-editor .cm-line.meo-md-html-invisible-source {
@@ -4694,7 +4697,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor .meo-md-html-invisible-source-text,
 .cm-editor .meo-md-html-invisible-source-text * {
-  color: var(--meo-ui-text-muted, var(--meo-token-comment-color)) !important;
+  color: var(--meo-token-comment-color, #676f7d) !important;
   -webkit-text-fill-color: currentColor !important;
   font-style: normal !important;
   font-weight: normal !important;

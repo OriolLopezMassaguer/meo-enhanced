@@ -183,14 +183,31 @@ async function main(): Promise<void> {
       const result = document.querySelector<HTMLElement>('.meo-md-html-live-result');
       return { source: source?.textContent, count: document.querySelectorAll('.meo-md-html-source-range').length,
         top: source?.getBoundingClientRect().top, sourceBottom: last?.getBoundingClientRect().bottom,
+        sourceBackground: source && getComputedStyle(source).backgroundColor,
+        resultBackground: result && getComputedStyle(result).backgroundColor,
+        resultLabel: result?.querySelector('.meo-md-html-result-status')?.textContent,
+        joinedEnd: last?.classList.contains('meo-md-html-source-has-preview'),
+        sourceLeft: source?.getBoundingClientRect().left, sourceWidth: source?.getBoundingClientRect().width,
+        resultLeft: result?.getBoundingClientRect().left, resultWidth: result?.getBoundingClientRect().width,
+        resultBottom: result?.getBoundingClientRect().bottom,
         previewTop: result?.getBoundingClientRect().top, preview: result?.textContent };
     });
     assert.ok(editing.source?.includes('<p id="center"'));
     assert.equal(editing.count, 4);
     assert.ok(editing.preview?.includes('English'));
     assert.ok(editing.previewTop! >= editing.sourceBottom! - 1);
+    assert.ok(editing.previewTop! <= editing.sourceBottom! + 1, 'Source and result form a continuous editing surface');
+    assert.equal(editing.resultBackground, editing.sourceBackground, 'Source and result share the block surface');
+    assert.equal(editing.resultLabel, '预览');
+    assert.equal(editing.joinedEnd, true, 'The source bottom joins the result instead of closing a separate box');
+    assert.ok(Math.abs(editing.sourceLeft! - editing.resultLeft!) < 1 && Math.abs(editing.sourceWidth! - editing.resultWidth!) < 1,
+      'Source and result share the same outer edges');
     assert.ok(Math.abs(editing.top! - beforeTop) < 3, 'Opening source keeps its reading anchor');
     await page.screenshot({ path: path.join(artifacts, 'light-editing.png') });
+    await page.screenshot({ path: path.join(artifacts, 'html-editing-surface.png'), clip: {
+      x: editing.sourceLeft! - 2, y: editing.top! - 2,
+      width: editing.sourceWidth! + 4, height: editing.resultBottom! - editing.top! + 4
+    } });
     await select(page, 'English', 'English'.length);
     await page.keyboard.type('X');
     await frames(page);
@@ -335,6 +352,8 @@ async function main(): Promise<void> {
       await frames(page);
       await page.screenshot({ path: path.join(artifacts, `${appearance}-${language}-reading.png`) });
       await select(page, 'English', 2);
+      assert.equal(await page.$eval('.meo-md-html-result-status', node => node.textContent),
+        language === 'zh-CN' ? '预览' : 'Preview');
       await page.screenshot({ path: path.join(artifacts, `${appearance}-${language}-editing.png`) });
     }
     assert.deepEqual(errors, [], 'No runtime errors');

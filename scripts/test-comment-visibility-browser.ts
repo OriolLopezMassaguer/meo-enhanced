@@ -33,6 +33,8 @@ try {
         uiLanguage: 'en',
         onApplyChanges() {}
       });
+      const editor = (window as any).__commentEditor;
+      editor.setText(editor.getText() + '\n\n<div id="invisible-comment-color"></div>\n\n<div id="inline-comment-container"><p>Before <!-- container inline note --> after.</p></div>', true);
     });
     await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-block'))
       .some(block => block.textContent?.includes('First paragraph')));
@@ -56,7 +58,10 @@ try {
     for (const appearance of ['light', 'dark']) {
       await page.evaluate(appearance => {
         document.documentElement.dataset.editorAppearance = appearance;
+        (window as any).HtmlContentHarness.applyUiTheme(appearance, true);
       }, appearance);
+      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.meo-md-html-invisible-source-text')!).color),
+        await page.$eval('.meo-md-html-comment', element => getComputedStyle(element).color), `${appearance}: invisible HTML uses the document comment color`);
       const comments = await page.$$('.meo-md-html-comment');
       const observations: Array<{ text: string | null; cursor: string; tooltip: string | null }> = [];
       for (const comment of comments) {
@@ -112,10 +117,12 @@ try {
       const sourceStyle = getComputedStyle(sourceComment!);
       const htmlStyle = getComputedStyle(htmlComment);
       const inlineHtmlStyle = getComputedStyle(inlineHtmlComment);
+      const invisibleStyle = getComputedStyle(document.querySelector('.meo-md-html-invisible-source-text')!);
       return {
         source: { color: sourceStyle.color, fontStyle: sourceStyle.fontStyle },
         html: { color: htmlStyle.color, fontStyle: htmlStyle.fontStyle },
         inlineHtml: { color: inlineHtmlStyle.color, fontStyle: inlineHtmlStyle.fontStyle, fontWeight: inlineHtmlStyle.fontWeight },
+        invisible: { color: invisibleStyle.color, fontStyle: invisibleStyle.fontStyle },
         plain: htmlStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && htmlStyle.borderLeftWidth === '0px'
       };
     });
@@ -123,6 +130,10 @@ try {
     assert.deepEqual({ color: commentStyles.inlineHtml.color, fontStyle: commentStyles.inlineHtml.fontStyle }, commentStyles.source);
     assert.equal(commentStyles.inlineHtml.fontWeight, '400');
     assert.equal(commentStyles.plain, true);
+    const feedback: string[] = [];
+    if (commentStyles.invisible.color !== commentStyles.source.color) feedback.push(
+      `Invisible HTML must use the comment color: ${commentStyles.invisible.color} versus ${commentStyles.source.color}`);
+    assert.equal(commentStyles.invisible.fontStyle, 'normal');
     const structured = await page.evaluate(() => {
       const table = document.querySelector('.meo-md-html-block table');
       const list = document.querySelector('.meo-md-html-block ul');
@@ -147,6 +158,38 @@ try {
       .some(block => block.textContent?.includes('Unsupported'))), false);
     assert.match(await page.$eval('.cm-content', element => element.textContent ?? ''), /<custom-html>/);
     assert.equal((await page.$$('.meo-md-html-warning')).length, 1);
+    await page.bringToFront();
+    await page.evaluate(() => (window as any).__commentEditor.view.focus());
+    for (const selector of ['#inline-comment-container .meo-md-html-comment', '.meo-md-html-block .meo-md-html-comment[data-display="block"]']) {
+      const note = (await page.$(selector))!;
+      await note.evaluate(element => element.scrollIntoView({ block: 'center' }));
+      await page.evaluate(async () => { for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame); });
+      const point = await page.$eval(selector, element => {
+        const range = document.createRange(); range.selectNodeContents(element);
+        const box = Array.from(range.getClientRects()).find(rect => rect.width > 4 && rect.height > 0)!;
+        const x = box.left + 2, y = box.top + box.height / 2;
+        return { x: box.left, y, width: box.width,
+          hit: document.elementFromPoint(x, y)?.closest('.meo-md-html-comment')?.textContent };
+      });
+      assert.ok(point.hit, `The native drag must hit its comment: ${JSON.stringify(point)}`);
+      await page.mouse.move(point.x + 2, point.y); await page.mouse.down();
+      await page.mouse.move(point.x + Math.min(point.width - 2, 90), point.y, { steps: 8 });
+      await page.mouse.up();
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      const drag = await page.evaluate(() => ({
+        selected: document.getSelection()?.toString().trim(),
+        logicalSelection: (window as any).__commentEditor.view.state.selection.main.toJSON(),
+        opened: Boolean(document.querySelector('.meo-md-html-source-range'))
+      }));
+      if (drag.opened || !drag.selected)
+        feedback.push(`Comment drag must retain reading selection: ${selector}: ${JSON.stringify(drag)}`);
+      await page.evaluate(() => {
+        const editor = (window as any).__commentEditor;
+        editor.view.dispatch({ selection: { anchor: 0 } });
+        document.getSelection()?.removeAllRanges();
+      });
+    }
+    assert.deepEqual(feedback, [], 'HTML comment interaction and invisible-source color regressions');
     await page.click('.meo-md-html-strong .meo-md-html-comment');
     assert.equal(await page.evaluate(() => {
       const editor = (window as any).__commentEditor;
