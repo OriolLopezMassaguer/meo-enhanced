@@ -506,6 +506,9 @@ Source customizations and typing/undo/redo. It saves real-theme screenshots unde
 `.local/test-artifacts/math-syntax/`. This contract belongs to the quick, targeted
 appearance and release browser gates. Source first-paint coverage also includes
 inline math so preparation and mode roundtrips retain its syntax colors.
+Currency checks compare every numeric run with the prose foreground, including
+Chinese text and a later escaped dollar on the same line. Closed numeric formulas
+and explicit unfinished math must retain their highlighting.
 
 ## Math autocomplete
 

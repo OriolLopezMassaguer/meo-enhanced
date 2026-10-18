@@ -117,7 +117,11 @@ export function getMathCompletionBody(state: EditorState, position: number): Mat
   // written to the document or shared with preview/export's complete syntax.
   const inline = collectLatexMathRanges(before + '$', { excludedRanges: excluded.map(range => ({ from: range.from - line.from, to: range.to - line.from })) })
     .find(range => range.to === before.length + 1 && range.mode === 'inline');
-  if (inline && !/^\d+(?:[.,]\d+)?\s+[A-Za-z]{2}/.test(inline.content)) {
+  // A virtual closer must not turn a price into math. Numeric starts need an
+  // explicit TeX cue or operator until the author supplies a real closing $.
+  const ambiguousNumber = inline && /^[+-]?(?:\d|\.\d)/.test(inline.content)
+    && !/\\(?!\$)|[_^{}=+*/<>-]/.test(inline.content.replace(/^[+-]/, ''));
+  if (inline && !ambiguousNumber && !/^\d+(?:[.,]\d+)?\s+[A-Za-z]{2}/.test(inline.content)) {
     return { from: line.from + inline.from + 1, to: line.to, display: false, prefix: '' };
   }
   const prefix = parseBlockLinePrefix(line.text, state.tabSize).prefix;

@@ -94,6 +94,31 @@ try {
     assert.notEqual(await color('alpha'), 'rgb(0, 102, 204)', step + ': escaped dollars stay literal');
     assert.equal(await page.$$eval('.meo-math-token', nodes => nodes.length), 0, step + ': ordinary code/currency are not Live math');
 
+    for (const text of ['价格 $5 和 $10；转义美元符号：\\$5。', '$10']) {
+      step = mode + '/' + theme.type + '/currency/' + text;
+      await prepare(mode, text, text.length, theme);
+      const receipt = await page.evaluate(async () => {
+        await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const editor = (window as any).editor, view = editor.view;
+        return { foreground: getComputedStyle(view.contentDOM).color,
+          digits: [...editor.getText().matchAll(/\d+/g)].map((match: RegExpMatchArray) => {
+            const dom = view.domAtPos(match.index! + 1);
+            const element = dom.node.nodeType === Node.TEXT_NODE ? dom.node.parentElement : dom.node;
+            return { text: match[0], color: getComputedStyle(element).color };
+          }), mathTokens: view.dom.querySelectorAll('.meo-math-token').length };
+      });
+      assert.equal(receipt.mathTokens, 0, step + ': currency is not unfinished formula source');
+      for (const digit of receipt.digits) assert.equal(digit.color, receipt.foreground, step + ': currency digits keep prose color');
+    }
+    await prepare(mode, '$10$', 2, theme);
+    await expectColor('10', 'rgb(0, 136, 68)');
+    if (mode === 'live') {
+      for (const text of ['$2+3', '$2+\\fr']) {
+        await prepare(mode, text, text.length, theme);
+        await expectColor('2', 'rgb(0, 136, 68)');
+      }
+    }
+
     step = mode + '/' + theme.type + '/typing and history';
     await prepare(mode, '$\\alph$', 6, theme);
     await expectColor('alph', 'rgb(0, 102, 204)');
@@ -145,6 +170,11 @@ try {
     await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => setTimeout(resolve, 200)); });
     await page.screenshot({ path: artifacts + '/' + theme.type + '-' + mode + '.png' });
   }
+  const currencySample = '## 普通文字与代码对照\n\n价格 $5 和 $10；转义美元符号：\\$5。\n\n下面是行内代码，可以与真正的公式对照：`$\\frac{x_1}{2} + \\alpha$`。';
+  await prepare('live', currencySample, currencySample.indexOf('\n\n下面'), darkPlus, false);
+  await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+  assert.equal(await page.$$eval('.meo-math-token', nodes => nodes.length), 0, 'Screenshot currency/code must remain literal');
+  await page.screenshot({ path: artifacts + '/currency-dark-live.png', clip: { x: 0, y: 0, width: 980, height: 230 } });
   assert.deepEqual(errors, [], 'No tokenizer or editor errors');
   console.log('Math syntax: Source/Live, both themes, every math form, containers, unfinished input, literal boundaries, independent palettes and history passed');
 } finally { await closeTestBrowser(browser); }
