@@ -333,7 +333,7 @@ async function main() {
       mode: 'Markdown 模式',
       modeLabels: ['实时', '源码', '预览'],
       selectionMenu: '行内 Markdown 格式',
-      selectionLabels: ['加粗', '斜体', '删除线', '高亮', '行内代码', '链接', 'Wiki 链接', '按键样式', '下划线'],
+      selectionLabels: ['加粗', '斜体', '删除线', '高亮', '行内代码', '链接', 'Wiki 链接', '按键样式', '下划线', '添加修订批注'],
       scrollToTop: ['回到顶部', '回到顶部']
     })) {
       throw new Error(`Resolved UI language did not project into the current Webview: ${JSON.stringify(chineseChrome)}`);
@@ -896,7 +896,7 @@ async function main() {
     if (
       JSON.stringify(moreToolsLayout.labels) !== JSON.stringify([
         '显示行号', '折叠长代码块', '限制宽度', '粗体文字着色', '标题加粗',
-        '高亮 CriticMarkup', '表格浮动表头'
+        '高亮 CriticMarkup', '修订批注', '表格浮动表头'
       ]) ||
       moreToolsLayout.topHeading !== '文档显示' ||
       moreToolsLayout.languageAutoLabel !== '自动' ||

@@ -7,6 +7,7 @@ import { activateShikiCodeHighlighting, setShikiTheme } from '../webview/src/hel
 import { EditorView } from '@codemirror/view';
 import { shikiDocumentHighlight } from '../webview/src/helpers/shikiDecorations';
 import { setCriticCommentAuthor } from '../webview/src/helpers/criticMarkupReview';
+import { createCriticCommentsPanel } from '../webview/src/helpers/criticMarkupComments';
 
 function createStandaloneHighlightEditor(parent: HTMLElement, text: string, language = 'typescript') {
   const view = new EditorView({ parent, doc: text, extensions: [shikiDocumentHighlight(language)] });
@@ -24,10 +25,12 @@ function createStandaloneHighlightEditor(parent: HTMLElement, text: string, lang
     setShikiTheme: typeof setShikiTheme;
     createStandaloneHighlightEditor: typeof createStandaloneHighlightEditor;
     setCriticCommentAuthor: typeof setCriticCommentAuthor;
+    createCriticCommentsPanel: typeof createCriticCommentsPanel;
   };
 }).HighlightHarness = {
   createEditor,
   setCriticCommentAuthor,
+  createCriticCommentsPanel,
   createSelectionMenu,
   createCodePaletteWebviewAdapter,
   applyBuiltInVisualBaseline,

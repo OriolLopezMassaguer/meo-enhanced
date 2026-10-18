@@ -13,13 +13,14 @@ import { createEditingPreferencesTransport } from './adapters/editingPreferences
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
 import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info, Highlighter } from 'lucide';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info, Highlighter, MessageSquareText } from 'lucide';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses, initializeWikiLinkHandling, collectWikiLinkTargets, requestWikiLinkStatuses, scheduleWikiLinkStatusRefresh, setWikiLinkRefreshContext, cancelPendingWikiStatusRefresh, handleResolvedWikiLinks } from './helpers/wikiLinks';
 import { initializeLocalLinkHandling, requestLocalLinkStatuses, scheduleLocalLinkStatusRefresh, setLocalLinkRefreshContext, cancelPendingLocalLinkStatusRefresh, handleResolvedLocalLinks } from './helpers/localLinks';
 import { setCriticCommentAuthor } from './helpers/criticMarkupReview';
+import { createCriticCommentsPanel } from './helpers/criticMarkupComments';
 import { setGitDiffLineHighlightsEnabled } from './helpers/gitDiffLineHighlights';
 import { applyBuiltInVisualBaseline, applyUiVisualBaseline } from './helpers/theme';
 import { setShikiTheme } from './helpers/shikiHighlighter';
@@ -355,6 +356,14 @@ criticMarkupBtn.setAttribute('role', 'menuitemcheckbox');
 criticMarkupBtn.setAttribute('aria-checked', 'false');
 appendMoreToolsOptionContent(criticMarkupBtn, Highlighter, activeUiStrings.criticMarkup);
 
+const criticCommentsBtn = document.createElement('button');
+criticCommentsBtn.type = 'button';
+criticCommentsBtn.className = 'more-tools-option';
+criticCommentsBtn.dataset.action = 'criticComments';
+criticCommentsBtn.setAttribute('role', 'menuitem');
+criticCommentsBtn.disabled = true;
+appendMoreToolsOptionContent(criticCommentsBtn, MessageSquareText, activeUiStrings.criticComments);
+
 const sourceLineNumbersBtn = document.createElement('button');
 sourceLineNumbersBtn.type = 'button';
 sourceLineNumbersBtn.className = 'more-tools-option more-tools-toggle-option is-active';
@@ -534,6 +543,7 @@ const setCriticMarkupEnabled = (enabled: boolean, { post = true }: PostUpdateOpt
   document.documentElement.classList.toggle('meo-critic-markup', nextEnabled);
   criticMarkupBtn.classList.toggle('is-active', nextEnabled);
   criticMarkupBtn.setAttribute('aria-checked', nextEnabled ? 'true' : 'false');
+  criticCommentsBtn.disabled = !nextEnabled;
   if (post && changed) vscode.postMessage({ type: 'setCriticMarkup', enabled: nextEnabled });
 };
 
@@ -1229,6 +1239,7 @@ const applyUiLanguage = (language: UiLanguage): void => {
   liveStrongColoringBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.strongColoring;
   boldHeadingsBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.boldHeadings;
   criticMarkupBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.criticMarkup;
+  criticCommentsBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.criticComments;
   longCodeBlockFoldingBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.foldLongCodeBlocks;
   largeDocumentOptimizationBtn.querySelector<HTMLElement>('.more-tools-option-label')!.textContent = strings.largeDocumentStartup;
   largeDocumentTooltip?.setContent({ text: strings.largeDocumentStartupHint, kind: 'description' });
@@ -1340,6 +1351,7 @@ moreToolsPanel.append(
   liveStrongColoringBtn,
   boldHeadingsBtn,
   criticMarkupBtn,
+  criticCommentsBtn,
   tableStickyHeaderBtn,
   interfaceSettingsHeading,
   editorAppearanceRow,
@@ -4044,6 +4056,19 @@ boldHeadingsBtn.addEventListener('click', () => {
 });
 criticMarkupBtn.addEventListener('click', () => {
   setCriticMarkupEnabled(!criticMarkupEnabled);
+});
+const criticCommentsPanel = createCriticCommentsPanel({
+  getView: () => (editor?.view as import('@codemirror/view').EditorView | undefined) ?? null,
+  getStrings: () => {
+    const strings = getUiStrings(activeUiLanguage);
+    return { title: strings.criticComments, empty: strings.criticCommentsEmpty };
+  }
+});
+document.body.append(criticCommentsPanel.element);
+criticCommentsBtn.addEventListener('click', () => {
+  setMoreToolsVisible(false);
+  if (!criticMarkupEnabled || getActiveEditorMode() === 'preview') return;
+  criticCommentsPanel.open();
 });
 sourceLineNumbersBtn.addEventListener('click', () => {
   const nextMode = pendingSourceLineNumbers === 'off' ? previousVisibleSourceLineNumbers : 'off';

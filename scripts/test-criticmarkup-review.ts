@@ -159,6 +159,44 @@ try {
   assert.equal(comment.cursorContext, '8 @Oriol: <<}', 'cursor sits in the note, before the closing delimiter');
   assert.ok(comment.withoutSelection.startsWith('{>>#c09 <<}Pick '), `no selection, no author: ${comment.withoutSelection}`);
   assert.deepEqual(comment.buttonHiddenWhenOff, { hidden: true, shown: true }, 'toolbar button follows the checkbox');
+
+  // Comment list: one row per comment (a highlight glued to it counts as its anchor), click jumps.
+  const list = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
+    const text = ['Alpha {==anchor==}{>>#c01 @Oriol: first note<<} beta.', '', 'Gamma {>>#c02 loose note<<} delta.', '', 'Skip `{>>#c03 code<<}` here.'].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'Comments', empty: 'None' }) });
+    document.body.append(panel.element);
+    panel.open();
+    const rows = Array.from(panel.element.querySelectorAll('.meo-critic-comments-row')).map((row: any) => ({
+      meta: row.querySelector('.meo-critic-comments-meta').textContent, body: row.querySelector('.meo-critic-comments-body').textContent
+    }));
+    (panel.element.querySelectorAll('.meo-critic-comments-row')[1] as HTMLElement).click();
+    await settle();
+    const selection = editor.view.state.selection.main;
+    const selected = text.slice(selection.from, selection.to);
+    const closed = panel.element.hidden;
+    const first = text.indexOf('{==anchor');
+    (panel.element.querySelectorAll('.meo-critic-comments-row')[0] as HTMLElement)?.click();
+    panel.open();
+    (panel.element.querySelectorAll('.meo-critic-comments-row')[0] as HTMLElement).click();
+    const firstSelection = editor.view.state.selection.main;
+    editor.setText('No marks at all.');
+    panel.open();
+    const empty = panel.element.querySelector('.meo-critic-comments-empty')?.textContent;
+    panel.element.remove();
+    editor.destroy();
+    return { rows, selected, closed, firstFrom: firstSelection.from === first, empty };
+  });
+  assert.deepEqual(list.rows, [
+    { meta: '#c01 @Oriol L1', body: 'first note' },
+    { meta: '#c02 L3', body: 'loose note' }
+  ], 'comments are listed in order, code excluded');
+  assert.equal(list.selected, '{>>#c02 loose note<<}', 'a row selects its comment');
+  assert.equal(list.closed, true, 'the panel closes after a jump');
+  assert.equal(list.firstFrom, true, 'a glued comment selects from its highlight');
+  assert.equal(list.empty, 'None', 'empty state');
 } finally {
   await browser.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
