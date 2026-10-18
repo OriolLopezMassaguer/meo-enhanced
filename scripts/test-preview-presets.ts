@@ -195,6 +195,6 @@ for (const preset of previewPresets) {
   });
   assert.equal(padding.at(-1), '0', `${preset.id}: screen padding does not double PDF margins`);
   const html = await exportRuntime.renderExportHtmlDocument({ ...options, target: 'html' });
-  assert.ok(!html.htmlDocument.includes('@page { size: A4; margin: 20mm; }'), 'HTML retains its screen layout');
+  assert.ok(!html.htmlDocument.includes('@page { size: A4; margin: 20mm;'), 'HTML retains its screen layout');
 }
 console.log('Preview preset rendering, capabilities and protocol tests passed.');
