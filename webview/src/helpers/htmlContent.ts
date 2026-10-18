@@ -12,7 +12,7 @@ import type { SyntaxNodeRef, Tree } from '@lezer/common';
 import { isolateHistory } from '@codemirror/commands';
 import { parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
-import { createElement, AlertTriangle, IndentIncrease, Check } from 'lucide';
+import { createElement, AlertTriangle, ListTree, Check } from 'lucide';
 import {
   getHtmlRootTagName,
   isSafeHtmlUrl,
@@ -354,8 +354,10 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
     warning.dataset.tooltip = issues.length ? htmlIssueDescription(view, issues) : '';
     warning.setAttribute('aria-label', warning.dataset.tooltip);
     const button = root.querySelector<HTMLButtonElement>('button')!;
+    button.querySelector('.meo-format-html-label')!.textContent = getUiStrings(view.state.facet(uiLanguageFacet)).formatHtmlLabel;
     if (!button.disabled) {
       button.dataset.tooltip = getUiStrings(view.state.facet(uiLanguageFacet)).formatHtml;
+      button.dataset.tooltipCommand = 'formatHtml';
       button.setAttribute('aria-label', button.dataset.tooltip);
     }
   }
@@ -369,7 +371,13 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'meo-format-html-btn';
-    button.append(createElement(IndentIncrease, { width: 14, height: 14, 'aria-hidden': 'true' }));
+    button.dataset.tooltipLiveUpdate = 'true';
+    const icon = document.createElement('span');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.append(createElement(ListTree, { width: 14, height: 14 }));
+    const label = document.createElement('span');
+    label.className = 'meo-format-html-label';
+    button.append(icon, label);
     root.append(warning, button);
     root.addEventListener('mousedown', event => { event.preventDefault(); event.stopPropagation(); });
     let disposed = false, resetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -377,6 +385,8 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
     button.addEventListener('click', async event => {
       event.preventDefault(); event.stopPropagation();
       clearTimeout(resetTimer);
+      delete button.dataset.tooltipCommand;
+      delete button.dataset.tooltipShortcut;
       button.disabled = true;
       button.setAttribute('aria-busy', 'true');
       button.dataset.tooltip = getUiStrings(view.state.facet(uiLanguageFacet)).formattingHtml;
@@ -391,11 +401,11 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
         changed: strings.htmlFormatChanged, unavailable: strings.htmlFormatUnavailable };
       button.dataset.tooltip = messages[outcome];
       button.setAttribute('aria-label', messages[outcome]);
-      button.replaceChildren(createElement(outcome === 'formatted' || outcome === 'unchanged' ? Check : AlertTriangle,
+      icon.replaceChildren(createElement(outcome === 'formatted' || outcome === 'unchanged' ? Check : AlertTriangle,
         { width: 14, height: 14, 'aria-hidden': 'true' }));
       resetTimer = setTimeout(() => {
         if (disposed) return;
-        button.replaceChildren(createElement(IndentIncrease, { width: 14, height: 14, 'aria-hidden': 'true' }));
+        icon.replaceChildren(createElement(ListTree, { width: 14, height: 14 }));
         this.refresh(root, view);
       }, 2500);
     });

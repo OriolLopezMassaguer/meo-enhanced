@@ -35,7 +35,8 @@ adding an empty preview. Screenshots under `.local/html-fragment-acceptance/`
 cover Chinese/English, light/dark and narrow layouts. Existing gutter, mode,
 focus and layout contracts use main-document selection to enter HTML source.
 The same contract verifies explicit HTML formatting and its single undo/redo,
-source-mode keyboard entry, localized filtered-content details, preserved
+Live/Source keyboard entry with reassigned and cleared bindings, unified tooltip
+shortcut labels, localized filtered-content details, preserved
 whitespace, invalid input and late-result protection. Its trusted-wheel scenario
 places rendered HTML above the viewport and checks every frame of HTML and math
 expansion, preventing unrelated reading-anchor restoration from shifting earlier content.

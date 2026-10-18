@@ -151,6 +151,17 @@ async function checkSourceExpansionAnchor(page: Page): Promise<void> {
 }
 
 async function checkHtmlEditingTools(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const g = window as any;
+    g.__htmlShortcuts = {};
+    g.__htmlTooltip = g.HtmlContentHarness.bindTooltips(document.body, {
+      shortcutForCommand: (command: string) => g.HtmlContentHarness.effectiveShortcuts(g.__htmlShortcuts, 'other')[command]?.[0]
+    });
+    document.addEventListener('keydown', event => g.HtmlContentHarness.handleEditorShortcut(event, {
+      editor: g.__htmlEditor, editableMode: 'live', editorSurfaceActive: true, shortcuts: g.__htmlShortcuts,
+      platform: 'other', requestSave() {}, openFindPanel() {}, requestMode() {}
+    }), true);
+  });
   const fragment = '<div id="format-target" class="custom" onclick="alert(1)" style="color:red;padding:8px;border:1px solid red;opacity:2"><p>Hello <strong>world</strong>.</p><a href="javascript:alert(1)">link</a></div>';
   const text = `Intro.\n\n${fragment}\n\nAfter unchanged.`;
   for (const language of ['zh-CN', 'en']) {
@@ -159,6 +170,11 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
       (window as any).__htmlEditor.setText(text, true);
     }, { text, language });
     await select(page, 'format-target', 3);
+    assert.equal(await page.$eval('.meo-format-html-label', e => e.textContent), language === 'zh-CN' ? '格式化' : 'Format');
+    await page.hover('.meo-format-html-btn');
+    await page.waitForSelector('.meo-tooltip:not([hidden])');
+    assert.equal(await page.$eval('.meo-format-html-btn', e => (e as HTMLElement).dataset.tooltipShortcut), 'Alt + Shift + F');
+    assert.doesNotMatch(await page.$eval('.meo-format-html-btn', e => (e as HTMLElement).dataset.tooltip!), /[（(]/);
     const tooltip = await page.$eval('.meo-md-html-source-actions .meo-md-html-warning', element => ({
       hidden: (element as HTMLElement).hidden, label: (element as HTMLElement).dataset.tooltip
     }));
@@ -224,6 +240,42 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
   await page.keyboard.up('Shift'); await page.keyboard.up('Alt');
   await page.waitForFunction(text => (window as any).__htmlEditor.getText() !== text, {}, text);
   assert.ok((await page.evaluate(() => (window as any).__htmlEditor.getText())).endsWith('After unchanged.'));
+  for (const mode of ['live', 'source']) {
+    await page.evaluate(async ({ text, mode }) => {
+      const g = window as any;
+      await g.__htmlEditor.setMode(mode);
+      g.__htmlEditor.setText(text, true);
+      g.__htmlShortcuts = { formatHtml: ['Ctrl + Alt + L'] };
+      g.__htmlTooltip.refreshShortcuts();
+    }, { text, mode });
+    await select(page, 'format-target', 3);
+    await page.keyboard.down('Alt'); await page.keyboard.down('Shift'); await page.keyboard.press('f');
+    await page.keyboard.up('Shift'); await page.keyboard.up('Alt'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), text, `${mode}: removed default cannot fall through to a local keymap`);
+    if (mode === 'live') {
+      await page.hover('.meo-format-html-btn');
+      await page.waitForSelector('.meo-tooltip:not([hidden])');
+      assert.equal(await page.$eval('.meo-format-html-btn', e => (e as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Alt + L');
+      await page.screenshot({ path: path.join(artifacts, 'format-html-custom-shortcut.png') });
+    }
+    await page.keyboard.down('Control'); await page.keyboard.down('Alt'); await page.keyboard.press('l');
+    await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+    await page.waitForFunction(text => (window as any).__htmlEditor.getText() !== text, {}, text);
+    await page.evaluate(text => {
+      const g = window as any;
+      g.__htmlEditor.setText(text, true); g.__htmlShortcuts = { formatHtml: [] }; g.__htmlTooltip.refreshShortcuts();
+    }, text);
+    await select(page, 'format-target', 3);
+    await page.keyboard.down('Alt'); await page.keyboard.down('Shift'); await page.keyboard.press('f');
+    await page.keyboard.up('Shift'); await page.keyboard.up('Alt'); await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), text, `${mode}: clearing the binding disables its default`);
+    if (mode === 'live') {
+      await page.hover('.meo-format-html-btn');
+      assert.equal(await page.$eval('.meo-format-html-btn', e => (e as HTMLElement).dataset.tooltipShortcut), undefined);
+      await page.click('.meo-format-html-btn');
+      await page.waitForFunction(text => (window as any).__htmlEditor.getText() !== text, {}, text);
+    }
+  }
   await page.evaluate(async () => { await (window as any).__htmlEditor.setMode('live'); });
 }
 

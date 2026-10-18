@@ -2601,11 +2601,7 @@ export function createEditor({
       ),
       markdownInlineStyleTheme,
       sourceSyntaxPreparation,
-      createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags, view => {
-        if (!getHtmlEditingRange(view.state)) return false;
-        void formatActiveHtmlSource(view);
-        return true;
-      }),
+      createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument })] : sourceMode()),
       searchQueryField,
       searchAnchorField,
@@ -3981,6 +3977,11 @@ export function createEditor({
     },
     executeCommand(command: EditorCommandId): boolean {
       if (view.state.readOnly) return false;
+      if (command === 'formatHtml') {
+        if (getActiveTableInput() || !getHtmlEditingRange(view.state)) return false;
+        void formatActiveHtmlSource(view);
+        return true;
+      }
       if (command === 'lineComment' || command === 'selectionComment') {
         const input = getActiveTableInput();
         if (!input) return runCommentCommand(command === 'lineComment');

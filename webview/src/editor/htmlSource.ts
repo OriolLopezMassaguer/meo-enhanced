@@ -7,8 +7,7 @@ import { scanHtmlTags, splitHtmlBlockFragments } from '../../../src/foundation/h
 /** HTML assistance shares the main editor's document, selection and history. */
 export function createHtmlSourceEditing(
   rangeAt: (state: EditorState) => { from: number; to: number } | null,
-  tagNames: ReadonlySet<string>,
-  format: (view: EditorView) => boolean
+  tagNames: ReadonlySet<string>
 ) {
   return [
     Prec.highest(EditorView.inputHandler.of((view, from, to, text) => {
@@ -50,10 +49,10 @@ export function createHtmlSourceEditing(
       override: [context => htmlLanguage.isActiveAt(context.state, context.pos, -1)
         ? htmlCompletionSource(context) : null]
     }),
-    Prec.highest(keymap.of([{ key: 'Alt-Shift-f', run: format }, ...completionKeymap.map(binding => ({
+    Prec.highest(keymap.of(completionKeymap.map(binding => ({
       ...binding,
       run: (view: EditorView) => htmlLanguage.isActiveAt(view.state, view.state.selection.main.head, -1)
         ? binding.run?.(view) ?? false : false
-    }))]))
+    }))))
   ];
 }

@@ -994,6 +994,32 @@ try {
     }
   }
   assert.ok(height > 500);
+  const htmlText = 'Before.\n\n<div><p>Format me</p><p>Second</p></div>\n\nAfter.';
+  await page.close(); page = await browser.newPage(); page.on('pageerror', error => errors.push(String(error)));
+  await openFixture(htmlText, 'live');
+  await page.waitForSelector('.cm-editor');
+  await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
+  await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('Format me') + 2 } }); view.focus();
+  });
+  await page.waitForSelector('.meo-format-html-btn');
+  await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
+  await page.click('.settings-tab[data-tab="shortcuts"]');
+  await page.click('.settings-search'); await page.keyboard.type('整理代码');
+  assert.deepEqual(await page.$$eval('.settings-item[data-command]', rows => rows.map(e => (e as HTMLElement).dataset.command)), ['formatHtml']);
+  await page.click('[data-edit-command="formatHtml"]');
+  await page.keyboard.down('Alt'); await chord('l'); await page.keyboard.up('Alt'); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (window as any).__preferences.shortcuts.formatHtml?.[0] === 'Ctrl + Alt + L');
+  await closeSettings('button');
+  assert.equal(await page.$eval('.meo-format-html-btn', e => (e as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Alt + L');
+  await page.keyboard.down('Alt'); await page.keyboard.down('Shift'); await page.keyboard.press('f');
+  await page.keyboard.up('Shift'); await page.keyboard.up('Alt');
+  assert.equal(await page.evaluate(() => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString()), htmlText);
+  await page.keyboard.down('Alt'); await chord('l'); await page.keyboard.up('Alt');
+  await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() !== text, {}, htmlText);
+  await chord('z');
+  await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() === text, {}, htmlText);
   console.log('Bilingual settings search passed (' + searchChecks + ' title, alias, option and shortcut checks across both languages/themes)');
   assert.deepEqual(errors, []);
   if (process.env.MEO_SETTINGS_SCREENSHOTS) {

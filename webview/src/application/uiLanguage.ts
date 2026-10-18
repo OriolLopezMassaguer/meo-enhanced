@@ -223,6 +223,7 @@ export type UiStrings = Readonly<{
   htmlInvalidValue: (name: string) => string;
   htmlBlockedUrl: (name: string) => string;
   formatHtml: string;
+  formatHtmlLabel: string;
   formattingHtml: string;
   formattedHtml: string;
   htmlFormatUnchanged: string;
@@ -490,7 +491,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     htmlUnsupportedStyle: (name: string) => `Unsupported style: ${name}`,
     htmlInvalidValue: (name: string) => `Invalid or unsupported value: ${name}`,
     htmlBlockedUrl: (name: string) => `Blocked link or image address: ${name}`,
-    formatHtml: 'Format this HTML fragment (Alt+Shift+F)',
+    formatHtml: 'Format this HTML fragment', formatHtmlLabel: 'Format',
     formattingHtml: 'Formatting HTML…', formattedHtml: 'HTML formatted',
     htmlFormatUnchanged: 'HTML is already formatted',
     htmlFormatPreserved: 'Formatting would change preserved whitespace; source retained',
@@ -722,7 +723,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     htmlUnsupportedStyle: (name: string) => `不支持的样式：${name}`,
     htmlInvalidValue: (name: string) => `值无效或不受支持：${name}`,
     htmlBlockedUrl: (name: string) => `已拦截的链接或图片地址：${name}`,
-    formatHtml: '格式化当前 HTML 片段（Alt+Shift+F）',
+    formatHtml: '格式化当前 HTML 片段', formatHtmlLabel: '格式化',
     formattingHtml: '正在格式化 HTML…', formattedHtml: 'HTML 已格式化',
     htmlFormatUnchanged: 'HTML 已是格式化状态',
     htmlFormatPreserved: '格式化会改变需要保留的空白，已保留原文',
