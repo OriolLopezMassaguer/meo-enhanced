@@ -6740,8 +6740,14 @@ body.outline-resizing .preview-frame {
   table-layout: auto;
 }
 
+html[data-editor-appearance='light'] .cm-editor .meo-md-html-table {
+  --meo-table-editing-outline-opacity: 1;
+}
+
 html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table {
   --meo-semantic-tableSelectionBorder: var(--meo-ui-focus);
+  --meo-table-editing-outline-width: 1.5px;
+  --meo-table-editing-outline-opacity: 1;
 }
 
 .cm-editor .meo-md-html-table th,
@@ -6762,8 +6768,9 @@ html[data-meo-ui-contrast='high'] .cm-editor .meo-md-html-table {
   z-index: 3;
   inset: 0;
   pointer-events: none;
-  outline: 1.5px solid var(--meo-semantic-tableSelectionBorder);
-  outline-offset: -1.5px;
+  outline: var(--meo-table-editing-outline-width, 1px) solid var(--meo-semantic-tableSelectionBorder);
+  outline-offset: calc(-1 * var(--meo-table-editing-outline-width, 1px));
+  opacity: var(--meo-table-editing-outline-opacity, 0.8);
 }
 
 .cm-editor .meo-md-html-table th.meo-md-html-table-cell-selected,
