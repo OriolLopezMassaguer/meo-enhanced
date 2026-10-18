@@ -53,7 +53,7 @@ export const tablePasteContexts = [
   { title: ['代码', 'Code'], description: ['代码块和行内代码保留文本，不做格式转换。', 'Code blocks and inline code keep the text without format conversion.'] }
 ] as const;
 export const shortcutDescriptions: Partial<Record<EditorCommandId, readonly [string, string]>> = {
-  formatHtml: ['整理当前 HTML 片段的缩进与换行；仅在片段源码内生效。', 'Arrange indentation and line breaks in the current HTML fragment; available inside its source.'],
+  formatHtml: ['整理当前 HTML 片段或块状公式的缩进与换行；仅在块源码内生效。', 'Arrange indentation and line breaks in the current HTML fragment or formula block; available inside its source.'],
   copy: ['表格多格选区按行列复制，可粘贴到 Excel 等电子表格。', 'Copy selected table cells as rows and columns for pasting into spreadsheets such as Excel.'],
   plain: ['跳过富格式转换；合法 Markdown 仍按当前模式显示。', 'Bypass rich format conversion. Valid Markdown still displays according to the current mode.'],
   tableNav: ['在表格内切换单元格；正文中按缩进规则处理。', 'Move between cells in a table. In prose, follow the indentation rules.'],
@@ -77,7 +77,7 @@ export const shortcutSections: Readonly<Record<string, readonly EditorCommandId[
   navigation: ['mode', 'preview', 'enter', 'tab', 'escape', 'delete']
 };
 export const commandTitles: Record<EditorCommandId, readonly [string, string]> = {
-  formatHtml: ['格式化 HTML', 'Format HTML'],
+  formatHtml: ['格式化当前块', 'Format current block'],
   save: ['保存', 'Save'], saveAs: ['另存为…', 'Save as…'], undo: ['撤销', 'Undo'], redo: ['重做', 'Redo'], find: ['查找', 'Find'], replace: ['替换', 'Replace'], all: ['全选', 'Select all'], copy: ['复制', 'Copy'], cut: ['剪切', 'Cut'], paste: ['粘贴', 'Paste'], plain: ['粘贴为纯文本', 'Paste as plain text'],
   bold: ['粗体', 'Bold'], italic: ['斜体', 'Italic'], inlineCode: ['行内代码', 'Inline code'], strike: ['删除线', 'Strikethrough'], highlight: ['高亮', 'Highlight'], underline: ['下划线', 'Underline'], kbd: ['按键样式', 'Keyboard style'], link: ['链接', 'Link'], wikiLink: ['双链', 'Wiki link'], image: ['图片', 'Image'], inlineMath: ['行内公式', 'Inline math'], blockMath: ['块公式', 'Math block'],
   heading1: ['一级标题', 'Heading 1'], heading2: ['二级标题', 'Heading 2'], heading3: ['三级标题', 'Heading 3'], heading4: ['四级标题', 'Heading 4'], heading5: ['五级标题', 'Heading 5'], heading6: ['六级标题', 'Heading 6'], headingUp: ['提升标题级别', 'Promote heading'], headingDown: ['降低标题级别', 'Demote heading'], bullet: ['无序列表', 'Bullet list'], ordered: ['有序列表', 'Numbered list'], taskList: ['任务列表', 'Task list'], taskDone: ['切换任务完成状态', 'Toggle task completion'], quote: ['引用', 'Blockquote'], codeBlock: ['代码块', 'Code block'], rule: ['分割线', 'Horizontal rule'], indent: ['缩进与取消缩进', 'Indent and outdent'],
@@ -122,7 +122,7 @@ export const imageLocationSearchKeywords: SearchKeywords = [
   'Image save location Beside document (default) Beside document, by name Custom path (advanced) Folder name Image folder or path rule Choose folder… storage pasted screenshot save folder directory custom advanced path relative absolute beside document file name extension variables assets images'
 ];
 export const shortcutSearchKeywords: Readonly<Record<EditorCommandId, SearchKeywords>> = {
-  formatHtml: ['整理代码 排版 缩进 换行 HTML片段 源码 美化', 'format HTML fragment source code pretty print indentation line breaks'],
+  formatHtml: ['整理代码 排版 缩进 换行 HTML片段 块状公式 数学 LaTeX 源码 美化', 'format HTML fragment formula math LaTeX source code pretty print indentation line breaks'],
   save: ['存盘 写入文件', 'persist write file disk'],
   saveAs: ['另存 换名保存 新路径保存 保存到', 'save as save under new name new path save to'],
   undo: ['撤回 回退 上一步', 'revert rollback previous edit'],

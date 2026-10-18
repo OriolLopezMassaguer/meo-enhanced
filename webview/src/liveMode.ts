@@ -2608,13 +2608,14 @@ type LatexMathWidgetElement = HTMLElement & {
 
 class DisplayMathSourceActionsWidget extends UiLanguageSensitiveWidget {
   constructor(readonly anchor: number) { super(); }
-  eq(other: WidgetType): boolean { return other instanceof DisplayMathSourceActionsWidget && other.anchor === this.anchor; }
+  eq(other: WidgetType): boolean { return other instanceof DisplayMathSourceActionsWidget && this.hasSameUiLanguageEpoch(other) && other.anchor === this.anchor; }
   toDOM(view: EditorView): HTMLElement {
-    const actions = createDisplayMathActions(view, () => this.anchor);
+    const actions = createDisplayMathActions(view, () => this.anchor, true);
     actions.classList.add('meo-math-source-actions');
     return actions;
   }
   ignoreEvent(): boolean { return true; }
+  destroy(root: HTMLElement): void { (root as HTMLElement & { disposeMathActions?: () => void }).disposeMathActions?.(); }
 }
 
 class LatexMathWidget extends UiLanguageSensitiveWidget {
@@ -2716,7 +2717,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     if (this.fencedDisplay && this.mode === 'display') {
       applyLiveBlockIndent(wrapper, this.indentColumns);
       wrapper.__meoLatexMathViewport = attachLatexMathViewport(wrapper);
-      if (!this.editing) wrapper.append(createDisplayMathActions(view, () => wrapper.__meoLatexMathWidget!.anchor));
+      if (!this.editing) wrapper.append(createDisplayMathActions(view, () => wrapper.__meoLatexMathWidget!.anchor, false));
       this.updateResultLabel(wrapper, view);
       // Enter before pointerdown bubbles: another embedded editor may release
       // its projected selection and replace this DOM before a click can arrive.

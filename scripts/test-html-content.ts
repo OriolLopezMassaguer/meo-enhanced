@@ -449,7 +449,8 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
       (window as any).__htmlEditor.setText(text, true);
     }, { text, language });
     await select(page, 'format-target', 3);
-    assert.equal(await page.$eval('.meo-format-html-label', e => e.textContent), language === 'zh-CN' ? '格式化' : 'Format');
+    assert.equal(await page.$eval('.meo-format-html-btn', e => e.textContent), '', 'Formatting is icon-only');
+    assert.ok(await page.$eval('.meo-format-html-btn', e => e.getBoundingClientRect().width <= 24), 'Compact format action');
     await page.hover('.meo-format-html-btn');
     await page.waitForSelector('.meo-tooltip:not([hidden])');
     assert.equal(await page.$eval('.meo-format-html-btn', e => (e as HTMLElement).dataset.tooltipShortcut), 'Alt + Shift + F');
@@ -591,6 +592,10 @@ async function main(): Promise<void> {
     }, source);
     await frames(page, 12);
     assert.deepEqual(errors, [], 'Editor initialization');
+    if (process.argv.includes('--format-only')) {
+      await checkHtmlEditingTools(page);
+      assert.deepEqual(errors, []); console.log('HTML icon-only formatting, feedback, undo and customized shortcuts passed.'); return;
+    }
     await checkHtmlCrossBlockSelection(page);
     if (process.argv.includes('--selection-only')) {
       assert.deepEqual(errors, []); console.log('HTML/math cross-block dragging, keyboard extension, copy/cut history and HTML reading selection passed.'); return;

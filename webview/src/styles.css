@@ -4003,7 +4003,12 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   gap: 3px;
   opacity: 0;
   pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
+
+.meo-math-copy-actions * { user-select: none; -webkit-user-select: none; }
+.cm-editor .meo-mermaid-toolbar .meo-select-all-code-btn[hidden] { display: none; }
 
 .meo-md-math-fenced-display:hover > .meo-math-copy-actions,
 .meo-md-math-fenced-display:has(:focus-visible:not([data-meo-pointer-focus])) > .meo-math-copy-actions,
@@ -4681,8 +4686,10 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor .cm-line.meo-md-html-source-line {
   position: relative;
-  padding-right: 110px;
+  padding-right: 30px;
 }
+
+.cm-editor .cm-line.meo-md-html-source-line:has(.meo-md-html-warning:not([hidden])) { padding-right: 50px; }
 
 .cm-editor .meo-md-html-source-actions {
   position: absolute;
@@ -4702,13 +4709,13 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor .meo-md-html-source-actions .meo-md-html-warning { margin-left: 0; }
 .cm-editor .meo-md-html-source-actions .meo-md-html-warning[hidden] { display: none; }
 
-.cm-editor .meo-format-html-btn {
+.cm-editor .meo-source-format-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 5px;
+  width: 22px;
+  height: 20px;
+  padding: 0;
   font: 12px/18px var(--meo-ui-font-family, sans-serif);
   white-space: nowrap;
   border: 0;
@@ -4718,14 +4725,14 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   cursor: pointer;
 }
 
-.cm-editor .meo-format-html-btn:is(:hover, :focus-visible) {
+.cm-editor .meo-source-format-btn:is(:hover, :focus-visible) {
   background: var(--meo-semantic-codeCopyHoverBackground);
   color: var(--meo-code-action-hover-foreground);
 }
 
-.cm-editor .meo-format-html-btn:focus-visible { box-shadow: inset 0 0 0 1px var(--meo-document-focus); }
-.cm-editor .meo-format-html-btn:disabled { opacity: 0.6; cursor: default; }
-.cm-editor .meo-format-html-btn > span:first-child { display: inline-flex; }
+.cm-editor .meo-source-format-btn:focus-visible { box-shadow: inset 0 0 0 1px var(--meo-document-focus); }
+.cm-editor .meo-source-format-btn:disabled { opacity: 0.6; cursor: default; }
+.cm-editor .meo-source-format-btn > span:first-child { display: inline-flex; }
 
 .cm-editor .cm-line.meo-md-html-source-range {
   color: var(--meo-token-foreground-color, var(--meo-content-editor-foreground));

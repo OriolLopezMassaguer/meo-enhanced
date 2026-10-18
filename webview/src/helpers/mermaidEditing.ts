@@ -495,7 +495,8 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
     }, uiLanguage, toolbar.ownerDocument);
     imageButton.classList.add('meo-code-block-pill');
 
-    toolbar.append(modeButton, selectAllButton, imageButton, copyButton);
+    selectAllButton.hidden = this.mode === 'preview';
+    toolbar.append(selectAllButton, modeButton, imageButton, copyButton);
     if (!this.floating) cache.set(cacheKey, toolbar);
     if (cache.size > MERMAID_TOOLBAR_DOM_CACHE_LIMIT) {
       const oldestKey = cache.keys().next().value;
@@ -523,6 +524,8 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
     toolbar.dataset.meoMermaidMode = this.mode;
     toolbar.dataset.meoUiLanguage = uiLanguage;
     toolbar[mermaidToolbarCodeContent] = this.codeContent;
+    const selectAllButton = toolbar.querySelector<HTMLElement>('.meo-select-all-code-btn');
+    if (selectAllButton) selectAllButton.hidden = this.mode === 'preview';
     updateMermaidModeButton(
       modeButton,
       this.mode,

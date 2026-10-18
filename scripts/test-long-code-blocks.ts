@@ -1416,7 +1416,7 @@ async function main() {
     }
 
     await page.click('.meo-mermaid-mode-btn');
-    await page.click('.meo-math-copy-actions .meo-select-all-code-btn');
+    await page.click('.meo-md-math-fenced-display .katex');
     await waitForFrames(page, 12);
     const editingBlockLayout = await page.evaluate(() => {
       const top = document.querySelector<HTMLElement>('.cm-line.meo-md-code-block-start')?.getBoundingClientRect();

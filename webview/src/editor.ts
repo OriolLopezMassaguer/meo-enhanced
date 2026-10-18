@@ -124,7 +124,7 @@ import {
 } from './helpers/latexMathEditing';
 import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
 import { parseBlockLinePrefix } from './helpers/blockIndent';
-import { displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
+import { canFormatDisplayMathSource, formatActiveDisplayMathSource, displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
 import { createHtmlSourceEditing } from './editor/htmlSource';
 import { formatActiveHtmlSource, getHtmlEditingRange } from './helpers/htmlContent';
 import { supportedHtmlTags } from '../../src/shared/htmlPolicy';
@@ -3979,7 +3979,9 @@ export function createEditor({
     executeCommand(command: EditorCommandId): boolean {
       if (view.state.readOnly) return false;
       if (command === 'formatHtml') {
-        if (getActiveTableInput() || !getHtmlEditingRange(view.state)) return false;
+        if (getActiveTableInput()) return false;
+        if (canFormatDisplayMathSource(view.state)) { void formatActiveDisplayMathSource(view); return true; }
+        if (!getHtmlEditingRange(view.state)) return false;
         void formatActiveHtmlSource(view);
         return true;
       }

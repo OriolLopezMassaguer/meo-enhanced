@@ -1296,7 +1296,7 @@ async function main() {
         const label = shell?.querySelector<HTMLElement>(
           ':scope > .meo-rendered-block-preview-language'
         ) ?? null;
-        const controls = Array.from(toolbar?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? []);
+        const controls = Array.from(toolbar?.querySelectorAll<HTMLElement>('button:not([hidden]), [role="button"]:not([hidden])') ?? []);
         return {
           shell: Boolean(shell),
           label: label?.textContent ?? null,
@@ -1342,7 +1342,7 @@ async function main() {
       && (chrome.label === null || chrome.label === language)
       && (chrome.label === null || chrome.labelParent)
       && chrome.toolbarParent
-      && chrome.controlCount === 4
+      && chrome.controlCount === 3
       && chrome.chrome.filter((item) => item !== null).every((item) => item
         && item.borderRadius === '6px'
         && item.borderWidth === '0px'
@@ -1575,6 +1575,9 @@ async function main() {
     await page.evaluate(() => (window as any).__mermaidEditingEditor.scrollToLine(1, 'top'));
     await waitForFrames(page);
 
+    // Select-all belongs to the visible source; preview retains only reading controls.
+    await clickVisibleBlockModeButton(page, 'mermaid');
+    await waitForFrames(page);
     await page.evaluate(() => {
       const editor = (window as any).__mermaidEditingEditor;
       const samples: Array<{
@@ -1666,7 +1669,7 @@ async function main() {
     if (!selectAllMode.source || !selectAllMode.selectedText?.startsWith('graph TD\nnode1 --> node2')) {
       throw new Error(`Mermaid select all did not reveal and select source: ${JSON.stringify(selectAllMode)}`);
     }
-    if (selectAllMode.controls.at(-3) !== 'Select all code' || selectAllMode.controls.at(-2) !== 'Copy as image' || selectAllMode.controls.at(-1) !== 'Copy source') {
+    if (selectAllMode.controls[0] !== 'Select all code' || selectAllMode.controls.at(-2) !== 'Copy as image' || selectAllMode.controls.at(-1) !== 'Copy source') {
       throw new Error(`Unexpected Mermaid action order: ${JSON.stringify(selectAllMode.controls)}`);
     }
     await clickVisibleBlockModeButton(page, 'mermaid');

@@ -94,10 +94,10 @@ async function main(): Promise<void> {
         await page.waitForFunction((toolbarSelector) => (
           getComputedStyle(document.querySelector(toolbarSelector)!).opacity === '1'
         ), {}, selector);
-        const buttons = await page.$$(`${selector} :is(button, [role="button"])`);
-        assert.equal(buttons.length, selector === '.meo-mermaid-toolbar' || selector === '.meo-mermaid-preview-controls' ? 4 : selector === '.meo-math-copy-actions' ? 3 : 2);
+        const buttons = await page.$$(`${selector} :is(button, [role="button"]):not([hidden])`);
+        assert.equal(buttons.length, selector === '.meo-mermaid-toolbar' ? 3 : selector === '.meo-mermaid-preview-controls' ? 4 : 2);
         const gaps = await page.evaluate((toolbarSelector) => {
-          const rects = Array.from(document.querySelectorAll(`${toolbarSelector} :is(button, [role="button"])`),
+          const rects = Array.from(document.querySelectorAll(`${toolbarSelector} :is(button, [role="button"]):not([hidden])`),
             (button) => button.getBoundingClientRect());
           return rects.slice(0, -1).map((rect, index) => ({
             x: (rect.right + rects[index + 1].left) / 2, y: rect.top + rect.height / 2
@@ -154,11 +154,11 @@ async function main(): Promise<void> {
       }
     }
     for (const selector of toolbarSelectors.filter(selector => selector === '.meo-mermaid-toolbar')) {
-      const layout = await page.$$eval(`${selector} button, ${selector} [role="button"]`, (buttons) => (
+      const layout = await page.$$eval(`${selector} button:not([hidden]), ${selector} [role="button"]:not([hidden])`, (buttons) => (
         buttons.map(button => ({ label: button.getAttribute('aria-label'), y: button.getBoundingClientRect().top }))
       ));
       assert.deepEqual(layout.map(button => button.label), [
-        'Preview, Switch to split view', 'Select all code', 'Copy as image', 'Copy source'
+        'Preview, Switch to split view', 'Copy as image', 'Copy source'
       ]);
       assert.equal(new Set(layout.map(button => button.y)).size, 1, `${selector} preview controls stayed on a second row`);
       const previewSelector = selector === '.meo-mermaid-toolbar' ? '.meo-mermaid-block' : '.meo-latex-math-viewport';

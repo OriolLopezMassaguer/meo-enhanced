@@ -12,7 +12,7 @@ import type { SyntaxNodeRef, Tree } from '@lezer/common';
 import { invertedEffects, isolateHistory } from '@codemirror/commands';
 import { parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
-import { createElement, AlertTriangle, BrushCleaning, Check } from 'lucide';
+import { createElement, AlertTriangle } from 'lucide';
 import {
   getHtmlRootTagName,
   isSafeHtmlUrl,
@@ -42,6 +42,7 @@ import { mountProjectedLineNumbers } from '../editor/projectedLineNumbers';
 import { RenderedBlockPreviewHeight } from './renderedBlockPreview';
 import { createPreviewTableLayoutController, type PreviewTableLayoutController } from './previewTableLayout';
 import { formatHtmlFragment } from '../editor/htmlFormatting';
+import { createSourceFormatButton, type SourceFormatOutcome } from '../editor/sourceFormatButton';
 import { isLivePointerSelectionActive, setLivePointerSelectionActiveEffect, sourcePresentationSelection } from '../editor/livePointerSelection';
 
 export interface RenderableHtmlBlock {
@@ -342,9 +343,7 @@ function htmlIssueDescription(view: EditorView, issues: HtmlContentIssue[]): str
   return strings.htmlFilteredContent([...new Set(issues.map(issue => describe[issue.kind](issue.name)))]);
 }
 
-type HtmlFormattingOutcome = 'formatted' | 'unchanged' | 'preserved' | 'invalid' | 'changed' | 'unavailable';
-
-export async function formatActiveHtmlSource(view: EditorView, isCurrent: () => boolean = () => true): Promise<HtmlFormattingOutcome> {
+export async function formatActiveHtmlSource(view: EditorView, isCurrent: () => boolean = () => true): Promise<SourceFormatOutcome> {
   const range = getHtmlEditingRange(view.state);
   const { doc, selection, readOnly } = view.state;
   const trailingCaret = range && selection.main.empty && selection.main.head >= range.to
@@ -370,7 +369,7 @@ export async function formatActiveHtmlSource(view: EditorView, isCurrent: () => 
   } catch { return 'invalid'; }
 }
 
-type HtmlSourceActionsElement = HTMLSpanElement & { disposeHtmlActions?: () => void };
+type HtmlSourceActionsElement = HTMLSpanElement & { formatControl?: ReturnType<typeof createSourceFormatButton> };
 
 class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
   constructor(readonly source: string) { super(); }
@@ -384,13 +383,7 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
     warning.hidden = !issues.length;
     warning.dataset.tooltip = issues.length ? htmlIssueDescription(view, issues) : '';
     warning.setAttribute('aria-label', warning.dataset.tooltip);
-    const button = root.querySelector<HTMLButtonElement>('button')!;
-    button.querySelector('.meo-format-html-label')!.textContent = getUiStrings(view.state.facet(uiLanguageFacet)).formatHtmlLabel;
-    if (!button.disabled) {
-      button.dataset.tooltip = getUiStrings(view.state.facet(uiLanguageFacet)).formatHtml;
-      button.dataset.tooltipCommand = 'formatHtml';
-      button.setAttribute('aria-label', button.dataset.tooltip);
-    }
+    (root as HtmlSourceActionsElement).formatControl?.refresh();
   }
   toDOM(view: EditorView): HTMLElement {
     const root = document.createElement('span') as HtmlSourceActionsElement;
@@ -400,52 +393,22 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
     warning.className = 'meo-md-html-warning';
     warning.dataset.tooltipKind = 'description';
     warning.append(createElement(AlertTriangle, { width: 14, height: 14, 'aria-hidden': 'true' }));
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'meo-format-html-btn';
-    button.dataset.tooltipLiveUpdate = 'true';
-    const icon = document.createElement('span');
-    icon.setAttribute('aria-hidden', 'true');
-    icon.append(createElement(BrushCleaning, { width: 14, height: 14 }));
-    const label = document.createElement('span');
-    label.className = 'meo-format-html-label';
-    button.append(icon, label);
-    root.append(warning, button);
-    root.addEventListener('mousedown', event => { event.preventDefault(); event.stopPropagation(); });
-    let disposed = false, resetTimer: ReturnType<typeof setTimeout> | undefined;
-    root.disposeHtmlActions = () => { disposed = true; clearTimeout(resetTimer); };
-    button.addEventListener('click', async event => {
-      event.preventDefault(); event.stopPropagation();
-      clearTimeout(resetTimer);
-      delete button.dataset.tooltipCommand;
-      delete button.dataset.tooltipShortcut;
-      button.disabled = true;
-      button.setAttribute('aria-busy', 'true');
-      button.dataset.tooltip = getUiStrings(view.state.facet(uiLanguageFacet)).formattingHtml;
-      button.setAttribute('aria-label', button.dataset.tooltip);
-      const outcome = await formatActiveHtmlSource(view, () => !disposed && root.isConnected);
-      if (disposed || !root.isConnected) return;
-      button.disabled = false;
-      button.removeAttribute('aria-busy');
+    const control = createSourceFormatButton(root.ownerDocument, () => {
       const strings = getUiStrings(view.state.facet(uiLanguageFacet));
-      const messages = { formatted: strings.formattedHtml, unchanged: strings.htmlFormatUnchanged,
+      return { idle: strings.formatHtml, busy: strings.formattingHtml,
+        formatted: strings.formattedHtml, unchanged: strings.htmlFormatUnchanged,
         preserved: strings.htmlFormatPreserved, invalid: strings.htmlFormatInvalid,
         changed: strings.htmlFormatChanged, unavailable: strings.htmlFormatUnavailable };
-      button.dataset.tooltip = messages[outcome];
-      button.setAttribute('aria-label', messages[outcome]);
-      icon.replaceChildren(createElement(outcome === 'formatted' || outcome === 'unchanged' ? Check : AlertTriangle,
-        { width: 14, height: 14, 'aria-hidden': 'true' }));
-      resetTimer = setTimeout(() => {
-        if (disposed) return;
-        icon.replaceChildren(createElement(BrushCleaning, { width: 14, height: 14 }));
-        this.refresh(root, view);
-      }, 2500);
-    });
+    }, current => formatActiveHtmlSource(view, current));
+    root.formatControl = control;
+    control.button.classList.add('meo-format-html-btn');
+    root.append(warning, control.button);
+    root.addEventListener('mousedown', event => { event.preventDefault(); event.stopPropagation(); });
     this.refresh(root, view);
     return root;
   }
   updateDOM(root: HTMLElement, view: EditorView): boolean { this.refresh(root, view); return true; }
-  destroy(root: HTMLElement): void { (root as HtmlSourceActionsElement).disposeHtmlActions?.(); }
+  destroy(root: HTMLElement): void { (root as HtmlSourceActionsElement).formatControl?.dispose(); }
 }
 
 function annotateHtmlSourceLines(root: ParentNode, source: string, startLine: number): void {
