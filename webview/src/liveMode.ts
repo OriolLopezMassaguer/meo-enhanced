@@ -29,6 +29,7 @@ import { ImageGroupWidget, ImageWidget, getImageData, isImageUrl, type ImageGrou
 import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
 import { criticContentClass, criticContentRanges, criticMarkDecoration, crossBlockCriticField } from './helpers/criticMarkupSyntax';
+import { criticReviewField } from './helpers/criticMarkupReview';
 import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
 import { currentSyntaxTree, getFencedCodeInfo, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
@@ -3762,6 +3763,7 @@ export function liveModeExtensions(options: { readonly largeDocument?: boolean }
     syntaxHighlighting(liveHighlightStyle),
     markdownTagField,
     crossBlockCriticField,
+    criticReviewField,
     livePointerSelectionActiveField,
     liveDocumentIdleField,
     mermaidEditingStateField,

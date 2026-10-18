@@ -21,6 +21,7 @@ import { indentUnit, syntaxTree, forceParsing } from '@codemirror/language';
 import { prepareSourceSyntax, sourceSyntax, sourceSyntaxPreparation } from './helpers/sourceSyntax';
 import { shikiCodeHighlight } from './helpers/shikiDecorations';
 import { crossBlockCriticField, sourceCriticField } from './helpers/criticMarkupSyntax';
+import { criticReviewField } from './helpers/criticMarkupReview';
 import type { UiLanguage } from '../../src/foundation/uiLanguage';
 import { longCodeBlockEnabledFacet } from './helpers/longCodeBlocks';
 import type { SourceLineNumberMode } from '../../src/protocol/readyInit';
@@ -4875,6 +4876,7 @@ function sourceMode(): Extension[] {
     sourceSyntax,
     sourceCriticField,
     crossBlockCriticField,
+    criticReviewField,
     sourceCodeBlockField,
     gitDiffLineHighlightsField,
     ...gitDiffDetailsExtensions(),

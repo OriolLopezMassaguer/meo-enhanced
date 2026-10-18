@@ -3,7 +3,7 @@ import { Decoration, EditorView, type DecorationSet } from '@codemirror/view';
 import type { SyntaxNodeRef } from '@lezer/common';
 import { tags } from '@lezer/highlight';
 import type { Element, MarkdownConfig } from '@lezer/markdown';
-import { matchCriticMarkup, type CriticMarkupKind } from '../../../src/foundation/criticMarkup';
+import { findCriticMarks, matchCriticMarkup, type CriticMark, type CriticMarkupKind } from '../../../src/foundation/criticMarkup';
 import { currentSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
 
 const OPEN_BRACE_CODE = 123;
@@ -119,6 +119,19 @@ const nonProseAncestors = new Set(['FencedCode', 'CodeBlock', 'InlineCode', 'Cod
 const crossBlockMarker = Decoration.mark({ class: 'meo-md-marker meo-md-critic-marker' });
 const crossBlockMarkerActive = Decoration.mark({ class: 'meo-md-marker-active meo-md-critic-marker-active' });
 
+function insideNonProse(tree: ReturnType<typeof currentSyntaxTree>, position: number): boolean {
+  for (let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(position, 1); node; node = node.parent) {
+    if (nonProseAncestors.has(node.name)) return true;
+  }
+  return false;
+}
+
+/** Every CriticMarkup mark in the document, code excluded; shared by review actions and the comment list. */
+export function criticMarksInState(state: EditorState): CriticMark[] {
+  const tree = currentSyntaxTree(state);
+  return findCriticMarks(state.doc.toString(), (position) => insideNonProse(tree, position));
+}
+
 function buildCrossBlockCriticDecorations(state: EditorState): DecorationSet {
   const text = state.doc.toString();
   const tree = currentSyntaxTree(state);
@@ -128,11 +141,7 @@ function buildCrossBlockCriticDecorations(state: EditorState): DecorationSet {
     if (!match || match.to - from > CROSS_BLOCK_MAX_LENGTH) continue;
     const start = tree.resolveInner(from, 1);
     if (start.name.startsWith('Critic')) continue;
-    let prose = true;
-    for (let node: typeof start | null = start; node; node = node.parent) {
-      if (nonProseAncestors.has(node.name)) { prose = false; break; }
-    }
-    if (!prose) continue;
+    if (insideNonProse(tree, from)) continue;
     const active = state.selection.ranges.some((range) => range.from <= match.to && range.to >= from);
     const marker = active ? crossBlockMarkerActive : crossBlockMarker;
     const contentFrom = from + match.openLength;

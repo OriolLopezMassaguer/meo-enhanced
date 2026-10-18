@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { launchTestBrowser } from './browser-test-helpers';
 import {
   buildCommentInsertion, criticUnitAt, findCriticMarks, groupCriticUnits, nextCommentId, resolveCriticUnit
 } from '../src/foundation/criticMarkup';
@@ -60,5 +64,65 @@ assert.deepEqual(buildCommentInsertion('', 'c04', ''), { insert: '{>>#c04 <<}', 
 assert.equal(buildCommentInsertion('x', 'c04', '  ').insert, '{==x==}{>>#c04 <<}', 'blank author is omitted');
 const inserted = buildCommentInsertion('text', 'c04', 'Oriol');
 assert.equal(inserted.insert.slice(inserted.cursor), '<<}', 'cursor sits before the closing delimiter');
+
+const repoRoot = path.resolve(import.meta.dir, '..');
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-criticmarkup-review-'));
+const build = await Bun.build({
+  entrypoints: [path.join(repoRoot, 'scripts', 'test-highlight-entry.ts')],
+  outdir: tempDir, target: 'browser', format: 'iife', naming: 'bundle.js'
+});
+if (!build.success) throw new Error(build.logs.map(String).join('\n'));
+
+const browser = await launchTestBrowser();
+try {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 900, height: 600, deviceScaleFactor: 1 });
+  await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
+  await page.addStyleTag({ path: path.join(repoRoot, 'webview', 'src', 'styles.css') });
+  await page.addScriptTag({ path: path.join(tempDir, 'bundle.js') });
+  await page.evaluate(() => document.documentElement.classList.add('meo-critic-markup'));
+
+  // Review buttons: appear with the cursor in a mark, resolve it, and undo restores it.
+  const review = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
+    const text = 'Say {++new++} and {~~old~>fresh~~} now.\n\nSecond paragraph.';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    const place = async (anchor: number) => { editor.view.dispatch({ selection: { anchor } }); await settle(); };
+    const buttons = () => Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-critic-review-button')).map((button) => button.dataset.decision);
+    const visible = () => { const tip = document.querySelector<HTMLElement>('.cm-tooltip.meo-critic-review'); return !!tip && getComputedStyle(tip).display !== 'none'; };
+    await place(text.length);
+    const outside = { buttons: buttons(), visible: visible() };
+    await place(8);
+    const inside = { buttons: buttons(), visible: visible() };
+    document.documentElement.classList.remove('meo-critic-markup');
+    await settle();
+    const whileOff = visible();
+    document.documentElement.classList.add('meo-critic-markup');
+    await settle();
+    document.querySelector<HTMLButtonElement>('.meo-critic-review-button.is-accept')!.click();
+    await settle();
+    const accepted = editor.getText();
+    editor.undo();
+    await settle();
+    const undone = editor.getText();
+    const second = text.indexOf('fresh');
+    await place(second);
+    document.querySelector<HTMLButtonElement>('.meo-critic-review-button.is-reject')!.click();
+    await settle();
+    const rejected = editor.getText();
+    editor.destroy();
+    return { outside, inside, whileOff, accepted, undone, rejected, text };
+  });
+  assert.deepEqual(review.outside, { buttons: [], visible: false }, 'no review buttons outside a mark');
+  assert.deepEqual(review.inside, { buttons: ['accept', 'reject'], visible: true }, 'review buttons inside a mark');
+  assert.equal(review.whileOff, false, 'review buttons are hidden while CriticMarkup is off');
+  assert.equal(review.accepted, 'Say new and {~~old~>fresh~~} now.\n\nSecond paragraph.');
+  assert.equal(review.undone, review.text, 'undo restores the mark');
+  assert.equal(review.rejected, 'Say {++new++} and old now.\n\nSecond paragraph.');
+} finally {
+  await browser.close();
+  fs.rmSync(tempDir, { recursive: true, force: true });
+}
 
 console.log('CriticMarkup review logic test passed');

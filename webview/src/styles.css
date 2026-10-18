@@ -3194,6 +3194,30 @@ html:not(.meo-critic-markup) .cm-editor.meo-mode-live :is(.meo-md-critic-marker,
   -webkit-text-fill-color: inherit !important;
 }
 
+/* Accept / Reject over the mark under the cursor; hidden while CriticMarkup is off. */
+html:not(.meo-critic-markup) .cm-tooltip.meo-critic-review { display: none; }
+.meo-critic-review {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--meo-surface, var(--vscode-editorWidget-background, #252526));
+  border: 1px solid var(--meo-border, var(--vscode-editorWidget-border, #454545));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.meo-critic-review-button {
+  border: 0;
+  border-radius: 5px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--meo-foreground, var(--vscode-foreground));
+  background: transparent;
+  cursor: pointer;
+}
+.meo-critic-review-button.is-accept:hover { background: color-mix(in srgb, var(--meo-critic-add) 24%, transparent); }
+.meo-critic-review-button.is-reject:hover { background: color-mix(in srgb, var(--meo-critic-del) 24%, transparent); }
+
 .cm-editor.meo-mode-live .meo-md-strike-marker,
 .cm-editor.meo-mode-live .meo-md-strike-marker-active {
   color: var(--meo-semantic-markdownSyntax) !important;
