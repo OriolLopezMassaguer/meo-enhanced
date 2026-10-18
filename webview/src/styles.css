@@ -3966,7 +3966,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor :is(.meo-math-source-line, .cm-line.meo-md-html-source-range) {
   background: var(--meo-code-background) !important;
   font-family: var(--meo-font-source);
-  font-size: var(--meo-active-editor-font-size);
+  font-size: var(--meo-user-editor-font-size, var(--meo-active-editor-font-size));
   line-height: var(--meo-active-editor-line-height);
 }
 
