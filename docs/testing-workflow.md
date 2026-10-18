@@ -509,6 +509,11 @@ inline math so preparation and mode roundtrips retain its syntax colors.
 Currency checks compare every numeric run with the prose foreground, including
 Chinese text and a later escaped dollar on the same line. Closed numeric formulas
 and explicit unfinished math must retain their highlighting.
+Unclosed `$$` source stops at headings, code fences and quote/list container exits
+in both Source and Live, with or without blank separators. Recovery preserves
+native Markdown colors, typing/history, empty lines and long formulas; math code
+fences retain their normal Markdown extent. Completion cannot reuse a TeX closer
+past the recovered boundary. The contract also captures the unfinished-block result.
 
 ## Math autocomplete
 

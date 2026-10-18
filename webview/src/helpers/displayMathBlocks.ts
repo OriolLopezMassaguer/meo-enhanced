@@ -6,7 +6,7 @@ import { isSuggestionAddress } from '../application/inputSuggestions';
 import type { MathCompletionBody } from '../editor/mathCompletion';
 import { isMathFenceLanguage, mathFenceBodyRange, mathFenceContent } from '../../../src/shared/mathFence';
 import { getCodeBlockSourceLines, parseBlockLinePrefix } from './blockIndent';
-import { collectLatexMathRanges, type LatexMathRange } from './math';
+import { collectLatexMathRanges, findFencedDisplayMathEnd, type LatexMathRange } from './math';
 import { collectMarkdownLiteralRanges } from './markdownLiteralRanges';
 import { getFencedCodeInfo, resolvedSyntaxTree } from './markdownSyntax';
 
@@ -128,5 +128,8 @@ export function getMathCompletionBody(state: EditorState, position: number): Mat
   const beforeHead = state.sliceDoc(0, position), closing = '\n' + prefix + '$$';
   const display = collectLatexMathRanges(beforeHead + closing, { excludedRanges: excluded, includeEmptyDisplay: true })
     .find(range => range.fencedDisplay && range.to === beforeHead.length + closing.length);
-  return display ? { from: display.from + 2, to: state.doc.length, display: true, prefix } : null;
+  if (!display) return null;
+  const opening = state.doc.lineAt(display.from);
+  const end = findFencedDisplayMathEnd(state.doc.toString(), opening.to + 1, state.sliceDoc(opening.from, display.from));
+  return { from: display.from + 2, to: end.closed ? state.doc.lineAt(end.to).from : end.to, display: true, prefix };
 }

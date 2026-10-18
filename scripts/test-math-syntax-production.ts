@@ -89,6 +89,71 @@ try {
       assert.equal(await page.evaluate(() => (window as any).editor.getText()), text, step + ': paint preserves source');
     }
     step = mode + '/' + theme.type + '/literal boundaries';
+    for (const separator of ['\n', '\n\n']) for (const [opening, content, boundary] of [
+      ['$$', '\\frac{x}{2}', '## Next'],
+      ['$$', '\\frac{x}{2}', '```text'],
+      ['$$', '\\frac{x}{2}', '~~~text'],
+      ['$$', '\\frac{x}{2}', '```python'],
+      ['$$', '\\frac{x', '## Next'],
+      ['> $$', '> \\frac{x}{2}', '> ## Next'],
+      ['- $$', '  \\frac{x}{2}', '  ## Next'],
+      ['> - $$', '>   \\frac{x}{2}', '>   ## Next'],
+      ['> $$', '> \\frac{x}{2}', '> ```text'],
+      ['> $$', '> \\frac{x}{2}', '> ```python'],
+      ['> $$', '> \\frac{x', '> ## Next'],
+      ['> $$', '> \\frac{x}{2}', 'outside'],
+      ['> > $$', '> > \\frac{x}{2}', '> outside'],
+      ['- $$', '  \\frac{x}{2}', 'outside'],
+      ['- $$', '  \\frac{x}{2}', '- sibling'],
+      ['12. $$', '    \\frac{x}{2}', 'outside'],
+      ['> - $$', '>   \\frac{x}{2}', '> outside'],
+      ['> - $$', '>   \\frac{x}{2}', '> - sibling']
+    ]) {
+      step = mode + '/' + theme.type + '/unfinished boundary/' + opening + '/' + boundary + '/' + separator.length;
+      const prefix = /^[ \t]*(?:>[ \t]*)*/.exec(boundary)![0];
+      const following = boundary + '\n' + prefix + 'ordinary 42 \\alpha';
+      // Keep Markdown's own lazy quote/list continuation and code palettes.
+      await prepare(mode, opening.replace('$$', 'formula') + '\n' + content + separator + following, 0, theme);
+      await page.evaluate(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+      const expectedAlpha = await color('alpha'), expectedNumber = await color('42');
+      const expectedHeading = boundary.includes('Next') ? await color('Next') : null;
+      const text = opening + '\n' + content + separator + following;
+      await prepare(mode, text, undefined, theme);
+      await expectColor('frac', 'rgb(204, 85, 0)');
+      await expectColor('alpha', expectedAlpha);
+      await expectColor('42', expectedNumber);
+      if (expectedHeading) await expectColor('Next', expectedHeading);
+      assert.equal(await page.evaluate(() => (window as any).editor.getText()), text, step + ': recovery preserves source');
+    }
+    for (const text of ['$$\n\\frac{x}{2}\n\n\\alpha', '$$\n\\frac{x}{2}\n\n\\alpha\n$$',
+      '```math\n\\frac{x}{2}\n\n## literal heading\n\\alpha']) {
+      step = mode + '/' + theme.type + '/retained blank lines and literal fences';
+      await prepare(mode, text, undefined, theme);
+      await expectColor('frac', 'rgb(204, 85, 0)');
+      await expectColor('alpha', 'rgb(0, 102, 204)');
+    }
+    for (const content of ['\\frac{x}{2}', '\\frac{x']) for (const [opening, prefix] of [['> $$', '> '], ['- $$', '  '], ['> - $$', '>   ']]) {
+      step = mode + '/' + theme.type + '/closed container/' + opening;
+      const text = opening + '\n' + prefix + content + '\n' + prefix + '$$\n' + prefix + 'ordinary 42 \\alpha';
+      await prepare(mode, text.replaceAll('$$', 'formula'), 0, theme);
+      await page.evaluate(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+      const expected = await color('alpha');
+      await prepare(mode, text, undefined, theme);
+      await expectColor('frac', 'rgb(204, 85, 0)');
+      await expectColor('alpha', expected);
+    }
+    step = mode + '/' + theme.type + '/successive formulas and containers';
+    const successive = '$$\n\\frac{x}{2}\n$$\nordinary 42 \\alpha\n\n> $$\n> \\sqrt{3} + \\omega\n> $$\n\n$$\n\\sum_{i=1}^{n} i + \\gamma\n$$';
+    await prepare(mode, successive, undefined, theme);
+    await expectColor('alpha', await page.$eval('.cm-content', node => getComputedStyle(node).color));
+    for (const needle of ['omega', 'gamma']) {
+      await page.evaluate(needle => {
+        const editor = (window as any).editor;
+        editor.view.dispatch({ selection: { anchor: editor.getText().indexOf(needle) + 2 }, scrollIntoView: true });
+      }, needle);
+      await expectColor(needle, 'rgb(0, 102, 204)');
+    }
+    step = mode + '/' + theme.type + '/literal boundaries';
     const literal = String.raw`价格 $5 and $10，转义 \$\alpha，代码 ` + '`$\\alpha$`';
     await prepare(mode, literal, literal.length, theme);
     assert.notEqual(await color('alpha'), 'rgb(0, 102, 204)', step + ': escaped dollars stay literal');
@@ -119,6 +184,32 @@ try {
       }
     }
 
+    step = mode + '/' + theme.type + '/boundary edits and history';
+    const bounded = '$$\n\\frac{x}{2}\n$$\n\n## Next\nordinary 42 \\alpha';
+    await prepare(mode, bounded, undefined, theme);
+    const proseColor = await page.$eval('.cm-content', node => getComputedStyle(node).color);
+    await expectColor('alpha', proseColor);
+    await page.evaluate(() => {
+      const editor = (window as any).editor, from = editor.getText().indexOf('\n$$') + 1;
+      editor.view.dispatch({ changes: { from, to: from + 2 } });
+    });
+    await expectColor('frac', 'rgb(204, 85, 0)');
+    await expectColor('alpha', proseColor);
+    await page.evaluate(() => (window as any).editor.undo());
+    assert.equal(await page.evaluate(() => (window as any).editor.getText()), bounded);
+    await page.evaluate(() => (window as any).editor.redo());
+    await expectColor('alpha', proseColor);
+    const unclosed = bounded.replace('\n$$', '\n');
+    await prepare(mode, unclosed, undefined, theme);
+    await page.evaluate(() => {
+      const editor = (window as any).editor, from = editor.getText().indexOf('## Next');
+      editor.view.dispatch({ changes: { from, to: from + 3 } });
+    });
+    await expectColor('alpha', 'rgb(0, 102, 204)');
+    await page.evaluate(() => (window as any).editor.undo());
+    await expectColor('alpha', proseColor);
+    assert.equal(await page.evaluate(() => (window as any).editor.getText()), unclosed);
+
     step = mode + '/' + theme.type + '/typing and history';
     await prepare(mode, '$\\alph$', 6, theme);
     await expectColor('alph', 'rgb(0, 102, 204)');
@@ -132,9 +223,9 @@ try {
     await expectColor('alpha', 'rgb(0, 102, 204)');
   }
 
-  for (const mode of ['source', 'live']) {
+  for (const mode of ['source', 'live']) for (const closed of [false, true]) {
     step = mode + '/multiline token batches';
-    const text = '$$\n\\begin{aligned}\n' + Array.from({ length: 140 }, () => formula + String.raw` \\`).join('\n') + '\n\\omega\n\\end{aligned}\n$$';
+    const text = '$$\n\\begin{aligned}\n' + Array.from({ length: 140 }, () => formula + String.raw` \\`).join('\n') + '\n\n\\omega\n\\end{aligned}' + (closed ? '\n$$' : '');
     await prepare(mode, text);
     await expectColor('frac', 'rgb(204, 85, 0)');
     await page.evaluate(() => {
@@ -169,6 +260,12 @@ try {
     });
     await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => setTimeout(resolve, 200)); });
     await page.screenshot({ path: artifacts + '/' + theme.type + '-' + mode + '.png' });
+  }
+  const unfinishedSample = '# 未闭合公式的范围\n\n$$\n\\frac{x_1}{2} + \\alpha\n\n## 后续正文\n普通文字 123，不属于公式。\n\n```text\n\\beta = 456\n```\n\n正常行内公式：$\\sqrt{x} + \\gamma$';
+  for (const mode of ['source', 'live']) {
+    await prepare(mode, unfinishedSample, unfinishedSample.indexOf(' + '), darkPlus, false);
+    await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => setTimeout(resolve, 200)); });
+    await page.screenshot({ path: artifacts + '/unfinished-dark-' + mode + '.png' });
   }
   const currencySample = '## 普通文字与代码对照\n\n价格 $5 和 $10；转义美元符号：\\$5。\n\n下面是行内代码，可以与真正的公式对照：`$\\frac{x_1}{2} + \\alpha$`。';
   await prepare('live', currencySample, currencySample.indexOf('\n\n下面'), darkPlus, false);
