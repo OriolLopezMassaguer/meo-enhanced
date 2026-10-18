@@ -1346,6 +1346,9 @@ export class ViewportController {
   }
 
   preserveDocumentAnchorWhileMutation(mutate: () => void, immediateLayout = false): void {
+    // This layout operation replaces the previous cell/toolbar retention intent.
+    // Leaving its observer active would write a second, obsolete scroll target.
+    this.cancelElementRetention();
     const anchor = this.captureDocumentAnchor();
     // A new font layout supersedes absolute scroll retention from a block-mode
     // transition; that older target would otherwise pull this anchor away.

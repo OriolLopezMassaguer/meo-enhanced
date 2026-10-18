@@ -407,6 +407,24 @@ await flushFrames(documentFrames);
 if (documentScrollDOM.scrollTop !== 1470) {
   throw new Error(`Layout refresh moved the document anchor to ${documentScrollDOM.scrollTop}`);
 }
+// A newer layout operation supersedes an older retained cell/toolbar position.
+// They must never alternate between two scroll targets during settlement.
+let retainedElementTop = 4000;
+const retainedElement = {
+  isConnected: true,
+  ownerDocument: { defaultView: {} },
+  getBoundingClientRect: () => ({ top: retainedElementTop - documentScrollDOM.scrollTop })
+};
+documentController.retainElementTopWhileMutation(retainedElement as any, () => retainedElement as any, () => {});
+documentController.preserveDocumentAnchorWhileMutation(() => {
+  documentBlockTop += 100;
+  retainedElementTop += 700;
+});
+await flushFrames(documentFrames);
+if (documentScrollDOM.scrollTop !== 1570) {
+  throw new Error(`An obsolete element anchor overrode the newer layout operation: ${documentScrollDOM.scrollTop}`);
+}
+
 documentBlockTop = 1750;
 documentController.restoreDocumentAnchor({ position: 42, lineOffset: 20 });
 const selectionOnlyNavigation = documentController.beginNavigationReveal();
