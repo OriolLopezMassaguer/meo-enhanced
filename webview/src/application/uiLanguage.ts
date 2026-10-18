@@ -48,6 +48,13 @@ export type UiStrings = Readonly<{
   boldHeadings: string;
   criticMarkup: string;
   criticMarkupDescription: string;
+  criticAccept: string;
+  criticReject: string;
+  criticComment: string;
+  criticComments: string;
+  criticCommentsEmpty: string;
+  criticAuthor: string;
+  criticAuthorDescription: string;
   showComments: string;
   previewCommentsShow: string;
   previewCommentsHide: string;
@@ -360,7 +367,7 @@ export type UiStrings = Readonly<{
 const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
   en: Object.freeze({
     auto: 'Auto', light: 'Light', dark: 'Dark', previewTitle: 'Markdown Preview',
-    previewAppearance: 'Preview theme', previewSourceColoring: 'Preview source coloring', strongColoring: 'Color bold text', boldHeadings: 'Bold headings', criticMarkup: 'Highlight CriticMarkup', criticMarkupDescription: 'Color {++add++}, {--delete--}, {~~old~>new~~}, {==mark==} and {>>note<<} in Live and Source. Off shows them as plain text; Preview is not affected.', showComments: 'HTML comments', previewCommentsShow: 'Show', previewCommentsHide: 'Hide',
+    previewAppearance: 'Preview theme', previewSourceColoring: 'Preview source coloring', strongColoring: 'Color bold text', boldHeadings: 'Bold headings', criticMarkup: 'Highlight CriticMarkup', criticMarkupDescription: 'Color {++add++}, {--delete--}, {~~old~>new~~}, {==mark==} and {>>note<<} in Live and Source. Off shows them as plain text; Preview is not affected.', criticAccept: 'Accept', criticReject: 'Reject', criticComment: 'Add CriticMarkup comment', criticComments: 'CriticMarkup comments', criticCommentsEmpty: 'No comments in this document.', criticAuthor: 'CriticMarkup author', criticAuthorDescription: 'Name written after @ in new comments. Leave empty to omit it.', showComments: 'HTML comments', previewCommentsShow: 'Show', previewCommentsHide: 'Hide',
     previewCodeColors: 'Code color', previewCodeColorsOn: 'On', previewCodeColorsOff: 'Off',
     previewPreset: 'Preview preset', previewPresetInfo: 'Preset info', previewWidth: 'Width', previewWidthResponsive: 'Fit panel', previewWidthReference: 'Reference width',
     previewPresetManage: 'Custom presets…', previewOnlyLight: 'This preset only supports the light theme', previewOnlyDark: 'This preset only supports the dark theme',
@@ -572,7 +579,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
   }),
   'zh-CN': Object.freeze({
     auto: '自动', light: '浅色', dark: '深色', previewTitle: 'Markdown 预览',
-    previewAppearance: '预览主题', previewSourceColoring: '预览源码着色', strongColoring: '粗体文字着色', boldHeadings: '标题加粗', criticMarkup: '高亮 CriticMarkup', criticMarkupDescription: '在实时和源码模式中为 {++增加++}、{--删除--}、{~~旧~>新~~}、{==标记==} 和 {>>批注<<} 着色；关闭时按普通文本显示，预览不受影响。', showComments: 'HTML 注释', previewCommentsShow: '显示', previewCommentsHide: '隐藏',
+    previewAppearance: '预览主题', previewSourceColoring: '预览源码着色', strongColoring: '粗体文字着色', boldHeadings: '标题加粗', criticMarkup: '高亮 CriticMarkup', criticMarkupDescription: '在实时和源码模式中为 {++增加++}、{--删除--}、{~~旧~>新~~}、{==标记==} 和 {>>批注<<} 着色；关闭时按普通文本显示，预览不受影响。', criticAccept: '接受', criticReject: '拒绝', criticComment: '添加修订批注', criticComments: '修订批注', criticCommentsEmpty: '文档中没有批注。', criticAuthor: '修订作者', criticAuthorDescription: '新批注中 @ 后的名字；留空则省略。', showComments: 'HTML 注释', previewCommentsShow: '显示', previewCommentsHide: '隐藏',
     previewCodeColors: '代码着色', previewCodeColorsOn: '开', previewCodeColorsOff: '关',
     previewPreset: '预览预设', previewPresetInfo: '预设说明', previewWidth: '正文宽度', previewWidthResponsive: '适配面板', previewWidthReference: '参考宽度',
     previewPresetManage: '自定义预设…', previewOnlyLight: '此预设仅支持浅色主题', previewOnlyDark: '此预设仅支持深色主题',

@@ -775,7 +775,7 @@ mark {
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
-.critic-add, .critic-del, .critic-hl, .critic-comment {
+.critic-add, .critic-del, .critic-hl {
   border-radius: 0.14em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
@@ -783,13 +783,36 @@ mark {
 .critic-add { color: #3fa564; background-color: color-mix(in srgb, #3fa564 16%, transparent); }
 .critic-del { color: #d9534f; background-color: color-mix(in srgb, #d9534f 14%, transparent); text-decoration: line-through; }
 .critic-hl { color: inherit; background-color: color-mix(in srgb, #c9971c 28%, transparent); box-shadow: -0.18em 0 0 #c9971c; padding-left: 0.2em; }
-.critic-comment {
+.critic-note { position: relative; }
+.critic-badge {
+  display: inline-block;
+  margin: 0 0.15em;
+  padding: 0 0.45em;
+  border-radius: 999px;
+  font-size: 0.72em;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.7;
+  vertical-align: baseline;
+  cursor: pointer;
   color: #5a9fb8;
-  background-color: color-mix(in srgb, #5a9fb8 14%, transparent);
-  font-style: italic;
-  font-size: 0.92em;
-  padding: 0 0.3em;
+  background-color: color-mix(in srgb, #5a9fb8 18%, transparent);
+  border: 1px solid color-mix(in srgb, #5a9fb8 55%, transparent);
 }
+.critic-badge:hover, .critic-badge:focus { color: #fff; background-color: #5a9fb8; outline: none; }
+.critic-body {
+  display: none;
+  margin: 0.4em 0;
+  padding: 0.5em 0.8em;
+  border-left: 3px solid #5a9fb8;
+  border-radius: 3px;
+  font-size: 0.92em;
+  font-style: italic;
+  color: #5a9fb8;
+  background-color: color-mix(in srgb, #5a9fb8 12%, transparent);
+}
+.critic-note:focus-within .critic-body { display: block; }
+@media print { .critic-body { display: block; } }
 code {
   font-family: var(--meo-font-code);
   font-weight: inherit;

@@ -17,6 +17,7 @@ export type HostConfigurationEvent =
   | { readonly type: 'tableStickyHeaderChanged'; readonly enabled: boolean }
   | { readonly type: 'boldHeadingsChanged'; readonly enabled: boolean }
   | { readonly type: 'criticMarkupChanged'; readonly enabled: boolean }
+  | { readonly type: 'criticMarkupAuthorChanged'; readonly author: string }
   | { readonly type: 'restoreReadingPositionOnOpenChanged'; readonly enabled: boolean }
   | {
       readonly type: 'vscodeCodeThemeChanged';
@@ -59,6 +60,8 @@ export function decodeHostConfigurationEvent(value: unknown): HostConfigurationE
     }
     case 'toggleMode':
       return { type: 'toggleMode' };
+    case 'criticMarkupAuthorChanged':
+      return typeof value.author === 'string' && value.author.length <= 80 ? value as HostConfigurationEvent : null;
     case 'developmentStylesChanged':
       return typeof value.css === 'string' ? { type: 'developmentStylesChanged', css: value.css } : null;
     case 'largeDocumentOptimizationChanged':

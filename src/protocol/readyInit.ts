@@ -76,6 +76,7 @@ export type InitMessage = {
   readonly tableStickyHeaderEnabled: boolean;
   readonly boldHeadingsEnabled: boolean;
   readonly criticMarkupEnabled: boolean;
+  readonly criticMarkupAuthor: string;
   readonly restoreReadingPositionOnOpen: boolean;
   readonly readingPositionRestore: ReadingPositionDto | null;
   readonly findOptions: { readonly wholeWord: boolean; readonly caseSensitive: boolean };
@@ -135,6 +136,11 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     ? false
     : isRecord(value) && typeof value.criticMarkupEnabled === 'boolean'
       ? value.criticMarkupEnabled
+      : null;
+  const criticMarkupAuthor = isRecord(value) && value.criticMarkupAuthor === undefined
+    ? ''
+    : isRecord(value) && typeof value.criticMarkupAuthor === 'string' && value.criticMarkupAuthor.length <= 80
+      ? value.criticMarkupAuthor
       : null;
   const largeDocumentOptimizationEnabled = isRecord(value) && value.largeDocumentOptimizationEnabled === undefined
     ? true
@@ -207,6 +213,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     || tableStickyHeaderEnabled === null
     || boldHeadingsEnabled === null
     || criticMarkupEnabled === null
+    || criticMarkupAuthor === null
     || restoreReadingPositionOnOpen === null
     || (value.readingPositionRestore !== undefined
       && value.readingPositionRestore !== null
@@ -244,6 +251,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     tableStickyHeaderEnabled,
     boldHeadingsEnabled,
     criticMarkupEnabled,
+    criticMarkupAuthor,
     restoreReadingPositionOnOpen,
     readingPositionRestore
   } as unknown as InitMessage;

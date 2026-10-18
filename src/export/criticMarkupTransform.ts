@@ -18,6 +18,19 @@ function pushSpan(state: any, className: string, content: string, title?: string
   state.push('critic_close', 'span', -1);
 }
 
+/** A note is a numbered badge; its text opens on focus (click or Tab), without JavaScript. */
+function pushNote(state: any, label: string, body: string, title?: string): void {
+  state.push('critic_open', 'span', 1).attrs = [['class', 'critic-note']];
+  const badge = state.push('critic_open', 'span', 1);
+  badge.attrs = [['class', 'critic-badge'], ['tabindex', '0'], ['role', 'button'], ...(title ? [['title', title]] : [])];
+  state.push('text', '', 0).content = label;
+  state.push('critic_close', 'span', -1);
+  state.push('critic_open', 'span', 1).attrs = [['class', 'critic-body']];
+  if (body) state.push('text', '', 0).content = body;
+  state.push('critic_close', 'span', -1);
+  state.push('critic_close', 'span', -1);
+}
+
 function tokenize(state: any, silent: boolean): boolean {
   if (state.src.charCodeAt(state.pos) !== OPEN_BRACE_CODE) return false;
   const match = matchCriticMarkup(state.src, state.pos, state.posMax);
@@ -29,8 +42,8 @@ function tokenize(state: any, silent: boolean): boolean {
       pushSpan(state, 'critic-add', state.src.slice(match.separator.to, match.to - match.closeLength));
     } else if (match.kind === 'comment') {
       const { id, author, body } = parseCriticComment(content);
-      // A badge keeps the long note out of the prose; the full text is in the tooltip.
-      pushSpan(state, 'critic-comment', author ? `${author}: ${body}` : body, id ? `#${id}` : undefined);
+      state.env.criticNotes = (state.env.criticNotes ?? 0) + 1;
+      pushNote(state, String(state.env.criticNotes), author ? `${author}: ${body}` : body, id ? `#${id}` : undefined);
     } else {
       pushSpan(state, spanClass[match.kind], content);
     }

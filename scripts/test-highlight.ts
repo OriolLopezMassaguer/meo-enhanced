@@ -101,7 +101,8 @@ try {
     const menu = harness.createSelectionMenu().menu;
     document.body.appendChild(menu);
     const menuRect = menu.getBoundingClientRect();
-    const buttons = Array.from(menu.querySelectorAll<HTMLElement>('.selection-inline-button'));
+    // The CriticMarkup comment button only shows while that setting is on (default off).
+    const buttons = Array.from(menu.querySelectorAll<HTMLElement>('.selection-inline-button')).filter((button) => getComputedStyle(button).display !== 'none');
     const firstButton = buttons[0];
     const lastButton = buttons.at(-1);
     const firstButtonRect = firstButton?.getBoundingClientRect();

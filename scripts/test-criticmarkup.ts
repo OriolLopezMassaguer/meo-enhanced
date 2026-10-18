@@ -49,7 +49,7 @@ for (const expected of [
   '<span class="critic-del">removed</span>',
   '<span class="critic-del">bad</span><span class="critic-add">good</span>',
   '<span class="critic-hl">marked</span>',
-  '<span class="critic-comment" title="#c1">Oriol: check &lt;b&gt;this&lt;/b&gt;</span>',
+  '<span class="critic-note"><span class="critic-badge" tabindex="0" role="button" title="#c1">1</span><span class="critic-body">Oriol: check &lt;b&gt;this&lt;/b&gt;</span></span>',
   '<code>{++code++}</code>',
   '<s>real strike</s>'
 ]) assert(html.includes(expected), `Preview missing ${expected}\n${html}`);
@@ -184,6 +184,21 @@ try {
   assert(off.on.addColored && off.on.delStruck && off.on.markers.every((display) => display === 'none'), `enabled state: ${JSON.stringify(off.on)}`);
   assert(!off.disabled.addColored && !off.disabled.delStruck && off.disabled.markers.every((display) => display !== 'none'),
     `disabled state must read as plain text: ${JSON.stringify(off.disabled)}`);
+
+  // Preview notes: a numbered badge that opens its text on focus, without JavaScript.
+  const notePage = await browser.newPage();
+  try {
+    await notePage.setContent(`<style>${preview.styles.dark}</style><main class="meo-export-doc">${preview.html}</main>`);
+    const note = await notePage.evaluate(() => {
+      const badge = document.querySelector<HTMLElement>('.critic-badge')!;
+      const body = document.querySelector<HTMLElement>('.critic-body')!;
+      const closed = getComputedStyle(body).display;
+      badge.focus();
+      const opened = getComputedStyle(body).display;
+      return { closed, opened, label: badge.textContent, tabbable: badge.tabIndex === 0 };
+    });
+    assert.deepEqual(note, { closed: 'none', opened: 'block', label: '1', tabbable: true }, 'Preview note opens on focus');
+  } finally { await notePage.close(); }
 
   console.log('CriticMarkup test passed');
 } finally {
