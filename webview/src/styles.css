@@ -8629,3 +8629,23 @@ html[data-meo-ui-contrast='high'] .meo-input-suggestion[aria-selected='true'] :i
 .meo-critic-comments-action { flex: 1; border: 0; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px; color: inherit; background: transparent; cursor: pointer; }
 .meo-critic-comments-action.is-accept:hover { background: color-mix(in srgb, var(--meo-critic-add) 24%, transparent); }
 .meo-critic-comments-action.is-reject:hover { background: color-mix(in srgb, var(--meo-critic-del) 24%, transparent); }
+
+/* Comment types: [TODO] [DUDA] [FUENTE] [REVISAR] [OK] */
+:root {
+  --meo-critic-type-todo: #fd7e14;
+  --meo-critic-type-duda: #8a5cc7;
+  --meo-critic-type-fuente: #20c997;
+  --meo-critic-type-revisar: #dc3545;
+  --meo-critic-type-ok: #28a745;
+}
+html.meo-critic-markup .cm-editor .meo-md-critic-tag { font-style: normal; font-weight: 600; }
+html.meo-critic-markup .cm-editor .meo-md-critic-tag-todo { color: var(--meo-critic-type-todo); -webkit-text-fill-color: var(--meo-critic-type-todo); }
+.meo-critic-comments-item.is-type-todo .meo-critic-comments-meta { color: var(--meo-critic-type-todo); }
+html.meo-critic-markup .cm-editor .meo-md-critic-tag-duda { color: var(--meo-critic-type-duda); -webkit-text-fill-color: var(--meo-critic-type-duda); }
+.meo-critic-comments-item.is-type-duda .meo-critic-comments-meta { color: var(--meo-critic-type-duda); }
+html.meo-critic-markup .cm-editor .meo-md-critic-tag-fuente { color: var(--meo-critic-type-fuente); -webkit-text-fill-color: var(--meo-critic-type-fuente); }
+.meo-critic-comments-item.is-type-fuente .meo-critic-comments-meta { color: var(--meo-critic-type-fuente); }
+html.meo-critic-markup .cm-editor .meo-md-critic-tag-revisar { color: var(--meo-critic-type-revisar); -webkit-text-fill-color: var(--meo-critic-type-revisar); }
+.meo-critic-comments-item.is-type-revisar .meo-critic-comments-meta { color: var(--meo-critic-type-revisar); }
+html.meo-critic-markup .cm-editor .meo-md-critic-tag-ok { color: var(--meo-critic-type-ok); -webkit-text-fill-color: var(--meo-critic-type-ok); }
+.meo-critic-comments-item.is-type-ok .meo-critic-comments-meta { color: var(--meo-critic-type-ok); }

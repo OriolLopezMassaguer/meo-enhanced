@@ -811,6 +811,22 @@ mark {
   color: #5a9fb8;
   background-color: color-mix(in srgb, #5a9fb8 12%, transparent);
 }
+.critic-type-todo .critic-badge { color: #fd7e14; background-color: color-mix(in srgb, #fd7e14 18%, transparent); border-color: color-mix(in srgb, #fd7e14 55%, transparent); }
+.critic-type-todo .critic-badge:hover, .critic-type-todo .critic-badge:focus { color: #fff; background-color: #fd7e14; }
+.critic-type-todo .critic-body { color: #fd7e14; border-left-color: #fd7e14; background-color: color-mix(in srgb, #fd7e14 12%, transparent); }
+.critic-type-duda .critic-badge { color: #8a5cc7; background-color: color-mix(in srgb, #8a5cc7 18%, transparent); border-color: color-mix(in srgb, #8a5cc7 55%, transparent); }
+.critic-type-duda .critic-badge:hover, .critic-type-duda .critic-badge:focus { color: #fff; background-color: #8a5cc7; }
+.critic-type-duda .critic-body { color: #8a5cc7; border-left-color: #8a5cc7; background-color: color-mix(in srgb, #8a5cc7 12%, transparent); }
+.critic-type-fuente .critic-badge { color: #20c997; background-color: color-mix(in srgb, #20c997 18%, transparent); border-color: color-mix(in srgb, #20c997 55%, transparent); }
+.critic-type-fuente .critic-badge:hover, .critic-type-fuente .critic-badge:focus { color: #fff; background-color: #20c997; }
+.critic-type-fuente .critic-body { color: #20c997; border-left-color: #20c997; background-color: color-mix(in srgb, #20c997 12%, transparent); }
+.critic-type-revisar .critic-badge { color: #dc3545; background-color: color-mix(in srgb, #dc3545 18%, transparent); border-color: color-mix(in srgb, #dc3545 55%, transparent); }
+.critic-type-revisar .critic-badge:hover, .critic-type-revisar .critic-badge:focus { color: #fff; background-color: #dc3545; }
+.critic-type-revisar .critic-body { color: #dc3545; border-left-color: #dc3545; background-color: color-mix(in srgb, #dc3545 12%, transparent); }
+.critic-type-ok .critic-badge { color: #28a745; background-color: color-mix(in srgb, #28a745 18%, transparent); border-color: color-mix(in srgb, #28a745 55%, transparent); }
+.critic-type-ok .critic-badge:hover, .critic-type-ok .critic-badge:focus { color: #fff; background-color: #28a745; }
+.critic-type-ok .critic-body { color: #28a745; border-left-color: #28a745; background-color: color-mix(in srgb, #28a745 12%, transparent); }
+.critic-note.is-resolved .critic-badge { opacity: 0.55; text-decoration: line-through; }
 .critic-note:focus-within .critic-body { display: block; }
 @media print { .critic-body { display: block; } }
 code {

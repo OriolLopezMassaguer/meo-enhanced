@@ -1,7 +1,7 @@
 import type { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import {
-  groupCriticUnits, parseCriticComment, resolveAllCriticUnits, toggleCommentResolved, type CriticMark
+  groupCriticUnits, parseCriticComment, resolveAllCriticUnits, toggleCommentResolved, type CriticCommentType, type CriticMark
 } from '../../../src/foundation/criticMarkup';
 import { criticMarksInState } from './criticMarkupSyntax';
 
@@ -10,6 +10,7 @@ export type CriticComment = Readonly<{
   author: string | null;
   date: string | null;
   resolved: boolean;
+  type: CriticCommentType | null;
   /** The comment mark itself, for toggling its resolved marker. */
   mark: CriticMark;
   body: string;
@@ -116,6 +117,7 @@ export function createCriticCommentsPanel(options: {
         const item = document.createElement('li');
         item.className = 'meo-critic-comments-item';
         item.classList.toggle('is-resolved', comment.resolved);
+        if (comment.type) item.classList.add(`is-type-${comment.type.toLowerCase()}`);
         const check = document.createElement('input');
         check.type = 'checkbox';
         check.className = 'meo-critic-comments-check';
@@ -131,7 +133,7 @@ export function createCriticCommentsPanel(options: {
         row.className = 'meo-critic-comments-row';
         const meta = document.createElement('span');
         meta.className = 'meo-critic-comments-meta';
-        meta.textContent = [comment.id ? `#${comment.id}` : '', comment.author ? `@${comment.author}` : '', comment.date ?? '', `L${comment.line}`]
+        meta.textContent = [comment.id ? `#${comment.id}` : '', comment.author ? `@${comment.author}` : '', comment.date ?? '', comment.type ? `[${comment.type}]` : '', `L${comment.line}`]
           .filter(Boolean).join(' ');
         const body = document.createElement('span');
         body.className = 'meo-critic-comments-body';

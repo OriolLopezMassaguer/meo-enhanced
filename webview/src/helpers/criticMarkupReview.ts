@@ -30,10 +30,14 @@ export function insertCriticComment(view: EditorView): void {
   const selection = state.selection.main;
   const text = state.doc.toString();
   const id = nextCommentId(criticMarksInState(state), text);
-  const { insert, cursor } = buildCommentInsertion(state.doc.sliceString(selection.from, selection.to), id, commentAuthor, commentDates ? todayIso() : '');
+  const selected = state.doc.sliceString(selection.from, selection.to);
+  // A highlight cannot wrap another highlight: attach the note after the selection instead.
+  const wrap = !selected.includes('{==') && !selected.includes('==}');
+  const { insert, cursor } = buildCommentInsertion(wrap ? selected : '', id, commentAuthor, commentDates ? todayIso() : '');
+  const at = wrap ? selection.from : selection.to;
   view.dispatch({
-    changes: { from: selection.from, to: selection.to, insert },
-    selection: { anchor: selection.from + cursor },
+    changes: { from: at, to: wrap ? selection.to : at, insert },
+    selection: { anchor: at + cursor },
     userEvent: 'input.criticComment',
     scrollIntoView: true
   });

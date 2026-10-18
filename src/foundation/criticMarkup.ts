@@ -41,6 +41,12 @@ export function matchCriticMarkup(text: string, from: number, end = text.length)
   return { ...match, separator: { from: separatorFrom, to: separatorFrom + 2 } };
 }
 
+/** Closed set of comment types, written `[TODO]` right after the author. */
+export const criticCommentTypes = ['TODO', 'DUDA', 'FUENTE', 'REVISAR', 'OK'] as const;
+export type CriticCommentType = typeof criticCommentTypes[number];
+
+const TYPE_TAG = new RegExp(`^\\[(${criticCommentTypes.join('|')})\\](?:\\s+|$)`);
+
 export type CriticCommentParts = Readonly<{
   id: string | null;
   author: string | null;
@@ -48,6 +54,8 @@ export type CriticCommentParts = Readonly<{
   date: string | null;
   /** A body that starts with `[x] ` is a resolved comment; the marker is not part of `body`. */
   resolved: boolean;
+  /** `[TODO]`-style tag after the author (and after the resolved marker); not part of `body`. */
+  type: CriticCommentType | null;
   body: string;
 }>;
 
@@ -79,7 +87,17 @@ export function parseCriticComment(content: string): CriticCommentParts {
   }
   const resolved = rest.toLowerCase().startsWith(RESOLVED_MARKER);
   if (resolved) rest = rest.slice(RESOLVED_MARKER.length);
-  return { id, author, date, resolved, body: rest };
+  const typeMatch = TYPE_TAG.exec(rest);
+  if (typeMatch) rest = rest.slice(typeMatch[0].length);
+  return { id, author, date, resolved, type: typeMatch ? typeMatch[1] as CriticCommentType : null, body: rest };
+}
+
+/** Where the `[TODO]`-style tag sits inside a comment's content (offsets relative to that content). */
+export function criticCommentTagRange(content: string): Readonly<{ from: number; to: number; type: CriticCommentType }> | null {
+  const header = /^\s*(?:#[\w.-]+\s*)?(?:@[^:\n]+:\s*)?(?:\[x\]\s+)?/i.exec(content)![0];
+  const tag = TYPE_TAG.exec(content.slice(header.length));
+  if (!tag) return null;
+  return { from: header.length, to: header.length + tag[1].length + 2, type: tag[1] as CriticCommentType };
 }
 
 /** Toggle the resolved marker of a comment mark; the change replaces only the marker. */
@@ -199,9 +217,19 @@ export function buildCommentInsertion(selected: string, id: string, author: stri
   return { insert: `${highlight}${head}<<}`, cursor: highlight.length + head.length };
 }
 
+/** Notes and plain highlights are not changes: a bulk action leaves them alone unless the note is resolved. */
+function isOpenReviewNote(text: string, unit: CriticUnit): boolean {
+  if (unit.kind !== 'comment' && unit.kind !== 'hl') return false;
+  const note = unit.kind === 'comment' ? unit.mark : unit.comment;
+  if (!note) return true;
+  return !parseCriticComment(text.slice(note.from + note.openLength, note.to - note.closeLength)).resolved;
+}
+
 /**
- * Resolve every unit (or only those fully inside `range`) as one set of non-overlapping changes,
- * ready to dispatch as a single undoable transaction.
+ * Resolve every change (or only those fully inside `range`) as one set of non-overlapping edits,
+ * ready to dispatch as a single undoable transaction. Additions, deletions and substitutions are
+ * always resolved; a note, or a highlight with a note, is only cleared once it is marked `[x]`,
+ * so "accept all" never throws away open comments.
  */
 export function resolveAllCriticUnits(
   text: string,
@@ -211,5 +239,6 @@ export function resolveAllCriticUnits(
 ): CriticResolution[] {
   return units
     .filter((unit) => !range || (unit.from >= range.from && unit.to <= range.to))
+    .filter((unit) => !isOpenReviewNote(text, unit))
     .map((unit) => resolveCriticUnit(text, unit, decision));
 }

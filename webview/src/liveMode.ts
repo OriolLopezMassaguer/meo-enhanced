@@ -28,7 +28,7 @@ import {
 import { ImageGroupWidget, ImageWidget, getImageData, isImageUrl, type ImageGroupItem } from './helpers/images';
 import { getImagePresentationFactory } from './editor/imagePresentation';
 import { liveHighlightStyle, sourceMarkdownHighlightProps } from './theme';
-import { criticContentClass, criticContentRanges, criticMarkDecoration, crossBlockCriticField } from './helpers/criticMarkupSyntax';
+import { criticContentClass, criticContentRanges, criticMarkDecoration, criticTagDecorations, crossBlockCriticField } from './helpers/criticMarkupSyntax';
 import { criticReviewField } from './helpers/criticMarkupReview';
 import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
@@ -2090,6 +2090,11 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
         addHighlightDecorations(ranges, state, node);
       } else if (criticContentClass[node.name] || node.name === 'CriticSub') {
         for (const range of criticContentRanges(node)) addRange(ranges, range.from, range.to, criticMarkDecoration(range.className));
+        if (node.name === 'CriticComment') {
+          for (const tag of criticTagDecorations(state.doc.sliceString(node.from, node.to), 0, node.to - node.from)) {
+            addRange(ranges, node.from + tag.from, node.from + tag.to, tag.decoration);
+          }
+        }
       } else if (node.name === 'InlineCode' || node.name === 'CodeText') {
         addRange(ranges, node.from, node.to, inlineStyleDecos.inlineCode);
       } else if (node.name === 'LinkLabel') {

@@ -87,8 +87,12 @@ const apply = (decision: 'accept' | 'reject', range?: { from: number; to: number
   return [...changes].sort((left, right) => right.from - left.from)
     .reduce((text, change) => text.slice(0, change.from) + change.insert + text.slice(change.to), doc);
 };
-assert.equal(apply('accept'), 'A one B  C y D h');
-assert.equal(apply('reject'), 'A  B two C x D h');
+assert.equal(apply('accept'), 'A one B  C y D {==h==}{>>#c1 n<<}', 'bulk accept keeps open notes and highlights');
+assert.equal(apply('reject'), 'A  B two C x D {==h==}{>>#c1 n<<}', 'bulk reject keeps open notes and highlights');
+const closed = 'A {++one++} {==h==}{>>#c1 [x] n<<} {>>#c2 [x] loose<<} {>>#c3 open<<}';
+const closedChanges = resolveAllCriticUnits(closed, groupCriticUnits(findCriticMarks(closed)), 'accept');
+assert.equal([...closedChanges].sort((left, right) => right.from - left.from)
+  .reduce((text, change) => text.slice(0, change.from) + change.insert + text.slice(change.to), closed), 'A one h  {>>#c3 open<<}', 'resolved notes are cleared, open ones stay');
 assert.equal(apply('accept', { from: 0, to: doc.indexOf(' B ') }), 'A one B {--two--} C {~~x~>y~~} D {==h==}{>>#c1 n<<}', 'a range limits the units');
 assert.equal(resolveAllCriticUnits('plain', [], 'accept').length, 0);
 
@@ -275,9 +279,9 @@ try {
   assert.equal(extras.afterToggle, extras.text.replace('2026-10-18: pending', '2026-10-18: [x] pending'), 'toggle adds the marker');
   assert.equal(extras.afterUntoggle, extras.text, 'toggling twice restores the text');
   assert.deepEqual(extras.filtered.map((row: { body: string }) => row.body), ['pending'], 'hide resolved filters the list');
-  assert.equal(extras.acceptedAll, 'A new b  c h d ', 'accept all resolves every mark');
+  assert.equal(extras.acceptedAll, 'A new b  c {==h==}{>>#c01 @O 2026-10-18: pending<<} d ', 'accept all resolves changes and resolved notes, keeping open ones');
   assert.equal(extras.restored, extras.text, 'accept all is one undo step');
-  assert.equal(extras.rejectedAll, 'A  b old c h d ', 'reject all keeps the originals');
+  assert.equal(extras.rejectedAll, 'A  b old c {==h==}{>>#c01 @O 2026-10-18: pending<<} d ', 'reject all keeps the originals and open notes');
   assert.equal(extras.acceptedInSelection, extras.text.replace('{++new++}', 'new'), 'a selection limits accept all');
 
   // Dates: the comment button writes today after the author.
@@ -294,6 +298,36 @@ try {
     return withDate;
   });
   assert.match(dated, /^Pick \{==this==\}\{>>#c01 @Oriol \d{4}-\d{2}-\d{2}: <<\}\.$/, `date after the author: ${dated}`);
+
+  // The list shows a comment's type tag next to its id and author.
+  const typedRow = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const text = 'x {>>#c1 @O: [FUENTE] cite it<<} y';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'C', empty: 'None', acceptAll: 'A', rejectAll: 'R', hideResolved: 'H', markResolved: 'M' }) });
+    document.body.append(panel.element);
+    panel.open();
+    const item = panel.element.querySelector('.meo-critic-comments-item') as HTMLElement;
+    const result = { meta: item.querySelector('.meo-critic-comments-meta')!.textContent, body: item.querySelector('.meo-critic-comments-body')!.textContent, typed: item.classList.contains('is-type-fuente') };
+    panel.element.remove();
+    editor.destroy();
+    return result;
+  });
+  assert.deepEqual(typedRow, { meta: '#c1 @O [FUENTE] L1', body: 'cite it', typed: true }, 'type shows in the list');
+
+  // A selection that already holds a highlight gets its note after it instead of a nested highlight.
+  const conflict = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const text = 'a {==b==} c';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'source', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: 0, head: text.length } });
+    harness.setCriticCommentAuthor('');
+    editor.insertFormat('criticComment');
+    const result = editor.getText();
+    editor.destroy();
+    return result;
+  });
+  assert.equal(conflict, 'a {==b==} c{>>#c01 <<}', 'no nested highlight');
 
 } finally {
   await browser.close();
