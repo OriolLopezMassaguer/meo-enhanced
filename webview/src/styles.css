@@ -3977,7 +3977,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor :is(.meo-md-math-fenced-display.meo-math-live-result, .meo-md-html-live-result) {
   /* Keep the divider label below editable source and above rendered content. */
-  padding: 24px 0;
+  padding: 20px 0 12px;
   background: var(--meo-code-background);
   border-radius: 0 0 6px 6px;
 }
@@ -3985,7 +3985,7 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .cm-editor :is(.meo-md-math-fenced-display.meo-math-live-result, .meo-md-html-live-result)::before {
   content: '';
   position: absolute;
-  top: 9px;
+  top: 8px;
   left: 0;
   right: 0;
   border-top: 1px solid var(--meo-document-separator);
@@ -4037,14 +4037,14 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 .meo-math-result-status,
 .meo-md-html-result-status {
   position: absolute;
-  top: 9px;
+  top: 8px;
   left: 50%;
   transform: translate(-50%, -50%);
   max-width: calc(100% - 16px);
   padding: 0 8px;
   background: var(--meo-code-background);
   font-size: 11px;
-  line-height: 18px;
+  line-height: 16px;
   text-align: center;
   white-space: nowrap;
   color: var(--meo-semantic-secondaryForeground);
