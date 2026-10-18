@@ -2521,9 +2521,8 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
     });
   }
 
-  eq(other: WidgetType): boolean {
-    const equivalent = (
-      other instanceof HtmlTableWidget &&
+  private hasCompatibleDom(other: HtmlTableWidget): boolean {
+    return (
       this.hasSameUiLanguageEpoch(other) &&
       other.tableData.indent === this.tableData.indent &&
       liveBlockIndentKey(other.tableData.visualIndent) === liveBlockIndentKey(this.tableData.visualIndent) &&
@@ -2534,18 +2533,32 @@ class HtmlTableWidget extends UiLanguageSensitiveWidget {
       other.tableData.alignments.every((alignment, index) => alignment === this.tableData.alignments[index]) &&
       other.stickyHeaderAdapterFactory === this.stickyHeaderAdapterFactory
     );
+  }
+
+  eq(other: WidgetType): boolean {
+    const equivalent = other instanceof HtmlTableWidget && this.hasCompatibleDom(other)
+      && this.tableData.from === other.tableData.from && this.tableData.to === other.tableData.to
+      && this.tableData.startLine === other.tableData.startLine && this.tableData.endLine === other.tableData.endLine
+      && this.tableData.signature === other.tableData.signature
+      && JSON.stringify(this.tableData.sourceRanges) === JSON.stringify(other.tableData.sourceRanges);
     if (equivalent && other instanceof HtmlTableWidget) {
       const mounted = this.domRefs ? this : other.domRefs ? other : null;
-      // CodeMirror keeps the mounted DOM but adopts the new decoration's widget.
-      // Keep its last measurement until the observer publishes the next row layout.
       const cache = mounted?.measuredHeightCache ?? (
         this.measuredHeight >= other.measuredHeight ? this.measuredHeightCache : other.measuredHeightCache
       );
       this.measuredHeightCache = other.measuredHeightCache = cache;
-      const projected = mounted === this ? other.tableData : this.tableData;
-      mounted?.adoptEquivalentTableData(projected);
     }
     return equivalent;
+  }
+
+  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    // Equality is also checked for candidates CodeMirror never mounts. Apply
+    // source and content changes only when it actually reuses this DOM.
+    const owner = tableDomOwners.get(dom);
+    if (!owner || owner.view !== view || !this.hasCompatibleDom(owner)) return false;
+    this.measuredHeightCache = owner.measuredHeightCache;
+    owner.adoptEquivalentTableData(this.tableData);
+    return true;
   }
 
   projectPosition(state: EditorState, changes: ChangeDesc): void {

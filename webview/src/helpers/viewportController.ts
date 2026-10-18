@@ -1361,7 +1361,12 @@ export class ViewportController {
       const rect = element.getBoundingClientRect();
       return rect.top <= scrollerRect.top + 2 && rect.bottom > scrollerRect.top + 2;
     });
-    const tableRows = visibleTable ? Array.from(visibleTable.querySelectorAll<HTMLElement>('tr')) : [];
+    const tableStartLine = visibleTable?.dataset.meoRenderedBlockStartLine;
+    const tableRowsOf = (shell: HTMLElement | null | undefined) => Array.from(
+      shell?.querySelector<HTMLElement>('.meo-md-html-table:not(.meo-md-html-table-sticky-table)')
+        ?.querySelectorAll<HTMLElement>(':scope > thead > tr, :scope > tbody > tr') ?? []
+    );
+    const tableRows = tableRowsOf(visibleTable);
     const tableRowIndex = scrollerRect ? (() => {
       const rowAtTop = tableRows.findIndex((element) => {
         const rect = element.getBoundingClientRect();
@@ -1378,11 +1383,12 @@ export class ViewportController {
       ));
     })() : -1;
     const tableRow = tableRows[tableRowIndex];
-    const resolveTableRow = () => tableRow?.isConnected ? tableRow : (
-      this.view.contentDOM.querySelector<HTMLElement>(
-        `.meo-md-html-table-shell[data-meo-rendered-block-start-line="${visibleTable?.dataset.meoRenderedBlockStartLine}"]`
-      )?.querySelectorAll<HTMLElement>('tr')[tableRowIndex] ?? null
-    );
+    const resolveTableRow = () => tableRowsOf(
+      visibleTable?.isConnected && visibleTable.dataset.meoRenderedBlockStartLine === tableStartLine
+        ? visibleTable : this.view.contentDOM.querySelector<HTMLElement>(
+          `.meo-md-html-table-shell[data-meo-rendered-block-start-line="${tableStartLine}"]`
+        )
+    )[tableRowIndex] ?? null;
     const visibleBlock = tableRow ?? (scrollerRect && Array.from(
       this.view.contentDOM.querySelectorAll<HTMLElement>('.cm-line, [data-meo-rendered-block-start-line]')
     ).find((element) => {
@@ -1390,8 +1396,11 @@ export class ViewportController {
       return rect.bottom > scrollerRect.top + 2 && rect.top < scrollerRect.bottom;
     }));
     const blockTop = visibleBlock?.getBoundingClientRect().top;
+    const tableSourceLine = Number(tableRow?.dataset.sourceLineNumber);
+    const tableAnchorPosition = Number.isInteger(tableSourceLine) && tableSourceLine >= 1
+      && tableSourceLine <= this.view.state.doc.lines ? this.view.state.doc.line(tableSourceLine).from : null;
     const fontAnchorPosition = immediateLayout && scrollerRect
-      ? this.view.posAtCoords({ x: scrollerRect.left + 100, y: scrollerRect.top + 2 }) ?? anchor.position
+      ? tableAnchorPosition ?? this.view.posAtCoords({ x: scrollerRect.left + 100, y: scrollerRect.top + 2 }) ?? anchor.position
       : anchor.position;
     const foldedCodeNearTop = immediateLayout && scrollerRect && Array.from(
       this.view.contentDOM.querySelectorAll<HTMLElement>('.meo-md-long-code-placeholder')
@@ -1438,7 +1447,7 @@ export class ViewportController {
     mutate();
     // Keep the visible source position in CodeMirror's virtual viewport while
     // preceding tall blocks acquire their new font-dependent height.
-    if (immediateLayout && (this.getMode() === 'source' || foldedCodeNearTop || (!tableRow && anchorLineTop !== null)
+    if (immediateLayout && (tableRow || this.getMode() === 'source' || foldedCodeNearTop || (!tableRow && anchorLineTop !== null)
       || topRenderedBlock?.querySelector('.meo-mermaid-toolbar'))) queueMicrotask(() => {
       if (!this.destroyed && !this.isUserScrolling()) this.view.dispatch({
         effects: EditorView.scrollIntoView(fontAnchorPosition, { y: 'nearest' })
