@@ -37,6 +37,7 @@ import {
   TABLE_STICKY_HEADER_SETTING_KEY,
   BOLD_HEADINGS_SETTING_KEY,
   CRITIC_MARKUP_AUTHOR_SETTING_KEY,
+  CRITIC_MARKUP_DATES_SETTING_KEY,
   CRITIC_MARKUP_SETTING_KEY,
   RESTORE_READING_POSITION_SETTING_KEY,
   OUTLINE_VISIBLE_KEY,
@@ -48,6 +49,7 @@ import {
   getTableStickyHeaderEnabled,
   getBoldHeadingsEnabled,
   getCriticMarkupAuthor,
+  getCriticMarkupDates,
   getCriticMarkupEnabled,
   getRestoreReadingPositionOnOpen,
   isMarkdownDocumentPath,
@@ -544,6 +546,10 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
 
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${CRITIC_MARKUP_SETTING_KEY}`)) {
       this.broadcast({ type: 'criticMarkupChanged', enabled: getCriticMarkupEnabled() });
+    }
+
+    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${CRITIC_MARKUP_DATES_SETTING_KEY}`)) {
+      this.broadcast({ type: 'criticMarkupDatesChanged', enabled: getCriticMarkupDates() });
     }
 
     if (

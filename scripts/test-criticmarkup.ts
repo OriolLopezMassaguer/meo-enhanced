@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import exportRuntime from '../src/export/runtime';
-import { matchCriticMarkup, parseCriticComment } from '../src/foundation/criticMarkup';
+import { criticCommentTagRange, matchCriticMarkup, parseCriticComment } from '../src/foundation/criticMarkup';
 import { launchTestBrowser } from './browser-test-helpers';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
@@ -24,9 +24,22 @@ assert.equal(match('{+x+}'), null);
 assert.equal(match('see {++x++} here', 4)?.to, 11, 'matches from an offset');
 assert.equal(match('{++a++} and {--b--}')?.to, 7, 'stops at the first closing delimiter');
 assert.equal(matchCriticMarkup('{++a++}', 0, 5), null, 'does not read past the end bound');
-assert.deepEqual(parseCriticComment('#c17 @DEBATE: why not?'), { id: 'c17', author: 'DEBATE', body: 'why not?' });
-assert.deepEqual(parseCriticComment('plain note'), { id: null, author: null, body: 'plain note' });
-assert.deepEqual(parseCriticComment('@Oriol: no id'), { id: null, author: 'Oriol', body: 'no id' });
+assert.deepEqual(parseCriticComment('#c17 @DEBATE: why not?'), { id: 'c17', author: 'DEBATE', date: null, resolved: false, type: null, body: 'why not?' });
+assert.deepEqual(parseCriticComment('plain note'), { id: null, author: null, date: null, resolved: false, type: null, body: 'plain note' });
+assert.deepEqual(parseCriticComment('@Oriol: no id'), { id: null, author: 'Oriol', date: null, resolved: false, type: null, body: 'no id' });
+assert.deepEqual(parseCriticComment('#c2 @Oriol 2026-10-18: [x] done'), { id: 'c2', author: 'Oriol', date: '2026-10-18', resolved: true, type: null, body: 'done' });
+assert.deepEqual(parseCriticComment('@Ana Maria 2026-01-02: n'), { id: null, author: 'Ana Maria', date: '2026-01-02', resolved: false, type: null, body: 'n' });
+assert.equal(parseCriticComment('@Oriol: [X] upper').resolved, true, 'marker is case-insensitive');
+assert.equal(parseCriticComment('@Oriol: [x]no space').resolved, false, 'the marker needs a following space');
+assert.deepEqual(parseCriticComment('#c3 @Oriol: [TODO] rewrite'), { id: 'c3', author: 'Oriol', date: null, resolved: false, type: 'TODO', body: 'rewrite' });
+assert.deepEqual(parseCriticComment('@O 2026-10-18: [x] [DUDA] why?'), { id: null, author: 'O', date: '2026-10-18', resolved: true, type: 'DUDA', body: 'why?' });
+assert.equal(parseCriticComment('@O: [XXX] unknown').type, null, 'unknown tags stay text');
+assert.equal(parseCriticComment('@O: [XXX] unknown').body, '[XXX] unknown');
+assert.equal(parseCriticComment('@O: [todo] lower').type, null, 'tags are upper case');
+assert.equal(parseCriticComment('@O: [TODO]').type, 'TODO', 'a tag may be the whole body');
+assert.equal(parseCriticComment('@O: [FUENTE]no space').type, null, 'the tag needs a following space');
+assert.deepEqual(criticCommentTagRange('#c1 @Oriol: [x] [TODO] go'), { from: 16, to: 22, type: 'TODO' });
+assert.equal(criticCommentTagRange('@O: plain'), null);
 
 // Export / Preview.
 const markdown = [
@@ -199,6 +212,83 @@ try {
     });
     assert.deepEqual(note, { closed: 'none', opened: 'block', label: '1', tabbable: true }, 'Preview note opens on focus');
   } finally { await notePage.close(); }
+
+
+  // Nested syntax: emphasis, links and inner marks work inside a mark; a comment stays plain text.
+  const nestedPreview = exportRuntime.renderPreviewDocument({
+    markdownText: [
+      '{++**bold** and [link](https://example.com)++}',
+      '',
+      '{~~*old*~>**new**~~}',
+      '',
+      '{==outer {++inner++} text==}',
+      '',
+      '{>>#c9 note with **stars**<<}'
+    ].join('\n'),
+    sourceDocumentPath: 'C:/tmp/nested.md', uiLanguage: 'en', styleEnvironment: { previewFontFamily: '' }
+  }).html;
+  for (const expected of [
+    '<span class="critic-add"><strong>bold</strong> and <a href="https://example.com" target="_blank" rel="noopener noreferrer">link</a></span>',
+    '<span class="critic-del"><em>old</em></span><span class="critic-add"><strong>new</strong></span>',
+    '<span class="critic-hl">outer <span class="critic-add">inner</span> text</span>',
+    '<span class="critic-body">note with **stars**</span>'
+  ]) assert(nestedPreview.includes(expected), `nested preview missing ${expected}\n${nestedPreview}`);
+
+  const nestedEditor = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    document.getElementById('app')!.replaceChildren();
+    const text = ['{++**bold** inside++}', '', '{==outer {++inner++} text==}', '', 'Last paragraph.'].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: text.length } });
+    await settle();
+    const found = (selector: string) => Array.from(document.querySelectorAll(selector)).map((node) => node.textContent);
+    const result = {
+      strongInsideAdd: found('.meo-md-critic-add .meo-md-strong'),
+      addInsideHighlight: found('.meo-md-critic-hl .meo-md-critic-add'),
+      markers: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-critic-marker')).map((node) => getComputedStyle(node).display)
+    };
+    editor.destroy();
+    return result;
+  });
+  assert.deepEqual(nestedEditor.strongInsideAdd, ['bold'], 'emphasis renders inside a mark');
+  assert.deepEqual(nestedEditor.addInsideHighlight, ['inner'], 'a mark renders inside another');
+  assert(nestedEditor.markers.every((display) => display === 'none'), 'delimiters hide off the active line, nested ones included');
+
+
+  // Comment types: [TODO] [DUDA] [FUENTE] [REVISAR] [OK] after the author.
+  const typedPreview = exportRuntime.renderPreviewDocument({
+    markdownText: ['{==a==}{>>#c1 @O: [TODO] rewrite<<}', '', '{==b==}{>>#c2 @O: [x] [DUDA] why<<}', '', '{>>#c3 @O: [XXX] unknown<<}'].join('\n'),
+    sourceDocumentPath: 'C:/tmp/typed.md', uiLanguage: 'en', styleEnvironment: { previewFontFamily: '' }
+  });
+  for (const expected of [
+    '<span class="critic-note critic-type-todo"><span class="critic-badge" tabindex="0" role="button" title="#c1">TODO 1</span><span class="critic-body">O: rewrite</span></span>',
+    '<span class="critic-note critic-type-duda is-resolved"><span class="critic-badge" tabindex="0" role="button" title="#c2">DUDA 2</span><span class="critic-body">O: why</span></span>',
+    '<span class="critic-note"><span class="critic-badge" tabindex="0" role="button" title="#c3">3</span><span class="critic-body">O: [XXX] unknown</span></span>'
+  ]) assert(typedPreview.html.includes(expected), `typed preview missing ${expected}\n${typedPreview.html}`);
+  assert(typedPreview.styles.dark.includes('.critic-type-todo .critic-badge') && typedPreview.styles.light.includes('.critic-type-ok .critic-body'), 'Preview styles carry the type colors');
+
+  const typedEditor = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    document.getElementById('app')!.replaceChildren();
+    const text = ['{==a==}{>>#c1 @O: [TODO] rewrite<<}', '', '{>>#c2 [x] [DUDA] why<<}', '', '{>>#c3 [XXX] unknown<<}', '', '{==- one', '- two==}{>>#c4 [OK] fine<<}', '', 'Last paragraph.'].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: text.length } });
+    await settle();
+    const tags = (selector: string) => Array.from(document.querySelectorAll(selector)).map((node) => `${node.textContent}:${(node.className.match(/meo-md-critic-tag-(\w+)/) ?? [])[1]}`);
+    const live = tags('.meo-md-critic-tag');
+    const color = getComputedStyle(document.querySelector('.meo-md-critic-tag-todo')!).color;
+    const plain = getComputedStyle(document.querySelector('.meo-md-critic-comment')!).color;
+    editor.setMode('source');
+    await settle();
+    const source = tags('.meo-md-critic-tag');
+    editor.destroy();
+    return { live, source, tinted: color !== plain };
+  });
+  assert.deepEqual(typedEditor.live, ['[TODO]:todo', '[DUDA]:duda', '[OK]:ok'], 'Live tags known types only, across blocks too');
+  assert.deepEqual(typedEditor.source, typedEditor.live, 'Source tags the same ranges');
+  assert.equal(typedEditor.tinted, true, 'a typed tag has its own color');
 
   console.log('CriticMarkup test passed');
 } finally {

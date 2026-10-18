@@ -8,6 +8,11 @@ Optimized project. New MEO Enhanced releases start from version 0.1.0.
 - Added the `meoEnhanced.appearance.criticMarkup` setting (off by default) with a checkbox in More tools and a switch in Settings > General. Off shows CriticMarkup as plain Markdown text in Live and Source; Preview is not affected.
 - Added CriticMarkup review tools (they follow the same setting): Accept / Reject buttons over the mark under the cursor in Live and Source (one undoable change; a highlight and its glued comment resolve together); a selection-toolbar button that wraps the selection as `{==text==}{>>#cNN @author: <<}` with the next free id (author from `meoEnhanced.criticMarkup.author`, else `markdown-markup.author`); and a More tools list of the document's comments that jumps to each one.
 - Preview and export render CriticMarkup comments as numbered notes that open on focus (click or Tab) and print expanded.
+- CriticMarkup comments can carry a date after the author (`@Oriol 2026-10-18:`; new comments get today's date when `meoEnhanced.criticMarkup.dates` is on) and a resolved state (a leading `[x] `), toggled with a checkbox in the comments list, which can also hide resolved comments. The list also gains Accept all / Reject all, applied to the selection or the whole document in one undo step.
+- Emphasis, links, code and inner marks now work inside a CriticMarkup mark in Live, Source and Preview (a comment body stays plain text; marks of the same kind cannot nest).
+- CriticMarkup comment types: `[TODO]`, `[DUDA]`, `[FUENTE]`, `[REVISAR]` and `[OK]` right after the author (and after a resolved `[x] `) get their own color in Live and Source, a typed badge in Preview (`TODO 3`) and a tag in the comments list. Unknown tags stay plain text.
+- Accept all / Reject all no longer clear open notes: additions, deletions and substitutions are always resolved, while a note (or a highlight with a note) is only cleared once it is marked `[x]`.
+- The comment button no longer wraps a selection that already contains a highlight; it attaches the note after it. Mark scanning is cached per document, so moving the cursor does not rescan the text.
 
 ## 0.3.33
 - Preserved Preview and Source split Preview reading positions when switching to native VS Code editor tabs with the outline open, including hidden Webview resizing and normal visible panel resizing.

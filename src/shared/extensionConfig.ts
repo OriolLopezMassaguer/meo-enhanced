@@ -14,6 +14,7 @@ export const TABLE_STICKY_HEADER_SETTING_KEY = 'table.stickyHeader';
 export const BOLD_HEADINGS_SETTING_KEY = 'appearance.boldHeadings';
 export const CRITIC_MARKUP_SETTING_KEY = 'appearance.criticMarkup';
 export const CRITIC_MARKUP_AUTHOR_SETTING_KEY = 'criticMarkup.author';
+export const CRITIC_MARKUP_DATES_SETTING_KEY = 'criticMarkup.dates';
 export const RESTORE_READING_POSITION_SETTING_KEY = 'readingPosition.restoreOnOpen';
 export const LARGE_DOCUMENT_OPTIMIZATION_SETTING_KEY = 'performance.largeDocumentOptimization';
 export const GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY = 'gitChanges.visibility';
@@ -94,6 +95,12 @@ export function getCriticMarkupEnabled(): boolean {
   return vscode.workspace
     .getConfiguration(EXTENSION_CONFIG_SECTION)
     .get<boolean>(CRITIC_MARKUP_SETTING_KEY, false);
+}
+
+export function getCriticMarkupDates(): boolean {
+  return vscode.workspace
+    .getConfiguration(EXTENSION_CONFIG_SECTION)
+    .get<boolean>(CRITIC_MARKUP_DATES_SETTING_KEY, false);
 }
 
 /** Author written after @ in new comments: this setting, else the markdown-markup extension's author. */

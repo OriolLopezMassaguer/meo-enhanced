@@ -449,6 +449,12 @@
           "order": 9,
           "description": "%config.criticMarkup.author%"
         },
+        "meoEnhanced.criticMarkup.dates": {
+          "type": "boolean",
+          "default": false,
+          "order": 10,
+          "description": "%config.criticMarkup.dates%"
+        },
         "meoEnhanced.appearance.fontSizeMode": {
           "type": "string",
           "enum": [

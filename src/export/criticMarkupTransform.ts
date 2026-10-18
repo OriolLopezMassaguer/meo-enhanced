@@ -14,13 +14,15 @@ const spanClass: Readonly<Record<CriticMarkupKind, string>> = {
 function pushSpan(state: any, className: string, content: string, title?: string): void {
   const open = state.push('critic_open', 'span', 1);
   open.attrs = [['class', className], ...(title ? [['title', title]] : [])];
-  if (content) state.push('text', '', 0).content = content;
+  // Inline Markdown (emphasis, links, code, inner marks) renders inside the mark.
+  if (content) state.md.inline.parse(content, state.md, state.env, state.tokens);
   state.push('critic_close', 'span', -1);
 }
 
 /** A note is a numbered badge; its text opens on focus (click or Tab), without JavaScript. */
-function pushNote(state: any, label: string, body: string, title?: string): void {
-  state.push('critic_open', 'span', 1).attrs = [['class', 'critic-note']];
+function pushNote(state: any, label: string, body: string, title?: string, type?: string | null, resolved = false): void {
+  const classes = ['critic-note', ...(type ? [`critic-type-${type.toLowerCase()}`] : []), ...(resolved ? ['is-resolved'] : [])];
+  state.push('critic_open', 'span', 1).attrs = [['class', classes.join(' ')]];
   const badge = state.push('critic_open', 'span', 1);
   badge.attrs = [['class', 'critic-badge'], ['tabindex', '0'], ['role', 'button'], ...(title ? [['title', title]] : [])];
   state.push('text', '', 0).content = label;
@@ -41,9 +43,10 @@ function tokenize(state: any, silent: boolean): boolean {
       pushSpan(state, 'critic-del', state.src.slice(state.pos + match.openLength, match.separator.from));
       pushSpan(state, 'critic-add', state.src.slice(match.separator.to, match.to - match.closeLength));
     } else if (match.kind === 'comment') {
-      const { id, author, body } = parseCriticComment(content);
+      const { id, author, date, body, type, resolved } = parseCriticComment(content);
       state.env.criticNotes = (state.env.criticNotes ?? 0) + 1;
-      pushNote(state, String(state.env.criticNotes), author ? `${author}: ${body}` : body, id ? `#${id}` : undefined);
+      const label = type ? `${type} ${state.env.criticNotes}` : String(state.env.criticNotes);
+      pushNote(state, label, author ? `${author}${date ? ` ${date}` : ''}: ${body}` : body, id ? `#${id}` : undefined, type, resolved);
     } else {
       pushSpan(state, spanClass[match.kind], content);
     }

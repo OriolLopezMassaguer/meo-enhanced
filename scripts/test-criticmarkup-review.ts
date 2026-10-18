@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { launchTestBrowser } from './browser-test-helpers';
 import {
-  buildCommentInsertion, criticUnitAt, findCriticMarks, groupCriticUnits, nextCommentId, resolveCriticUnit
+  buildCommentInsertion, criticUnitAt, findCriticMarks, groupCriticUnits, nextCommentId, resolveAllCriticUnits, resolveCriticUnit,
+  toggleCommentResolved
 } from '../src/foundation/criticMarkup';
 
 const resolve = (text: string, position: number, decision: 'accept' | 'reject') => {
@@ -64,6 +65,36 @@ assert.deepEqual(buildCommentInsertion('', 'c04', ''), { insert: '{>>#c04 <<}', 
 assert.equal(buildCommentInsertion('x', 'c04', '  ').insert, '{==x==}{>>#c04 <<}', 'blank author is omitted');
 const inserted = buildCommentInsertion('text', 'c04', 'Oriol');
 assert.equal(inserted.insert.slice(inserted.cursor), '<<}', 'cursor sits before the closing delimiter');
+
+
+// Dates ride on the author token; resolved comments toggle a leading [x] marker.
+assert.deepEqual(buildCommentInsertion('t', 'c05', 'Oriol', '2026-10-18'), { insert: '{==t==}{>>#c05 @Oriol 2026-10-18: <<}', cursor: 34 });
+assert.equal(buildCommentInsertion('', 'c05', '', '2026-10-18').insert, '{>>#c05 <<}', 'a date without an author is dropped');
+const toggle = (text: string) => {
+  const mark = findCriticMarks(text).find((candidate) => candidate.kind === 'comment')!;
+  const change = toggleCommentResolved(text, mark);
+  return text.slice(0, change.from) + change.insert + text.slice(change.to);
+};
+assert.equal(toggle('a {>>#c1 @O 2026-10-18: note<<}'), 'a {>>#c1 @O 2026-10-18: [x] note<<}');
+assert.equal(toggle('a {>>#c1 @O: [x] note<<}'), 'a {>>#c1 @O: note<<}');
+assert.equal(toggle('a {>>plain<<}'), 'a {>>[x] plain<<}');
+assert.equal(toggle('a {>>#c1 only id<<}'), 'a {>>#c1 [x] only id<<}');
+
+// Accept / reject all: one set of changes, optionally limited to a range.
+const doc = 'A {++one++} B {--two--} C {~~x~>y~~} D {==h==}{>>#c1 n<<}';
+const apply = (decision: 'accept' | 'reject', range?: { from: number; to: number }) => {
+  const changes = resolveAllCriticUnits(doc, groupCriticUnits(findCriticMarks(doc)), decision, range);
+  return [...changes].sort((left, right) => right.from - left.from)
+    .reduce((text, change) => text.slice(0, change.from) + change.insert + text.slice(change.to), doc);
+};
+assert.equal(apply('accept'), 'A one B  C y D {==h==}{>>#c1 n<<}', 'bulk accept keeps open notes and highlights');
+assert.equal(apply('reject'), 'A  B two C x D {==h==}{>>#c1 n<<}', 'bulk reject keeps open notes and highlights');
+const closed = 'A {++one++} {==h==}{>>#c1 [x] n<<} {>>#c2 [x] loose<<} {>>#c3 open<<}';
+const closedChanges = resolveAllCriticUnits(closed, groupCriticUnits(findCriticMarks(closed)), 'accept');
+assert.equal([...closedChanges].sort((left, right) => right.from - left.from)
+  .reduce((text, change) => text.slice(0, change.from) + change.insert + text.slice(change.to), closed), 'A one h  {>>#c3 open<<}', 'resolved notes are cleared, open ones stay');
+assert.equal(apply('accept', { from: 0, to: doc.indexOf(' B ') }), 'A one B {--two--} C {~~x~>y~~} D {==h==}{>>#c1 n<<}', 'a range limits the units');
+assert.equal(resolveAllCriticUnits('plain', [], 'accept').length, 0);
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-criticmarkup-review-'));
@@ -166,7 +197,7 @@ try {
     const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
     const text = ['Alpha {==anchor==}{>>#c01 @Oriol: first note<<} beta.', '', 'Gamma {>>#c02 loose note<<} delta.', '', 'Skip `{>>#c03 code<<}` here.'].join('\n');
     const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
-    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'Comments', empty: 'None' }) });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'Comments', empty: 'None', acceptAll: 'Accept all', rejectAll: 'Reject all', hideResolved: 'Hide resolved', markResolved: 'Resolved' }) });
     document.body.append(panel.element);
     panel.open();
     const rows = Array.from(panel.element.querySelectorAll('.meo-critic-comments-row')).map((row: any) => ({
@@ -197,6 +228,107 @@ try {
   assert.equal(list.closed, true, 'the panel closes after a jump');
   assert.equal(list.firstFrom, true, 'a glued comment selects from its highlight');
   assert.equal(list.empty, 'None', 'empty state');
+
+  // Resolved toggle, hide-resolved filter, accept/reject all (document or selection) and dates.
+  const extras = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
+    const text = 'A {++new++} b {--old--} c {==h==}{>>#c01 @O 2026-10-18: pending<<} d {>>#c02 [x] done<<}';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'Comments', empty: 'None', acceptAll: 'Accept all', rejectAll: 'Reject all', hideResolved: 'Hide resolved', markResolved: 'Resolved' }) });
+    document.body.append(panel.element);
+    panel.open();
+    const rows = () => Array.from(panel.element.querySelectorAll('.meo-critic-comments-item')).map((item: any) => ({
+      meta: item.querySelector('.meo-critic-comments-meta').textContent, resolved: item.classList.contains('is-resolved'),
+      body: item.querySelector('.meo-critic-comments-body').textContent
+    }));
+    const initial = rows();
+    (panel.element.querySelectorAll('.meo-critic-comments-check')[0] as HTMLInputElement).click();
+    await settle();
+    const afterToggle = editor.getText();
+    (panel.element.querySelectorAll('.meo-critic-comments-check')[0] as HTMLInputElement).click();
+    await settle();
+    const afterUntoggle = editor.getText();
+    (panel.element.querySelector('.meo-critic-comments-filter input') as HTMLInputElement).click();
+    const filtered = rows();
+    (panel.element.querySelector('.meo-critic-comments-filter input') as HTMLInputElement).click();
+    const action = (name: string) => (panel.element.querySelector(`.meo-critic-comments-action.${name}`) as HTMLElement).click();
+    action('is-accept');
+    await settle();
+    const acceptedAll = editor.getText();
+    editor.undo();
+    await settle();
+    const restored = editor.getText();
+    action('is-reject');
+    await settle();
+    const rejectedAll = editor.getText();
+    editor.undo();
+    await settle();
+    editor.view.dispatch({ selection: { anchor: 0, head: text.indexOf(' b ') } });
+    action('is-accept');
+    await settle();
+    const acceptedInSelection = editor.getText();
+    panel.element.remove();
+    editor.destroy();
+    return { text, initial, afterToggle, afterUntoggle, filtered, acceptedAll, restored, rejectedAll, acceptedInSelection };
+  });
+  assert.deepEqual(extras.initial, [
+    { meta: '#c01 @O 2026-10-18 L1', resolved: false, body: 'pending' },
+    { meta: '#c02 L1', resolved: true, body: 'done' }
+  ], 'the list shows date and resolved state');
+  assert.equal(extras.afterToggle, extras.text.replace('2026-10-18: pending', '2026-10-18: [x] pending'), 'toggle adds the marker');
+  assert.equal(extras.afterUntoggle, extras.text, 'toggling twice restores the text');
+  assert.deepEqual(extras.filtered.map((row: { body: string }) => row.body), ['pending'], 'hide resolved filters the list');
+  assert.equal(extras.acceptedAll, 'A new b  c {==h==}{>>#c01 @O 2026-10-18: pending<<} d ', 'accept all resolves changes and resolved notes, keeping open ones');
+  assert.equal(extras.restored, extras.text, 'accept all is one undo step');
+  assert.equal(extras.rejectedAll, 'A  b old c {==h==}{>>#c01 @O 2026-10-18: pending<<} d ', 'reject all keeps the originals and open notes');
+  assert.equal(extras.acceptedInSelection, extras.text.replace('{++new++}', 'new'), 'a selection limits accept all');
+
+  // Dates: the comment button writes today after the author.
+  const dated = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text: 'Pick this.', initialMode: 'source', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: 5, head: 9 } });
+    harness.setCriticCommentAuthor('Oriol');
+    harness.setCriticCommentDates(true);
+    editor.insertFormat('criticComment');
+    const withDate = editor.getText();
+    harness.setCriticCommentDates(false);
+    editor.destroy();
+    return withDate;
+  });
+  assert.match(dated, /^Pick \{==this==\}\{>>#c01 @Oriol \d{4}-\d{2}-\d{2}: <<\}\.$/, `date after the author: ${dated}`);
+
+  // The list shows a comment's type tag next to its id and author.
+  const typedRow = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const text = 'x {>>#c1 @O: [FUENTE] cite it<<} y';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'C', empty: 'None', acceptAll: 'A', rejectAll: 'R', hideResolved: 'H', markResolved: 'M' }) });
+    document.body.append(panel.element);
+    panel.open();
+    const item = panel.element.querySelector('.meo-critic-comments-item') as HTMLElement;
+    const result = { meta: item.querySelector('.meo-critic-comments-meta')!.textContent, body: item.querySelector('.meo-critic-comments-body')!.textContent, typed: item.classList.contains('is-type-fuente') };
+    panel.element.remove();
+    editor.destroy();
+    return result;
+  });
+  assert.deepEqual(typedRow, { meta: '#c1 @O [FUENTE] L1', body: 'cite it', typed: true }, 'type shows in the list');
+
+  // A selection that already holds a highlight gets its note after it instead of a nested highlight.
+  const conflict = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const text = 'a {==b==} c';
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'source', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: 0, head: text.length } });
+    harness.setCriticCommentAuthor('');
+    editor.insertFormat('criticComment');
+    const result = editor.getText();
+    editor.destroy();
+    return result;
+  });
+  assert.equal(conflict, 'a {==b==} c{>>#c01 <<}', 'no nested highlight');
+
 } finally {
   await browser.close();
   fs.rmSync(tempDir, { recursive: true, force: true });

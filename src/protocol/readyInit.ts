@@ -77,6 +77,7 @@ export type InitMessage = {
   readonly boldHeadingsEnabled: boolean;
   readonly criticMarkupEnabled: boolean;
   readonly criticMarkupAuthor: string;
+  readonly criticMarkupDates: boolean;
   readonly restoreReadingPositionOnOpen: boolean;
   readonly readingPositionRestore: ReadingPositionDto | null;
   readonly findOptions: { readonly wholeWord: boolean; readonly caseSensitive: boolean };
@@ -141,6 +142,11 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     ? ''
     : isRecord(value) && typeof value.criticMarkupAuthor === 'string' && value.criticMarkupAuthor.length <= 80
       ? value.criticMarkupAuthor
+      : null;
+  const criticMarkupDates = isRecord(value) && value.criticMarkupDates === undefined
+    ? false
+    : isRecord(value) && typeof value.criticMarkupDates === 'boolean'
+      ? value.criticMarkupDates
       : null;
   const largeDocumentOptimizationEnabled = isRecord(value) && value.largeDocumentOptimizationEnabled === undefined
     ? true
@@ -214,6 +220,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     || boldHeadingsEnabled === null
     || criticMarkupEnabled === null
     || criticMarkupAuthor === null
+    || criticMarkupDates === null
     || restoreReadingPositionOnOpen === null
     || (value.readingPositionRestore !== undefined
       && value.readingPositionRestore !== null
@@ -252,6 +259,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     boldHeadingsEnabled,
     criticMarkupEnabled,
     criticMarkupAuthor,
+    criticMarkupDates,
     restoreReadingPositionOnOpen,
     readingPositionRestore
   } as unknown as InitMessage;

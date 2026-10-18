@@ -19,7 +19,7 @@ import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
 import { normalizeWikiTarget, replaceWikiLinkStatuses, initializeWikiLinkHandling, collectWikiLinkTargets, requestWikiLinkStatuses, scheduleWikiLinkStatusRefresh, setWikiLinkRefreshContext, cancelPendingWikiStatusRefresh, handleResolvedWikiLinks } from './helpers/wikiLinks';
 import { initializeLocalLinkHandling, requestLocalLinkStatuses, scheduleLocalLinkStatusRefresh, setLocalLinkRefreshContext, cancelPendingLocalLinkStatusRefresh, handleResolvedLocalLinks } from './helpers/localLinks';
-import { setCriticCommentAuthor } from './helpers/criticMarkupReview';
+import { setCriticCommentAuthor, setCriticCommentDates } from './helpers/criticMarkupReview';
 import { createCriticCommentsPanel } from './helpers/criticMarkupComments';
 import { setGitDiffLineHighlightsEnabled } from './helpers/gitDiffLineHighlights';
 import { applyBuiltInVisualBaseline, applyUiVisualBaseline } from './helpers/theme';
@@ -3211,6 +3211,7 @@ const handleInit = (message: InitMessage) => {
   setBoldHeadingsEnabled(message.boldHeadingsEnabled, { post: false });
   setCriticMarkupEnabled(message.criticMarkupEnabled, { post: false });
   setCriticCommentAuthor(message.criticMarkupAuthor);
+  setCriticCommentDates(message.criticMarkupDates);
   setLargeDocumentOptimizationEnabled(message.largeDocumentOptimizationEnabled, { post: false });
   setRestoreReadingPositionOnOpen(message.restoreReadingPositionOnOpen, { post: false });
   readingPositionLifecycle?.start({
@@ -3617,6 +3618,11 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'boldHeadingsChanged') {
     setBoldHeadingsEnabled(message.enabled, { post: false });
+    return;
+  }
+
+  if (message.type === 'criticMarkupDatesChanged') {
+    setCriticCommentDates(message.enabled);
     return;
   }
 
@@ -4061,7 +4067,10 @@ const criticCommentsPanel = createCriticCommentsPanel({
   getView: () => (editor?.view as import('@codemirror/view').EditorView | undefined) ?? null,
   getStrings: () => {
     const strings = getUiStrings(activeUiLanguage);
-    return { title: strings.criticComments, empty: strings.criticCommentsEmpty };
+    return {
+      title: strings.criticComments, empty: strings.criticCommentsEmpty, acceptAll: strings.criticAcceptAll,
+      rejectAll: strings.criticRejectAll, hideResolved: strings.criticHideResolved, markResolved: strings.criticMarkResolved
+    };
   }
 });
 document.body.append(criticCommentsPanel.element);

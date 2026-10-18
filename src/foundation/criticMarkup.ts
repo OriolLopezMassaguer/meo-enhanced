@@ -41,13 +41,37 @@ export function matchCriticMarkup(text: string, from: number, end = text.length)
   return { ...match, separator: { from: separatorFrom, to: separatorFrom + 2 } };
 }
 
-export type CriticCommentParts = Readonly<{ id: string | null; author: string | null; body: string }>;
+/** Closed set of comment types, written `[TODO]` right after the author. */
+export const criticCommentTypes = ['TODO', 'DUDA', 'FUENTE', 'REVISAR', 'OK'] as const;
+export type CriticCommentType = typeof criticCommentTypes[number];
 
-/** `#c17 @Oriol: text` -> id `c17`, author `Oriol`, body `text`. Both prefixes are optional. */
+const TYPE_TAG = new RegExp(`^\\[(${criticCommentTypes.join('|')})\\](?:\\s+|$)`);
+
+export type CriticCommentParts = Readonly<{
+  id: string | null;
+  author: string | null;
+  /** ISO date written after the author: `@Oriol 2026-10-18:`. */
+  date: string | null;
+  /** A body that starts with `[x] ` is a resolved comment; the marker is not part of `body`. */
+  resolved: boolean;
+  /** `[TODO]`-style tag after the author (and after the resolved marker); not part of `body`. */
+  type: CriticCommentType | null;
+  body: string;
+}>;
+
+const RESOLVED_MARKER = '[x] ';
+const DATE_AFTER_AUTHOR = /^(.*?)\s+(\d{4}-\d{2}-\d{2})$/;
+
+/**
+ * `#c17 @Oriol 2026-10-18: [x] text` -> id `c17`, author `Oriol`, date `2026-10-18`, resolved, body `text`.
+ * Every prefix is optional. The date stays inside the author token, so tools that read
+ * everything up to the first `:` as the author keep working.
+ */
 export function parseCriticComment(content: string): CriticCommentParts {
   let rest = content.trim();
   let id: string | null = null;
   let author: string | null = null;
+  let date: string | null = null;
   const idMatch = /^#([\w.-]+)\s*/.exec(rest);
   if (idMatch) {
     id = idMatch[1];
@@ -55,10 +79,37 @@ export function parseCriticComment(content: string): CriticCommentParts {
   }
   const authorMatch = /^@([^:\n]+):\s*/.exec(rest);
   if (authorMatch) {
-    author = authorMatch[1].trim();
+    const token = authorMatch[1].trim();
+    const dated = DATE_AFTER_AUTHOR.exec(token);
+    author = dated ? dated[1].trim() : token;
+    date = dated ? dated[2] : null;
     rest = rest.slice(authorMatch[0].length);
   }
-  return { id, author, body: rest };
+  const resolved = rest.toLowerCase().startsWith(RESOLVED_MARKER);
+  if (resolved) rest = rest.slice(RESOLVED_MARKER.length);
+  const typeMatch = TYPE_TAG.exec(rest);
+  if (typeMatch) rest = rest.slice(typeMatch[0].length);
+  return { id, author, date, resolved, type: typeMatch ? typeMatch[1] as CriticCommentType : null, body: rest };
+}
+
+/** Where the `[TODO]`-style tag sits inside a comment's content (offsets relative to that content). */
+export function criticCommentTagRange(content: string): Readonly<{ from: number; to: number; type: CriticCommentType }> | null {
+  const header = /^\s*(?:#[\w.-]+\s*)?(?:@[^:\n]+:\s*)?(?:\[x\]\s+)?/i.exec(content)![0];
+  const tag = TYPE_TAG.exec(content.slice(header.length));
+  if (!tag) return null;
+  return { from: header.length, to: header.length + tag[1].length + 2, type: tag[1] as CriticCommentType };
+}
+
+/** Toggle the resolved marker of a comment mark; the change replaces only the marker. */
+export function toggleCommentResolved(text: string, mark: CriticMark): CriticResolution {
+  const contentFrom = mark.from + mark.openLength;
+  const content = text.slice(contentFrom, mark.to - mark.closeLength);
+  const header = /^\s*(?:#[\w.-]+\s*)?(?:@[^:\n]+:\s*)?/.exec(content)![0];
+  const bodyFrom = contentFrom + header.length;
+  const resolved = text.slice(bodyFrom, bodyFrom + RESOLVED_MARKER.length).toLowerCase() === RESOLVED_MARKER;
+  return resolved
+    ? { from: bodyFrom, to: bodyFrom + RESOLVED_MARKER.length, insert: '' }
+    : { from: bodyFrom, to: bodyFrom, insert: RESOLVED_MARKER };
 }
 
 export type CriticMark = CriticMarkupMatch & Readonly<{ from: number }>;
@@ -158,8 +209,36 @@ export function nextCommentId(marks: readonly CriticMark[], text: string, prefix
 export type CommentInsertion = Readonly<{ insert: string; cursor: number }>;
 
 /** `{==selection==}{>>#c01 @author: <<}`; the cursor lands where the note text goes. */
-export function buildCommentInsertion(selected: string, id: string, author: string): CommentInsertion {
-  const head = `{>>#${id}${author.trim() ? ` @${author.trim()}:` : ''} `;
+export function buildCommentInsertion(selected: string, id: string, author: string, date = ''): CommentInsertion {
+  // A date rides on the author token; without an author there is nothing to attach it to.
+  const who = author.trim() ? ` @${author.trim()}${date ? ` ${date}` : ''}:` : '';
+  const head = `{>>#${id}${who} `;
   const highlight = selected ? `{==${selected}==}` : '';
   return { insert: `${highlight}${head}<<}`, cursor: highlight.length + head.length };
+}
+
+/** Notes and plain highlights are not changes: a bulk action leaves them alone unless the note is resolved. */
+function isOpenReviewNote(text: string, unit: CriticUnit): boolean {
+  if (unit.kind !== 'comment' && unit.kind !== 'hl') return false;
+  const note = unit.kind === 'comment' ? unit.mark : unit.comment;
+  if (!note) return true;
+  return !parseCriticComment(text.slice(note.from + note.openLength, note.to - note.closeLength)).resolved;
+}
+
+/**
+ * Resolve every change (or only those fully inside `range`) as one set of non-overlapping edits,
+ * ready to dispatch as a single undoable transaction. Additions, deletions and substitutions are
+ * always resolved; a note, or a highlight with a note, is only cleared once it is marked `[x]`,
+ * so "accept all" never throws away open comments.
+ */
+export function resolveAllCriticUnits(
+  text: string,
+  units: readonly CriticUnit[],
+  decision: 'accept' | 'reject',
+  range?: Readonly<{ from: number; to: number }>
+): CriticResolution[] {
+  return units
+    .filter((unit) => !range || (unit.from >= range.from && unit.to <= range.to))
+    .filter((unit) => !isOpenReviewNote(text, unit))
+    .map((unit) => resolveCriticUnit(text, unit, decision));
 }
