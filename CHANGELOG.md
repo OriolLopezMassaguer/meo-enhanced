@@ -3,6 +3,17 @@
 This changelog retains the release history of the original Markdown Editor
 Optimized project. New MEO Enhanced releases start from version 0.1.0.
 ---
+## 0.3.34
+- Added in-place HTML fragment editing with syntax-colored source, live previews, visible placeholders for non-rendering fragments, and feedback for filtered content. Improved fragment rendering, inline styles, tables, images and disclosure elements.
+- Added explicit HTML and block-math source formatting with a configurable shortcut. Formatting preserves protected content, command spelling and local source structure, and remains a single undoable edit.
+- Unified HTML and formula editing frames and preview dividers. Stabilized expansion, pointer selections, final-line hit testing, copying, line numbers and viewport positions; kept source actions visible only when their source is shown.
+- Added LaTeX completion previews and syntax coloring in Source and Live, with better handling of unfinished formulas, fenced blocks and currency-like text.
+- Added Save As and undo/redo toolbar actions, configurable shortcuts and safer recovery from document-action failures. Improved saved-copy state and link navigation within MEO.
+- Added table actions and refined cell selection, active-cell borders, responsive column widths, paste handling and caret visibility.
+- Added bidirectional navigation and viewport alignment for split Source/Preview, GitHub frontmatter rows, and matching Setext heading rendering.
+- Added typography and color autosave controls, rendered-block image copying and refined fullscreen interactions. Improved Mermaid controls and preserved keyboard focus feedback without mouse-triggered focus rings.
+- Matched PDF paper backgrounds to document colors and preserved HTML visibility, text, figure captions and whitespace in Word exports.
+
 ## 0.3.33
 - Preserved Preview and Source split Preview reading positions when switching to native VS Code editor tabs with the outline open, including hidden Webview resizing and normal visible panel resizing.
 - Added Whitey dark mode using Typora Whitey Deep's palette, with Auto/Light/Dark choices, per-document appearance memory, and matching custom preset examples and HTML/PDF exports.
