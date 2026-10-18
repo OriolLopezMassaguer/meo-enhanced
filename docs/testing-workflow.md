@@ -509,6 +509,13 @@ release suites; the browser contract also belongs to the targeted history pack.
 Settings persistence and the shared menu placement are covered by the existing
 editing-preferences and settings-window contracts.
 
+The browser contract also checks every catalog entry in both UI languages and
+light/dark themes: fixed insertion templates, valid KaTeX examples, equal row
+heights and preview containment. Existing arguments/closers do not change the
+menu template. `bun scripts/test-math-completion-production.ts --capture-catalog`
+saves actual production menu row screenshots for the full catalog, plus a
+manifest, under `.local/test-artifacts/math-completion/catalog/`.
+
 ## HTML comment input
 
 `scripts/test-html-comment-input-production.ts` runs in the quick, targeted history

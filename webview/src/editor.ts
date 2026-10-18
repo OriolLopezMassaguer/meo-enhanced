@@ -105,7 +105,7 @@ import {
   tableUsableViewportBounds
 } from './helpers/tables';
 import { parseFrontmatter, parseFrontmatterCandidate } from './helpers/frontmatter';
-import { collectLatexMathRanges } from './helpers/math';
+import { collectLatexMathRanges, renderLatexMathToHtml } from './helpers/math';
 import { observeRenderedBlockImageAvailability, refreshRenderedBlockImageLabel } from './helpers/renderedBlockImage';
 import { suppressRenderedBlockPointerFocus } from './helpers/renderedBlockActionFocus';
 import { diagnosticDataField, diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
@@ -2340,6 +2340,7 @@ export function createEditor({
       Prec.highest(typingAssistance),
       Prec.highest(pasteAssistance(displayMathPasteText)),
       Prec.highest(createInputSuggestions({ inputContext, mathContext: getMathCompletionBody, requestLinks: requestLinkCandidates, currentHeadings: () => currentHeadingSuggestions(view.state.doc.toString()),
+        renderMathPreview: source => renderLatexMathToHtml(source, 'inline'),
         cellCoords: measureTextareaSelectionStart,
         focusTable: focusInsertedTable,
         focusMath: () => {

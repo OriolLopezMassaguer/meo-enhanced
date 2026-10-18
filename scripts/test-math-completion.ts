@@ -51,6 +51,8 @@ const all = mathCompletionSuggestions({ ...context!, query: '' });
 assert.ok(all.length >= 100);
 assert.equal(new Set(all.map(item => item.label)).size, all.length);
 for (const item of all) {
+  assert.ok(item.preview, item.label + ': has a fixed menu preview');
+  assert.doesNotThrow(() => katex.renderToString(item.preview, { throwOnError: true, trust: false }), item.label + ': valid preview');
   let sample = item.insert;
   for (const offset of [...item.fields].reverse()) sample = sample.slice(0, offset) + 'x' + sample.slice(offset);
   // A delimiter command is valid only as part of its matching pair.

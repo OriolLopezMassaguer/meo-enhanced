@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { launchTestBrowser, closeTestBrowser } from './browser-test-helpers';
 import { defaultInputAssistance } from '../src/foundation/editingPreferences';
+import { mathCompletionSuggestions } from '../webview/src/editor/mathCompletion';
 
 const build = await Bun.build({ entrypoints: ['scripts/test-editing-features-entry.ts'], target: 'browser', format: 'iife' });
 if (!build.success) throw new Error(build.logs.map(String).join('\n'));
@@ -14,6 +17,10 @@ try {
   await page.setViewport({ width: 1000, height: 720 });
   await page.setContent('<!doctype html><style>html,body,#app{height:100%;margin:0}</style><div id="app"></div>');
   await page.addStyleTag({ path: 'webview/src/styles.css' });
+  const katexDirectory = path.resolve('node_modules/katex/dist');
+  const katexCss = readFileSync(path.join(katexDirectory, 'katex.min.css'), 'utf8')
+    .replace(/url\(([^)]+)\)/g, (_match, fontPath) => `url(data:font/woff2;base64,${readFileSync(path.join(katexDirectory, fontPath)).toString('base64')})`);
+  await page.addStyleTag({ content: katexCss });
   await page.addScriptTag({ content: await build.outputs[0].text() });
   const prepare = async (mode: string, marked = '$|$', input = {}) => {
     await page.evaluate(({ mode, marked, input }) => {
@@ -65,7 +72,9 @@ try {
     await page.keyboard.type('x}'); await waitText('$\\sqrt{x}$');
     assert.equal(await caret(), 9, mode + ': typing a generated closer skips it');
 
-    await prepare(mode, '$\\fr|ac{x}{y}$'); await open(); await page.keyboard.press('Enter');
+    await prepare(mode, '$\\fr|ac{x}{y}$'); await open();
+    assert.equal(await page.$eval('[data-math-command="\\\\frac"] .meo-suggestion-label', node => node.textContent), '\\frac{}{}', mode + ': fixed template remains visible with existing arguments');
+    await page.keyboard.press('Enter');
     await waitText('$\\frac{x}{y}$');
     await page.evaluate(() => (window as any).editor.undo()); await waitText('$\\frac{x}{y}$');
 
@@ -98,6 +107,8 @@ try {
     await page.keyboard.type('x &= y');
     await waitText('> $$\n> \\begin{aligned}\n>   x &= y\n> \\end{aligned}\n> $$');
     await prepare(mode, '$$\n\\begin{ali|}\nx &= y\n\\end{aligned}\n$$');
+    await open();
+    assert.equal(await page.$eval('[data-math-command] .meo-suggestion-label', node => node.textContent), '\\begin{aligned} \\end{aligned}', mode + ': matching closer does not change the menu template');
     await choose('\\begin{aligned}');
     await waitText('$$\n\\begin{aligned}\nx &= y\n\\end{aligned}\n$$');
 
@@ -123,7 +134,12 @@ try {
     await page.keyboard.press('Enter'); assert.equal(await text(), '$\\alp$', mode + ': read-only state cannot accept a candidate');
   }
 
-  await fs.mkdir('.local/test-artifacts/math-completion', { recursive: true });
+  const artifacts = '.local/test-artifacts/math-completion';
+  await fs.mkdir(artifacts, { recursive: true });
+  const catalog = mathCompletionSuggestions({ type: 'math', query: '', target: '', length: 0, wiki: false,
+    from: 0, to: 0, bodyFrom: 0, bodyTo: 0, environment: false, display: true, prefix: '' });
+  const queries = [...new Set(catalog.map(item => item.environment ? '\\begin{' : item.label.slice(0, 2).toLowerCase()))];
+  const captureCatalog = process.argv.includes('--capture-catalog');
   for (const theme of ['light', 'dark']) for (const language of ['zh-CN', 'en']) {
     await prepare('source', '$|$', { slashPreferAbove: theme === 'dark' });
     await page.evaluate(({ theme, language }) => {
@@ -134,10 +150,42 @@ try {
       g.EditingFeaturesHarness.applyUiTheme(theme, false);
       g.editor.setUiLanguage(language);
     }, { theme, language });
-    await page.keyboard.type('\\sq'); await open();
-    assert.match(await page.$eval('.meo-input-suggestion-detail', node => node.textContent), language === 'en' ? /root/ : /根式/);
+    await page.keyboard.type('\\s'); await open();
+    assert.equal(await page.$eval('[data-math-command="\\\\sqrt"] .meo-suggestion-label', node => node.textContent), '\\sqrt{}');
+    assert.ok(await page.$('[data-math-command="\\\\sqrt"] .meo-math-completion-preview .katex'));
     await page.screenshot({ path: '.local/test-artifacts/math-completion/' + theme + '-' + language + '.png' });
+    const seen = new Set<string>();
+    const capture = captureCatalog && language === 'zh-CN';
+    if (capture) await fs.mkdir(`${artifacts}/catalog/${theme}`, { recursive: true });
+    for (const query of queries) {
+      await prepare('source', '$$\n' + query + '|\n$$');
+      await page.evaluate(language => (window as any).editor.setUiLanguage(language), language);
+      await open();
+      await page.evaluate(async () => { await document.fonts.ready; await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))); });
+      const rows = await page.$$eval('[data-math-command]', nodes => nodes.map(node => {
+        const row = node as HTMLElement, preview = row.querySelector<HTMLElement>('.meo-math-completion-preview')!;
+        const formula = preview.querySelector<HTMLElement>('.katex')!, bounds = preview.getBoundingClientRect(), math = formula.getBoundingClientRect();
+        const fontSize = parseFloat(getComputedStyle(row).fontSize);
+        return { command: row.dataset.mathCommand!, label: row.querySelector('.meo-suggestion-label')!.textContent,
+          height: row.getBoundingClientRect().height, expectedHeight: Math.max(28, 1.45 * fontSize + 6),
+          valid: !preview.querySelector('.katex-error'), fits: math.left >= bounds.left - 1 && math.right <= bounds.right + 1 && math.top >= bounds.top - 1 && math.bottom <= bounds.bottom + 1 };
+      }));
+      for (const row of rows) {
+        const index = catalog.findIndex(item => item.label === row.command), item = catalog[index]!;
+        assert.ok(item, row.command + ': belongs to the catalog');
+        assert.equal(row.label, item.insert.replace(/\s*\n\s*/g, ' '), row.command + ': fixed insertion template');
+        assert.ok(row.valid && row.fits, row.command + ': complete, valid preview within the row');
+        assert.ok(Math.abs(row.height - row.expectedHeight) < 0.1, row.command + ': equal row height');
+        if (capture && !seen.has(row.command)) {
+          const selector = '[data-math-command=' + JSON.stringify(row.command) + ']';
+          await (await page.$(selector))!.screenshot({ path: `${artifacts}/catalog/${theme}/${String(index + 1).padStart(3, '0')}.png` });
+        }
+        seen.add(row.command);
+      }
+    }
+    assert.equal(seen.size, catalog.length, theme + '/' + language + ': every catalog entry has a preview');
   }
+  if (captureCatalog) await fs.writeFile(`${artifacts}/catalog/catalog.json`, JSON.stringify(catalog.map((item, index) => ({ index: index + 1, label: item.label, insert: item.insert, preview: item.preview })), null, 2));
   await page.setViewport({ width: 360, height: 420 });
   await prepare('source', '$|$'); await page.keyboard.type('\\alp'); await open();
   const bounds = await page.$eval('.meo-math-suggestions', node => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; });

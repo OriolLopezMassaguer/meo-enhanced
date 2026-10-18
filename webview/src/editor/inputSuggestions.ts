@@ -26,6 +26,7 @@ type InputSuggestionContext = SuggestionContext | MathCompletionContext;
 export function createInputSuggestions(options: {
   readonly inputContext: (state: EditorState, position: number) => MarkdownInputContext;
   readonly mathContext: (state: EditorState, position: number) => MathCompletionBody | null;
+  readonly renderMathPreview: (source: string) => string | null;
   readonly requestLinks?: (context: { kind: 'documents' | 'paths' | 'headings'; query: string; target: string; wiki?: boolean }) => Promise<readonly LinkCandidate[]>;
   readonly replaceCell?: (input: HTMLTextAreaElement, value: string, anchor: number, head?: number) => boolean;
   readonly focusTable?: () => void;
@@ -102,6 +103,7 @@ export function createInputSuggestions(options: {
       view.dom.ownerDocument.addEventListener('scroll', this.reposition, true);
       view.dom.ownerDocument.defaultView?.addEventListener('resize', this.reposition);
       view.dom.ownerDocument.defaultView?.addEventListener('blur', this.windowBlur);
+      view.dom.ownerDocument.fonts.addEventListener('loadingdone', this.reposition);
       this.popup.addEventListener('pointerdown', event => event.preventDefault());
       // EditorView initializes composition/focus state after constructing plugins.
       queueMicrotask(() => { if (!this.disposed) this.schedule(); });
@@ -271,6 +273,10 @@ export function createInputSuggestions(options: {
           row.dataset.mathCommand = item.math.label;
           row.classList.add('meo-slash-suggestion'); label.classList.add('meo-suggestion-command');
           appendMatched(label, item.label, this.context?.type === 'math' && this.context.environment ? this.context.query : '\\' + (this.context?.query ?? ''));
+          const added = document.createElement('span'); added.className = 'meo-math-completion-added';
+          added.textContent = item.math.insert.slice(item.math.label.length).replace(/\s*\n\s*/g, ' ');
+          label.append(added); label.dataset.tooltip = item.math.insert; label.dataset.tooltipKind = 'fulltext';
+          row.setAttribute('aria-label', item.math.insert + ' · ' + item.detail);
         } else if (item.slash) {
           row.dataset.command = item.slash.id; row.classList.add('meo-slash-suggestion');
           label.classList.add('meo-suggestion-command');
@@ -293,7 +299,13 @@ export function createInputSuggestions(options: {
         }
         row.append(label);
         const detailValue = this.context?.type === 'headings' && item.anchor ? '#' + item.anchor : documents ? item.detail || item.insert : item.detail;
-        if (!paths && (documents || (detailValue && (item.slash || detailValue !== item.label)))) {
+        if (item.math) {
+          const preview = document.createElement('span'); preview.className = 'meo-math-completion-preview'; preview.setAttribute('aria-hidden', 'true');
+          const html = options.renderMathPreview(item.math.preview);
+          if (html) preview.innerHTML = html;
+          else preview.textContent = item.math.label;
+          row.append(preview);
+        } else if (!paths && (documents || (detailValue && (item.slash || detailValue !== item.label)))) {
           const detail = document.createElement('span'); detail.className = 'meo-input-suggestion-detail';
           if (item.slash) detail.textContent = detailValue;
           else { appendMatched(detail, detailValue, this.context?.query ?? ''); detail.dataset.tooltip = [item.detail, detailValue].filter((value, index, values) => value && values.indexOf(value) === index).join(' · '); detail.dataset.tooltipKind = 'fulltext'; }
@@ -329,7 +341,7 @@ export function createInputSuggestions(options: {
         const row = this.popup.querySelector<HTMLElement>('[aria-selected="true"]');
         const fields = row ? [...row.querySelectorAll<HTMLElement>('.meo-suggestion-label, .meo-input-suggestion-detail')]
           .filter(field => field.scrollWidth > field.clientWidth + 1 || field.scrollHeight > field.clientHeight + 1) : [];
-        const text = fields.map(field => field.textContent?.trim() ?? '').filter(Boolean).join('\n');
+        const text = fields.map(field => (this.context?.type === 'math' ? field.dataset.tooltip : undefined) ?? field.textContent?.trim() ?? '').filter(Boolean).join('\n');
         if (!row || !text) { this.selectedTooltip?.dispose(); this.selectedTooltip = null; return; }
         if (!this.selectedTooltip) this.selectedTooltip = createTooltip(row, { content: { text, kind: 'fulltext' }, immediate: true, manual: true });
         else { this.selectedTooltip.setAnchor(row); this.selectedTooltip.setContent({ text, kind: 'fulltext' }); }
@@ -344,6 +356,16 @@ export function createInputSuggestions(options: {
       const row = selected.getBoundingClientRect(), bounds = list.getBoundingClientRect();
       if (row.top < bounds.top) list.scrollTop -= bounds.top - row.top;
       else if (row.bottom > bounds.bottom) list.scrollTop += row.bottom - bounds.bottom;
+    }
+    fitMathPreviews() {
+      if (this.context?.type !== 'math') return;
+      for (const preview of this.popup.querySelectorAll<HTMLElement>('.meo-math-completion-preview')) {
+        const formula = preview.firstElementChild as HTMLElement | null;
+        if (!formula?.offsetWidth || !formula.offsetHeight) continue;
+        // Transform only the example: formula geometry must never resize a row.
+        const scale = Math.min(1, Math.max(0, preview.clientWidth - 2) / formula.offsetWidth, Math.max(0, preview.clientHeight - 1) / formula.offsetHeight);
+        preview.style.setProperty('--meo-math-preview-scale', String(scale));
+      }
     }
     position() {
       const slash = this.context?.type === 'slash', document = this.view.dom.ownerDocument;
@@ -392,6 +414,7 @@ export function createInputSuggestions(options: {
       if (coords.bottom <= visibleTop || coords.top >= visibleBottom || coords.left >= visibleRight ||
           Math.max(coords.right, coords.left + this.view.defaultCharacterWidth) <= visibleLeft || right <= left) { close(); return; }
       this.popup.style.maxWidth = (right - left) + 'px';
+      this.fitMathPreviews();
       const list = this.popup.querySelector<HTMLElement>('.meo-suggestion-list')!, previous = list.getBoundingClientRect();
       const selected = list.querySelector<HTMLElement>('[aria-selected="true"]'), selectedBefore = selected?.getBoundingClientRect();
       const selectedVisible = selectedBefore && selectedBefore.top >= previous.top - 1 && selectedBefore.bottom <= previous.bottom + 1;
@@ -564,6 +587,7 @@ export function createInputSuggestions(options: {
       this.view.dom.ownerDocument.removeEventListener('scroll', this.reposition, true);
       this.view.dom.ownerDocument.defaultView?.removeEventListener('resize', this.reposition);
       this.view.dom.ownerDocument.defaultView?.removeEventListener('blur', this.windowBlur);
+      this.view.dom.ownerDocument.fonts.removeEventListener('loadingdone', this.reposition);
     }
   }, { eventHandlers: {
     keydown(event) { return this.keydown(event); },

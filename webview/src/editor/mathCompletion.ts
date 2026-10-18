@@ -5,6 +5,8 @@ export type MathCompletion = {
   readonly zh: string;
   readonly en: string;
   readonly insert: string;
+  /** Fixed menu example, independent of the document and never inserted. */
+  readonly preview: string;
   readonly fields: readonly number[];
   readonly environment?: string;
 };
@@ -68,31 +70,42 @@ const symbols: readonly [string, string, string][] = [
   ['quad', '宽空格', 'wide space'], ['qquad', '双宽空格', 'double wide space']
 ];
 
-function template(command: string, zh: string, en: string, insert: string): MathCompletion {
+function template(command: string, zh: string, en: string, insert: string, preview: string): MathCompletion {
   // A marker is an empty, editable field; it never becomes document content.
   const fields: number[] = [];
   let text = '';
   for (const part of insert.split('◊')) { if (text) fields.push(text.length); text += part; }
-  return { label: '\\' + command, zh, en, insert: text, fields };
+  return { label: '\\' + command, zh, en, insert: text, fields, preview };
+}
+
+function symbolPreview(command: string): string {
+  if (['sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'sinh', 'cosh', 'log', 'ln', 'exp', 'min', 'max'].includes(command)) return '\\' + command + ' x';
+  if (command === 'det') return '\\det A';
+  if (command === 'quad' || command === 'qquad') return 'a\\' + command + ' b';
+  return '\\' + command;
 }
 
 const mathCompletions: readonly MathCompletion[] = [
-  ...symbols.map(([command, zh, en]) => ({ label: '\\' + command, zh, en, insert: '\\' + command, fields: [] })),
-  ...['frac', 'dfrac', 'tfrac'].map(command => template(command, '分式 · 分子 / 分母', 'fraction · numerator / denominator', '\\' + command + '{◊}{◊}')),
-  template('sqrt', '根式', 'square root', '\\sqrt{◊}'),
-  ...[['sum', '求和', 'sum'], ['prod', '连乘', 'product'], ['int', '积分', 'integral'], ['oint', '环路积分', 'contour integral']]
-    .map(([command, zh, en]) => template(command, zh + ' · 下限 / 上限', en + ' · lower / upper bound', '\\' + command + '_{◊}^{◊} ◊')),
-  template('lim', '极限', 'limit', '\\lim_{◊} ◊'),
-  ...[['text', '公式内文本', 'text'], ['mathbf', '粗体', 'bold'], ['mathbb', '黑板粗体', 'blackboard bold'],
-    ['mathcal', '花体', 'calligraphic'], ['mathrm', '直立字体', 'upright'], ['operatorname', '自定义运算符', 'operator name'],
-    ['vec', '向量', 'vector'], ['hat', '尖帽', 'hat accent'], ['bar', '上横线', 'bar accent'],
-    ['overline', '上划线', 'overline'], ['underline', '下划线', 'underline'], ['boxed', '方框', 'boxed expression']]
-    .map(([command, zh, en]) => template(command, zh, en, '\\' + command + '{◊}')),
-  template('left', '成对可伸缩括号', 'paired scalable parentheses', '\\left(◊\\right)'),
-  ...[['aligned', '对齐公式', 'aligned equations'], ['cases', '分段函数', 'piecewise function'],
-    ['matrix', '矩阵', 'matrix'], ['pmatrix', '圆括号矩阵', 'parenthesized matrix'], ['bmatrix', '方括号矩阵', 'bracketed matrix']]
-    .map(([environment, zh, en]) => ({ ...template('begin{' + environment + '}', zh, en,
-      '\\begin{' + environment + '}\n  ◊\n\\end{' + environment + '}'), environment }))
+  ...symbols.map(([command, zh, en]) => ({ label: '\\' + command, zh, en, insert: '\\' + command, fields: [], preview: symbolPreview(command) })),
+  ...['frac', 'dfrac', 'tfrac'].map(command => template(command, '分式 · 分子 / 分母', 'fraction · numerator / denominator', '\\' + command + '{◊}{◊}', '\\' + command + '{a}{b}')),
+  template('sqrt', '根式', 'square root', '\\sqrt{◊}', '\\sqrt{x}'),
+  ...[['sum', '求和', 'sum', '\\sum_{i=1}^{n} x_i'], ['prod', '连乘', 'product', '\\prod_{i=1}^{n} x_i'],
+    ['int', '积分', 'integral', '\\int_a^b f(x)'], ['oint', '环路积分', 'contour integral', '\\oint_C f(z)']]
+    .map(([command, zh, en, preview]) => template(command, zh + ' · 下限 / 上限', en + ' · lower / upper bound', '\\' + command + '_{◊}^{◊} ◊', preview)),
+  template('lim', '极限', 'limit', '\\lim_{◊} ◊', '\\lim_{x\\to 0} f(x)'),
+  ...[['text', '公式内文本', 'text', 'abc'], ['mathbf', '粗体', 'bold', 'A'], ['mathbb', '黑板粗体', 'blackboard bold', 'R'],
+    ['mathcal', '花体', 'calligraphic', 'F'], ['mathrm', '直立字体', 'upright', 'ABC'], ['operatorname', '自定义运算符', 'operator name', 'op'],
+    ['vec', '向量', 'vector', 'v'], ['hat', '尖帽', 'hat accent', 'x'], ['bar', '上横线', 'bar accent', 'x'],
+    ['overline', '上划线', 'overline', 'AB'], ['underline', '下划线', 'underline', 'AB'], ['boxed', '方框', 'boxed expression', 'x']]
+    .map(([command, zh, en, sample]) => template(command, zh, en, '\\' + command + '{◊}', '\\' + command + '{' + sample + '}')),
+  template('left', '成对可伸缩括号', 'paired scalable parentheses', '\\left(◊\\right)', '\\left(x+y\\right)'),
+  ...[['aligned', '对齐公式', 'aligned equations', '\\begin{smallmatrix}x&=&y\\\\u&=&v\\end{smallmatrix}'],
+    ['cases', '分段函数', 'piecewise function', '\\left\\{\\begin{smallmatrix}\\cdot&\\cdot\\\\\\cdot&\\cdot\\end{smallmatrix}\\right.'],
+    ['matrix', '矩阵', 'matrix', '\\begin{smallmatrix}\\cdot&\\cdot\\\\\\cdot&\\cdot\\end{smallmatrix}'],
+    ['pmatrix', '圆括号矩阵', 'parenthesized matrix', '\\left(\\begin{smallmatrix}\\cdot&\\cdot\\\\\\cdot&\\cdot\\end{smallmatrix}\\right)'],
+    ['bmatrix', '方括号矩阵', 'bracketed matrix', '\\left[\\begin{smallmatrix}\\cdot&\\cdot\\\\\\cdot&\\cdot\\end{smallmatrix}\\right]']]
+    .map(([environment, zh, en, preview]) => ({ ...template('begin{' + environment + '}', zh, en,
+      '\\begin{' + environment + '}\n  ◊\n\\end{' + environment + '}', preview), environment }))
 ];
 
 export type MathCompletionContext = {
