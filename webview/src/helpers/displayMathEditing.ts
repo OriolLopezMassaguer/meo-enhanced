@@ -1,4 +1,4 @@
-import { EditorSelection, StateField, Transaction, type EditorState } from '@codemirror/state';
+import { ChangeSet, EditorSelection, StateField, Transaction, type EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
 import { renderLatexMathToHtml } from './math';
@@ -28,29 +28,30 @@ export async function formatActiveDisplayMathSource(view: EditorView, isCurrent:
   const active = activeMathSource(view.state);
   if (!active) return 'unavailable';
   const { doc, selection } = view.state, { body, prefix } = active;
-  const html = renderLatexMathToHtml(body.text, 'display');
-  if (!html || html.includes('class="katex-error"')) return 'invalid';
   // Map between the document (with container prefixes) and the formatter's bare body.
   const raw = doc.sliceString(body.from, body.to);
   const unprefix = (text: string) => text.split('\n').map((line, index) => index && line.startsWith(prefix) ? line.slice(prefix.length) : line).join('\n');
-  if (unprefix(raw) !== body.text) return 'preserved';
+  if (unprefix(raw) !== body.text) return 'boundary';
   const original = [selection.main.anchor, selection.main.head];
   const offsets = original.map(position => unprefix(raw.slice(0, Math.max(0, Math.min(raw.length, position - body.from)))).length);
   try {
     const result = await formatLatexSource(body.text, offsets);
     if (!isCurrent() || !view.dom.isConnected || view.state.readOnly || view.state.doc !== doc || !view.state.selection.eq(selection)) return 'changed';
-    if (result.kind !== 'formatted') return result.kind;
-    if (renderLatexMathToHtml(result.source, 'display') !== html) return 'preserved';
-    const insert = result.source.replaceAll('\n', '\n' + prefix);
-    const mapped = result.offsets.map((offset, index) => original[index] < body.from ? original[index]
-      : original[index] > body.to ? original[index] + insert.length - raw.length
-      : body.from + offset + (result.source.slice(0, offset).split('\n').length - 1) * prefix.length);
-    const mutate = () => view.dispatch({ changes: { from: body.from, to: body.to, insert },
+    if (result.kind === 'boundary' || result.kind === 'invalid') return result.kind;
+    const html = renderLatexMathToHtml(body.text, 'display');
+    if (!html || html.includes('class="katex-error"')) return 'unsupported';
+    if (result.kind === 'unchanged') return result.kind;
+    if (renderLatexMathToHtml(result.source, 'display') !== html) return 'unsafe';
+    const position = (offset: number) => body.from + offset + (body.text.slice(0, offset).split('\n').length - 1) * prefix.length;
+    const changes = ChangeSet.of(result.edits.map(edit => ({ from: position(edit.from), to: position(edit.to),
+      insert: edit.insert.replaceAll('\n', '\n' + prefix) })), doc.length);
+    const mapped = original.map(offset => changes.mapPos(offset, 1));
+    const mutate = () => view.dispatch({ changes,
       selection: EditorSelection.single(mapped[0], mapped[1]), annotations: isolateHistory.of('full'), userEvent: 'input.format' });
     const viewport = getViewportController(view);
     if (viewport) viewport.preservePositionWhileMutation(active.range.from, mutate);
     else mutate();
-    return 'formatted';
+    return result.kind;
   } catch { return 'invalid'; }
 }
 
@@ -176,10 +177,11 @@ export function createDisplayMathActions(view: EditorView, anchor: () => number,
     event.preventDefault(); event.stopPropagation();
   });
   if (sourceVisible) {
-    const control = createSourceFormatButton(ownerDocument, () => {
+    const control = createSourceFormatButton(view, `math:${anchor()}`, () => view.state.doc, ownerDocument, () => {
       const strings = getUiStrings(view.state.facet(uiLanguageFacet));
       return { idle: strings.formatMath, busy: strings.formattingMath, formatted: strings.formattedMath,
-        unchanged: strings.mathFormatUnchanged, preserved: strings.mathFormatPreserved,
+        'formatted-protected': strings.mathFormattedProtected, unchanged: strings.mathFormatUnchanged,
+        boundary: strings.mathFormatBoundary, unsafe: strings.mathFormatUnsafe, unsupported: strings.mathFormatUnsupported,
         invalid: strings.mathFormatInvalid, changed: strings.htmlFormatChanged, unavailable: strings.mathFormatUnavailable };
     }, current => formatActiveDisplayMathSource(view, current));
     control.button.classList.add('meo-format-math-btn');

@@ -484,7 +484,22 @@ async function checkHtmlEditingTools(page: Page): Promise<void> {
   await page.click('.meo-format-html-btn');
   await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
   assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), beforePreserved, 'Preserved whitespace is never rewritten');
-  assert.match(await page.$eval('.meo-format-html-btn', element => element.getAttribute('aria-label')!), /whitespace/);
+  assert.match(await page.$eval('.meo-format-html-btn', element => element.getAttribute('aria-label')!), /No layout changes/);
+  assert.equal(await page.$eval('.meo-format-html-btn svg path', node => node.getAttribute('d')), 'M20 6 9 17l-5-5', 'Retaining a preformatted block uses the success check');
+  const mixedProtected = '<div><pre> a  b\n c</pre><section><p>Hello</p></section></div>';
+  await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), `Intro.\n\n${mixedProtected}\n\nAfter.`);
+  await select(page, 'a  b', 1);
+  await page.click('.meo-format-html-btn');
+  await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
+  const mixedResult = await page.evaluate(() => (window as any).__htmlEditor.getText());
+  assert.ok(mixedResult.includes('<pre> a  b\n c</pre>') && mixedResult.includes('\n  <section>'));
+  await frames(page);
+  assert.match(await page.$eval('.meo-format-html-btn', element => element.getAttribute('aria-label')!), /formatted.*retained/);
+  assert.equal(await page.$eval('.meo-format-html-btn svg path', node => node.getAttribute('d')), 'M20 6 9 17l-5-5');
+  assert.ok(await page.$$eval('.meo-md-html-source-range', nodes => nodes.length >= 4), 'The complete formatted fragment stays open');
+  await page.screenshot({ path: path.join(artifacts, 'format-html-protected.png') });
+  await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control'); await frames(page);
+  assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), `Intro.\n\n${mixedProtected}\n\nAfter.`);
   await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), text);
   await select(page, 'format-target', 3);
   const raced = await page.evaluate(() => {

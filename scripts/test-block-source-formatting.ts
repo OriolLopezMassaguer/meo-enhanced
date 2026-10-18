@@ -5,7 +5,7 @@ import { formatLatexSource } from '../webview/src/editor/latexFormatting';
 import { renderMathToHtml } from '../src/shared/mathRenderer';
 
 const expression = String.raw`\begin{aligned}a&=b+c\\d&=\frac{1}{2}\end{aligned}`;
-for (const source of [expression, String.raw`\begin{pmatrix}1&2\\3&4\end{pmatrix}`, 'a  +  b % keep this comment\n+c']) {
+for (const source of [expression, String.raw`\begin{pmatrix}1&2\\3&4\end{pmatrix}`]) {
   const offset = source.indexOf('b');
   const result = await formatLatexSource(source, [0, offset, source.length]);
   assert.equal(result.kind, 'formatted');
@@ -122,8 +122,18 @@ try {
   for (const source of [String.raw`\frac{`, String.raw`\text{a   b} +  x`, String.raw`\def\foo{ x  y }\foo`]) {
     const text = `Before\n\n$$\n${source}\n$$\n\nAfter`;
     await mount(text); await select(source, 1); await clickFormat(); assert.equal(await read(), text);
-    assert.match(await page.$eval('.meo-format-math-btn', node => node.getAttribute('aria-label')!), /retained/);
+    assert.match(await page.$eval('.meo-format-math-btn', node => node.getAttribute('aria-label')!), source === '\\frac{' ? /incomplete|invalid/ : /No layout changes/);
   }
+  const protectedFormula = String.raw`\def\foo{ x  y }\begin{aligned}a&=\text{hello   world}\\bbb&=\frac12 + \sqrt x\end{aligned}`;
+  await mount(`Before\n\n$$\n${protectedFormula}\n$$\n\nAfter`); await select('frac12', 6); await clickFormat();
+  const protectedResult = await read();
+  assert.ok(protectedResult.includes('\\text{hello   world}') && protectedResult.includes('\\def\\foo{ x  y }'));
+  assert.ok(protectedResult.includes('\\frac12 + \\sqrt x') && protectedResult.includes('\\begin{aligned}\n'));
+  assert.match(await page.$eval('.meo-format-math-btn', node => node.getAttribute('aria-label')!), /formatted.*retained/);
+  assert.equal(await page.$eval('.meo-format-math-btn svg path', node => node.getAttribute('d')), 'M20 6 9 17l-5-5', 'Local protection uses the success check');
+  await page.screenshot({ path: '.local/probes/block-source-formatting/math-protected.png' });
+  await page.evaluate(() => (window as any).blockEditor.undo()); await settle();
+  assert.equal(await read(), `Before\n\n$$\n${protectedFormula}\n$$\n\nAfter`);
   const text = `Before\n\n$$\n${expression}\n$$\n\nAfter`;
   for (const mode of ['live', 'source']) {
     await mount(text); await page.evaluate(mode => (window as any).blockEditor.setMode(mode), mode); await select('frac', 4);

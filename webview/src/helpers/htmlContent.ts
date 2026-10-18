@@ -357,7 +357,7 @@ export async function formatActiveHtmlSource(view: EditorView, isCurrent: () => 
     const current = getHtmlEditingRange(view.state);
     if (!isCurrent() || !view.dom.isConnected || view.state.readOnly || view.state.doc !== doc || !view.state.selection.eq(selection)
       || current?.from !== range.from || current.to !== range.to) return 'changed';
-    if (result.kind !== 'formatted') return result.kind;
+    if (result.kind !== 'formatted' && result.kind !== 'formatted-protected') return result.kind;
     preserveHtmlPosition(view, range.from, () => view.dispatch({
       changes: { from: range.from, to: range.to, insert: result.source },
       selection: { anchor: range.from + result.offsets[0] + Math.max(0, offsets[0] - source.length),
@@ -365,7 +365,7 @@ export async function formatActiveHtmlSource(view: EditorView, isCurrent: () => 
       effects: setHtmlEditingRangeEffect.of({ from: range.from, to: range.from + result.source.length }),
       annotations: isolateHistory.of('full'), userEvent: 'input.format'
     }));
-    return 'formatted';
+    return result.kind;
   } catch { return 'invalid'; }
 }
 
@@ -393,11 +393,11 @@ class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
     warning.className = 'meo-md-html-warning';
     warning.dataset.tooltipKind = 'description';
     warning.append(createElement(AlertTriangle, { width: 14, height: 14, 'aria-hidden': 'true' }));
-    const control = createSourceFormatButton(root.ownerDocument, () => {
+    const control = createSourceFormatButton(view, `html:${getHtmlEditingRange(view.state)?.from}`, () => view.state.doc, root.ownerDocument, () => {
       const strings = getUiStrings(view.state.facet(uiLanguageFacet));
       return { idle: strings.formatHtml, busy: strings.formattingHtml,
-        formatted: strings.formattedHtml, unchanged: strings.htmlFormatUnchanged,
-        preserved: strings.htmlFormatPreserved, invalid: strings.htmlFormatInvalid,
+        formatted: strings.formattedHtml, 'formatted-protected': strings.htmlFormattedProtected, unchanged: strings.htmlFormatUnchanged,
+        boundary: strings.htmlFormatBoundary, unsafe: strings.htmlFormatUnsafe, unsupported: strings.htmlFormatInvalid, invalid: strings.htmlFormatInvalid,
         changed: strings.htmlFormatChanged, unavailable: strings.htmlFormatUnavailable };
     }, current => formatActiveHtmlSource(view, current));
     root.formatControl = control;

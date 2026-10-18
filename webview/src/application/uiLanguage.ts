@@ -227,13 +227,18 @@ export type UiStrings = Readonly<{
   formattingMath: string;
   formattedMath: string;
   mathFormatUnchanged: string;
-  mathFormatPreserved: string;
+  mathFormattedProtected: string;
+  mathFormatBoundary: string;
+  mathFormatUnsafe: string;
+  mathFormatUnsupported: string;
   mathFormatInvalid: string;
   mathFormatUnavailable: string;
   formattingHtml: string;
   formattedHtml: string;
   htmlFormatUnchanged: string;
-  htmlFormatPreserved: string;
+  htmlFormattedProtected: string;
+  htmlFormatBoundary: string;
+  htmlFormatUnsafe: string;
   htmlFormatInvalid: string;
   htmlFormatChanged: string;
   htmlFormatUnavailable: string;
@@ -499,13 +504,18 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     htmlBlockedUrl: (name: string) => `Blocked link or image address: ${name}`,
     formatHtml: 'Format this HTML fragment',
     formatMath: 'Format this formula', formattingMath: 'Formatting formula…', formattedMath: 'Formula formatted',
-    mathFormatUnchanged: 'Formula is already formatted',
-    mathFormatPreserved: 'Formatting could change protected content or layout; source retained',
-    mathFormatInvalid: 'Formula is incomplete or unsupported; source retained',
+    mathFormatUnchanged: 'No layout changes needed',
+    mathFormattedProtected: 'Formula formatted; text, comments and definitions retained',
+    mathFormatBoundary: 'Cannot determine formula layout boundaries; source retained',
+    mathFormatUnsafe: 'Layout changes would affect formula rendering; source retained',
+    mathFormatUnsupported: 'This formula cannot be rendered; source retained',
+    mathFormatInvalid: 'Formula syntax is incomplete or invalid; source retained',
     mathFormatUnavailable: 'Place the caret or selection inside one formula block',
     formattingHtml: 'Formatting HTML…', formattedHtml: 'HTML formatted',
-    htmlFormatUnchanged: 'HTML is already formatted',
-    htmlFormatPreserved: 'Formatting would change preserved whitespace; source retained',
+    htmlFormatUnchanged: 'No layout changes needed',
+    htmlFormattedProtected: 'HTML formatted; preformatted content and inline spacing retained',
+    htmlFormatBoundary: 'Cannot determine protected HTML boundaries; source retained',
+    htmlFormatUnsafe: 'Formatting would change HTML content or meaningful spacing; source retained',
     htmlFormatInvalid: 'HTML is incomplete or invalid; source retained',
     htmlFormatChanged: 'Editing position or content changed; format again to retry',
     htmlFormatUnavailable: 'Place the caret or selection inside one HTML fragment',
@@ -736,13 +746,18 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     htmlBlockedUrl: (name: string) => `已拦截的链接或图片地址：${name}`,
     formatHtml: '格式化当前 HTML 片段',
     formatMath: '格式化当前公式', formattingMath: '正在格式化公式…', formattedMath: '公式已格式化',
-    mathFormatUnchanged: '公式已是格式化状态',
-    mathFormatPreserved: '格式化可能改变需要保护的内容或排版，已保留原文',
-    mathFormatInvalid: '公式未完成或暂不支持，已保留原文',
+    mathFormatUnchanged: '无需调整布局',
+    mathFormattedProtected: '公式已格式化，文字、注释和宏定义已保留',
+    mathFormatBoundary: '无法确定公式的布局边界，已保留原文',
+    mathFormatUnsafe: '布局调整会改变公式渲染结果，已保留原文',
+    mathFormatUnsupported: '此公式暂时无法渲染，已保留原文',
+    mathFormatInvalid: '公式语法未完成或无效，已保留原文',
     mathFormatUnavailable: '请将光标或选区放在一个块状公式内',
     formattingHtml: '正在格式化 HTML…', formattedHtml: 'HTML 已格式化',
-    htmlFormatUnchanged: 'HTML 已是格式化状态',
-    htmlFormatPreserved: '格式化会改变需要保留的空白，已保留原文',
+    htmlFormatUnchanged: '无需调整布局',
+    htmlFormattedProtected: 'HTML 已格式化，预格式内容与行内空白已保留',
+    htmlFormatBoundary: '无法确定 HTML 的保护边界，已保留原文',
+    htmlFormatUnsafe: '格式化会改变 HTML 内容或有意义的空白，已保留原文',
     htmlFormatInvalid: 'HTML 未完成或语法无效，已保留原文',
     htmlFormatChanged: '编辑位置或内容已变化，请重新格式化',
     htmlFormatUnavailable: '请将光标或选区放在一个 HTML 片段内',
