@@ -48,7 +48,7 @@ const source = [
   '<script>window.__htmlExecuted=1;const raw="<div>";</script>', '',
   '<p id="after-script">After unsupported script</p>', '',
   '<custom-html>Unsupported source remains visible</custom-html>', '',
-  '<!-- visible comment -->', '', 'Tail paragraph.'
+  '<!-- visible comment -->', '', 'Tail paragraph.', '', '$$', 'x^2 + 1', '$$'
 ].join('\n');
 
 async function frames(page: Page, count = 6): Promise<void> {
@@ -355,6 +355,34 @@ async function main(): Promise<void> {
       assert.equal(await page.$eval('.meo-md-html-result-status', node => node.textContent),
         language === 'zh-CN' ? '预览' : 'Preview');
       await page.screenshot({ path: path.join(artifacts, `${appearance}-${language}-editing.png`) });
+      const sourceColor = await page.evaluate(() => {
+        const editor = document.querySelector<HTMLElement>('.cm-editor')!;
+        editor.style.setProperty('--meo-foreground', '#a11f1f');
+        editor.style.setProperty('--meo-token-foreground-color', '#127a55');
+        const line = Array.from(editor.querySelectorAll('.meo-md-html-source-range')).find(node => node.textContent?.includes('English'))!;
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        let text: Node | null;
+        while ((text = walker.nextNode()) && !text.textContent?.includes('English')) {}
+        if (!text?.parentElement) throw new Error('HTML source text node was not painted');
+        const color = getComputedStyle(text.parentElement).color;
+        editor.style.removeProperty('--meo-foreground');
+        editor.style.removeProperty('--meo-token-foreground-color');
+        return color;
+      });
+      assert.equal(sourceColor, 'rgb(18, 122, 85)', 'HTML text nodes use the syntax foreground even when document ink differs');
+      const editingSurface = async (kind: 'html' | 'math') => page.evaluate(kind => {
+        const source = document.querySelector(kind === 'html' ? '.meo-md-html-source-range-start' : '.meo-math-source-start')!;
+        const result = document.querySelector(kind === 'html' ? '.meo-md-html-live-result' : '.meo-math-live-result')!;
+        const pick = (node: Element, properties: string[]) => {
+          const style = getComputedStyle(node);
+          return Object.fromEntries(properties.map(property => [property, style.getPropertyValue(property)]));
+        };
+        return { source: pick(source, ['background-color', 'border', 'border-radius', 'box-shadow', 'font-size', 'line-height']),
+          result: pick(result, ['background-color', 'border', 'border-radius', 'box-shadow', 'padding']) };
+      }, kind);
+      const htmlSurface = await editingSurface('html');
+      await select(page, 'x^2 + 1', 1);
+      assert.deepEqual(await editingSurface('math'), htmlSurface, `${appearance}/${language}: HTML and display math share the editing surface`);
     }
     assert.deepEqual(errors, [], 'No runtime errors');
     console.log(`HTML fragment rendering, source editing and invisible-source tests passed. Screenshots: ${artifacts}`);

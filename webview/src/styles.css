@@ -3963,19 +3963,19 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
   -webkit-user-select: none;
 }
 
-.cm-editor .meo-math-source-line {
-  background: var(--meo-code-background);
+.cm-editor :is(.meo-math-source-line, .cm-line.meo-md-html-source-range) {
+  background: var(--meo-code-background) !important;
   font-family: var(--meo-font-source);
-  font-size: var(--meo-user-editor-font-size, var(--meo-font-source-size));
-  line-height: var(--meo-line-height-source);
+  font-size: var(--meo-active-editor-font-size);
+  line-height: var(--meo-active-editor-line-height);
 }
 
-.cm-editor .meo-math-source-start {
+.cm-editor :is(.meo-math-source-start, .cm-line.meo-md-html-source-range-start) {
   position: relative;
   border-radius: 6px 6px 0 0;
 }
 
-.cm-editor .meo-md-math-fenced-display.meo-math-live-result {
+.cm-editor :is(.meo-md-math-fenced-display.meo-math-live-result, .meo-md-html-live-result) {
   /* The editing result needs room for its label; reading has no label rail. */
   padding: 24px 0;
   background: var(--meo-code-background);
@@ -4658,34 +4658,15 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 }
 
 .cm-editor .cm-line.meo-md-html-source-range {
-  background: var(--meo-code-background) !important;
-  font-family: var(--meo-font-source);
-  font-size: var(--meo-active-editor-font-size);
-  line-height: var(--meo-active-editor-line-height);
-  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border);
-}
-
-.cm-editor .cm-line.meo-md-html-source-range-start {
-  border-radius: 6px 6px 0 0;
-  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 1px var(--meo-document-block-border);
+  color: var(--meo-token-foreground-color, var(--meo-content-editor-foreground));
 }
 
 .cm-editor .cm-line.meo-md-html-source-range-end:not(.meo-md-html-source-has-preview) {
   border-radius: 0 0 6px 6px;
-  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 -1px var(--meo-document-block-border);
 }
 
 .cm-editor .cm-line.meo-md-html-source-range-start.meo-md-html-source-range-end:not(.meo-md-html-source-has-preview) {
   border-radius: 6px;
-  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 1px var(--meo-document-block-border), inset 0 -1px var(--meo-document-block-border);
-}
-
-.cm-editor .meo-md-html-live-result {
-  padding: 24px 8px 12px;
-  background: var(--meo-code-background);
-  border-top: 1px solid var(--meo-document-separator, var(--meo-border));
-  border-radius: 0 0 6px 6px;
-  box-shadow: inset 1px 0 var(--meo-document-block-border), inset -1px 0 var(--meo-document-block-border), inset 0 -1px var(--meo-document-block-border);
 }
 
 .cm-editor .cm-line.meo-md-html-invisible-source {
