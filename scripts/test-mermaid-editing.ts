@@ -1130,6 +1130,9 @@ async function assertMermaidModePointerSurvivesSettlement(page: Page): Promise<v
         scope.__mermaidSettlePointerProbe.releaseSettlement();
       });
       await waitForFrames(page, 8);
+      // Framework-only transactions (for example completion blur) must not
+      // replace a pressed widget merely because its measured height changed.
+      await page.evaluate(() => (window as any).__mermaidSettlePointerProbe.announce());
       const settled = await label.evaluate(element => ({
         connected: element.isConnected,
         removals: (window as any).__mermaidSettleRemovals,

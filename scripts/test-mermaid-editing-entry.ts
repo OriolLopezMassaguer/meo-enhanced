@@ -50,6 +50,7 @@ function createMermaidDerivedPointerProbe(parent: HTMLElement) {
     },
     releaseSettlement() { releaseSettlement(); },
     requestAccepted() { requestLiveInputDerivedWork(editor.view, acceptedKey, () => { acceptedRuns += 1; }); },
+    announce() { editor.view.dispatch({ effects: EditorView.announce.of('Background presentation settled') }); },
     acceptsImmediately() {
       let ran = false;
       requestLiveInputDerivedWork(editor.view, {}, () => { ran = true; });

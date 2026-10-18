@@ -580,7 +580,6 @@ export class MermaidDiagramWidget extends WidgetType {
   previewResizeObserver: ResizeObserver | null;
   measuredHeight: number;
   measuredContentWidth: number;
-  initialHeightSeed: number;
   intrinsicSvg: string | null;
   staleSvg: string | null;
   indentColumns: number;
@@ -635,7 +634,6 @@ export class MermaidDiagramWidget extends WidgetType {
           mermaidEstimatedHeightKey(JSON.stringify(request), contentWidth)
         ) ?? estimateCachedMermaidHeight(cached?.ok === true ? cached.svg : undefined, contentWidth);
     this.measuredContentWidth = contentWidth;
-    this.initialHeightSeed = this.measuredHeight;
   }
 
   get zoom(): number { return this.viewportState.zoom; }
@@ -668,8 +666,7 @@ export class MermaidDiagramWidget extends WidgetType {
       other.indentColumns === this.indentColumns &&
       other.uiLanguage === this.uiLanguage &&
       other.themeSignature === this.themeSignature &&
-      other.blockViewportState === this.blockViewportState &&
-      Math.abs(other.initialHeightSeed - this.initialHeightSeed) < 1
+      other.blockViewportState === this.blockViewportState
     );
   }
 
