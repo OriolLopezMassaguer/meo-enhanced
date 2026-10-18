@@ -4670,7 +4670,44 @@ html[data-editor-appearance='light'] .cm-tooltip.meo-hex-color-adjustment {
 
 .cm-editor .cm-line.meo-md-html-source-line {
   position: relative;
+  padding-right: 48px;
 }
+
+.cm-editor .meo-md-html-source-actions {
+  position: absolute;
+  top: 0;
+  right: 3px;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  gap: 4px;
+  cursor: default;
+}
+
+.cm-editor .meo-md-html-source-actions .meo-md-html-warning { margin-left: 0; }
+.cm-editor .meo-md-html-source-actions .meo-md-html-warning[hidden] { display: none; }
+
+.cm-editor .meo-format-html-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--meo-semantic-codeCopyBackground);
+  color: var(--meo-code-action-foreground);
+  cursor: pointer;
+}
+
+.cm-editor .meo-format-html-btn:is(:hover, :focus-visible) {
+  background: var(--meo-semantic-codeCopyHoverBackground);
+  color: var(--meo-code-action-hover-foreground);
+}
+
+.cm-editor .meo-format-html-btn:focus-visible { box-shadow: inset 0 0 0 1px var(--meo-document-focus); }
+.cm-editor .meo-format-html-btn:disabled { opacity: 0.6; cursor: default; }
 
 .cm-editor .cm-line.meo-md-html-source-range {
   color: var(--meo-token-foreground-color, var(--meo-content-editor-foreground));

@@ -125,7 +125,7 @@ import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
 import { parseBlockLinePrefix } from './helpers/blockIndent';
 import { displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
 import { createHtmlSourceEditing } from './editor/htmlSource';
-import { getHtmlEditingRange } from './helpers/htmlContent';
+import { formatActiveHtmlSource, getHtmlEditingRange } from './helpers/htmlContent';
 import { supportedHtmlTags } from '../../src/shared/htmlPolicy';
 import { getMathCompletionBody } from './helpers/displayMathBlocks';
 import {
@@ -2601,7 +2601,11 @@ export function createEditor({
       ),
       markdownInlineStyleTheme,
       sourceSyntaxPreparation,
-      createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
+      createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags, view => {
+        if (!getHtmlEditingRange(view.state)) return false;
+        void formatActiveHtmlSource(view);
+        return true;
+      }),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument })] : sourceMode()),
       searchQueryField,
       searchAnchorField,

@@ -9,15 +9,17 @@ import {
   type DecorationSet
 } from '@codemirror/view';
 import type { SyntaxNodeRef, Tree } from '@lezer/common';
+import { isolateHistory } from '@codemirror/commands';
 import { parseDocument } from 'htmlparser2';
 import type { ChildNode } from 'domhandler';
-import { createElement, AlertTriangle } from 'lucide';
+import { createElement, AlertTriangle, IndentIncrease, Check } from 'lucide';
 import {
   getHtmlRootTagName,
   isSafeHtmlUrl,
   isSupportedHtmlAttribute,
   isSupportedHtmlBlockSource,
   isSupportedHtmlSource,
+  inspectHtmlStyle,
   normalizeHtmlAlign,
   sanitizeHtmlStyle,
   supportedHtmlBlockTags,
@@ -39,6 +41,7 @@ import { formatSourceLineNumber } from '../editor/sourceLineNumbers';
 import { mountProjectedLineNumbers } from '../editor/projectedLineNumbers';
 import { RenderedBlockPreviewHeight } from './renderedBlockPreview';
 import { createPreviewTableLayoutController, type PreviewTableLayoutController } from './previewTableLayout';
+import { formatHtmlFragment } from '../editor/htmlFormatting';
 
 export interface RenderableHtmlBlock {
   from: number;
@@ -257,34 +260,150 @@ function currentHtmlBlock(view: EditorView, source: string, startLine: number): 
   ));
 }
 
-function sanitizeElementTree(root: ParentNode): void {
+type HtmlContentIssue = { kind: 'tag' | 'attribute' | 'style' | 'value' | 'url'; name: string };
+
+function sanitizeElementTree(root: ParentNode): HtmlContentIssue[] {
+  const issues: HtmlContentIssue[] = [];
   for (const element of Array.from(root.querySelectorAll<HTMLElement>('*'))) {
     const tagName = element.tagName.toLowerCase();
     if (!supportedHtmlTags.has(tagName)) {
+      issues.push({ kind: 'tag', name: tagName });
       element.replaceWith(document.createTextNode(element.outerHTML));
       continue;
     }
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
       if (!isSupportedHtmlAttribute(tagName, name)) {
+        issues.push({ kind: 'attribute', name: `${tagName}.${name}` });
         element.removeAttribute(attribute.name);
         continue;
       }
       if ((name === 'href' || name === 'src') && !isSafeHtmlUrl(attribute.value, name)) {
+        issues.push({ kind: 'url', name: `${tagName}.${name}` });
         element.removeAttribute(attribute.name);
       }
       if (name === 'align') {
         const align = normalizeHtmlAlign(attribute.value);
         if (align) element.setAttribute('align', align);
-        else element.removeAttribute(attribute.name);
+        else {
+          issues.push({ kind: 'value', name: `${tagName}.${name}` });
+          element.removeAttribute(attribute.name);
+        }
       }
       if (name === 'style') {
-        const style = sanitizeHtmlStyle(attribute.value);
+        const inspected = inspectHtmlStyle(attribute.value);
+        issues.push(...inspected.unsupported.map(name => ({ kind: 'style' as const, name })),
+          ...inspected.invalid.map(name => ({ kind: 'value' as const, name })));
+        const style = inspected.style;
         if (style) element.setAttribute('style', style);
         else element.removeAttribute('style');
       }
     }
   }
+  return issues;
+}
+
+function htmlSourceIssues(source: string): HtmlContentIssue[] {
+  const template = document.createElement('template');
+  template.innerHTML = source;
+  return sanitizeElementTree(template.content);
+}
+
+function htmlIssueDescription(view: EditorView, issues: HtmlContentIssue[]): string {
+  const strings = getUiStrings(view.state.facet(uiLanguageFacet));
+  const describe = { tag: strings.htmlUnsupportedTag, attribute: strings.htmlUnsupportedAttribute,
+    style: strings.htmlUnsupportedStyle, value: strings.htmlInvalidValue, url: strings.htmlBlockedUrl };
+  return strings.htmlFilteredContent([...new Set(issues.map(issue => describe[issue.kind](issue.name)))]);
+}
+
+type HtmlFormattingOutcome = 'formatted' | 'unchanged' | 'preserved' | 'invalid' | 'changed' | 'unavailable';
+
+export async function formatActiveHtmlSource(view: EditorView, isCurrent: () => boolean = () => true): Promise<HtmlFormattingOutcome> {
+  const range = getHtmlEditingRange(view.state);
+  const { doc, selection, readOnly } = view.state;
+  if (!range || readOnly || selection.ranges.length !== 1 || selection.main.from < range.from || selection.main.to > range.to) return 'unavailable';
+  try {
+    const result = await formatHtmlFragment(doc.sliceString(range.from, range.to),
+      [selection.main.anchor - range.from, selection.main.head - range.from]);
+    const current = getHtmlEditingRange(view.state);
+    if (!isCurrent() || !view.dom.isConnected || view.state.readOnly || view.state.doc !== doc || !view.state.selection.eq(selection)
+      || current?.from !== range.from || current.to !== range.to) return 'changed';
+    if (result.kind !== 'formatted') return result.kind;
+    preserveHtmlPosition(view, range.from, () => view.dispatch({
+      changes: { from: range.from, to: range.to, insert: result.source },
+      selection: { anchor: range.from + result.offsets[0], head: range.from + result.offsets[1] },
+      effects: setHtmlEditingRangeEffect.of({ from: range.from, to: range.from + result.source.length }),
+      annotations: isolateHistory.of('full'), userEvent: 'input.format'
+    }));
+    return 'formatted';
+  } catch { return 'invalid'; }
+}
+
+type HtmlSourceActionsElement = HTMLSpanElement & { disposeHtmlActions?: () => void };
+
+class HtmlSourceActionsWidget extends UiLanguageSensitiveWidget {
+  constructor(readonly source: string) { super(); }
+  eq(other: WidgetType): boolean {
+    return other instanceof HtmlSourceActionsWidget && this.hasSameUiLanguageEpoch(other) && other.source === this.source;
+  }
+  private refresh(root: HTMLElement, view: EditorView): void {
+    const range = getHtmlEditingRange(view.state);
+    const issues = htmlSourceIssues(range ? view.state.doc.sliceString(range.from, range.to) : this.source);
+    const warning = root.querySelector<HTMLElement>('.meo-md-html-warning')!;
+    warning.hidden = !issues.length;
+    warning.dataset.tooltip = issues.length ? htmlIssueDescription(view, issues) : '';
+    warning.setAttribute('aria-label', warning.dataset.tooltip);
+    const button = root.querySelector<HTMLButtonElement>('button')!;
+    if (!button.disabled) {
+      button.dataset.tooltip = getUiStrings(view.state.facet(uiLanguageFacet)).formatHtml;
+      button.setAttribute('aria-label', button.dataset.tooltip);
+    }
+  }
+  toDOM(view: EditorView): HTMLElement {
+    const root = document.createElement('span') as HtmlSourceActionsElement;
+    root.className = 'meo-md-html-source-actions';
+    const warning = document.createElement('span');
+    warning.className = 'meo-md-html-warning';
+    warning.dataset.tooltipKind = 'description';
+    warning.append(createElement(AlertTriangle, { width: 14, height: 14, 'aria-hidden': 'true' }));
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'meo-format-html-btn';
+    button.append(createElement(IndentIncrease, { width: 14, height: 14, 'aria-hidden': 'true' }));
+    root.append(warning, button);
+    root.addEventListener('mousedown', event => { event.preventDefault(); event.stopPropagation(); });
+    let disposed = false, resetTimer: ReturnType<typeof setTimeout> | undefined;
+    root.disposeHtmlActions = () => { disposed = true; clearTimeout(resetTimer); };
+    button.addEventListener('click', async event => {
+      event.preventDefault(); event.stopPropagation();
+      clearTimeout(resetTimer);
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.dataset.tooltip = getUiStrings(view.state.facet(uiLanguageFacet)).formattingHtml;
+      button.setAttribute('aria-label', button.dataset.tooltip);
+      const outcome = await formatActiveHtmlSource(view, () => !disposed && root.isConnected);
+      if (disposed || !root.isConnected) return;
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      const strings = getUiStrings(view.state.facet(uiLanguageFacet));
+      const messages = { formatted: strings.formattedHtml, unchanged: strings.htmlFormatUnchanged,
+        preserved: strings.htmlFormatPreserved, invalid: strings.htmlFormatInvalid,
+        changed: strings.htmlFormatChanged, unavailable: strings.htmlFormatUnavailable };
+      button.dataset.tooltip = messages[outcome];
+      button.setAttribute('aria-label', messages[outcome]);
+      button.replaceChildren(createElement(outcome === 'formatted' || outcome === 'unchanged' ? Check : AlertTriangle,
+        { width: 14, height: 14, 'aria-hidden': 'true' }));
+      resetTimer = setTimeout(() => {
+        if (disposed) return;
+        button.replaceChildren(createElement(IndentIncrease, { width: 14, height: 14, 'aria-hidden': 'true' }));
+        this.refresh(root, view);
+      }, 2500);
+    });
+    this.refresh(root, view);
+    return root;
+  }
+  updateDOM(root: HTMLElement, view: EditorView): boolean { this.refresh(root, view); return true; }
+  destroy(root: HTMLElement): void { (root as HtmlSourceActionsElement).disposeHtmlActions?.(); }
 }
 
 function annotateHtmlSourceLines(root: ParentNode, source: string, startLine: number): void {
@@ -733,11 +852,14 @@ const htmlBlockLineNumberMarker = lineNumberWidgetMarker.of((view, widget, block
 });
 
 class HtmlWarningWidget extends WidgetType {
+  constructor(readonly source: string) { super(); }
   toDOM(view: EditorView): HTMLElement {
     const strings = getUiStrings(view.state.facet(uiLanguageFacet));
     const warning = document.createElement('span');
     warning.className = 'meo-md-html-warning';
-    warning.dataset.tooltip = strings.unsupportedHtmlSource;
+    const issues = htmlSourceIssues(this.source);
+    warning.dataset.tooltip = issues.length ? `${strings.unsupportedHtmlSource}\n${htmlIssueDescription(view, issues)}` : strings.unsupportedHtmlSource;
+    warning.dataset.tooltipKind = 'description';
     warning.setAttribute('aria-label', warning.dataset.tooltip ?? '');
     warning.appendChild(createElement(AlertTriangle, { width: 14, height: 14, 'aria-hidden': 'true' }));
     return warning;
@@ -835,6 +957,9 @@ export function addHtmlContentDecorations(
       ranges.push(Decoration.line({ class: classes.join(' ') }).range(line.from));
     }
     if (invisible && range.to > range.from) ranges.push(Decoration.mark({ class: 'meo-md-html-invisible-source-text' }).range(range.from, range.to));
+    if (!invisible) ranges.push(Decoration.widget({
+      widget: new HtmlSourceActionsWidget(state.doc.sliceString(range.from, range.to)), side: 1
+    }).range(startLine.to));
   };
   let editingBlockFound = false;
   const previous = blocks.length && previousDecorations && changes
@@ -891,7 +1016,7 @@ export function addHtmlContentDecorations(
       if (warningLines.has(line.number)) return;
       warningLines.add(line.number);
       ranges.push(Decoration.widget({
-        widget: new HtmlWarningWidget(),
+        widget: new HtmlWarningWidget(source),
         side: -1
       }).range(line.to));
     }

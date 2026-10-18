@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { Page } from 'puppeteer-core';
 import { launchTestBrowser } from './browser-test-helpers';
 import { renderMarkdownToHtml } from '../src/export/renderMarkdown';
+import { formatHtmlFragment } from '../webview/src/editor/htmlFormatting';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-html-content-'));
@@ -149,8 +150,96 @@ async function checkSourceExpansionAnchor(page: Page): Promise<void> {
   }
 }
 
+async function checkHtmlEditingTools(page: Page): Promise<void> {
+  const fragment = '<div id="format-target" class="custom" onclick="alert(1)" style="color:red;padding:8px;border:1px solid red;opacity:2"><p>Hello <strong>world</strong>.</p><a href="javascript:alert(1)">link</a></div>';
+  const text = `Intro.\n\n${fragment}\n\nAfter unchanged.`;
+  for (const language of ['zh-CN', 'en']) {
+    await page.evaluate(({ text, language }) => {
+      (window as any).__htmlEditor.setUiLanguage(language);
+      (window as any).__htmlEditor.setText(text, true);
+    }, { text, language });
+    await select(page, 'format-target', 3);
+    const tooltip = await page.$eval('.meo-md-html-source-actions .meo-md-html-warning', element => ({
+      hidden: (element as HTMLElement).hidden, label: (element as HTMLElement).dataset.tooltip
+    }));
+    assert.equal(tooltip.hidden, false);
+    for (const name of ['class', 'onclick', 'padding', 'border', 'opacity', 'href']) assert.ok(tooltip.label?.includes(name), name);
+    assert.match(tooltip.label!, language === 'zh-CN' ? /源码已保留/ : /source retained/);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), text, 'Policy feedback does not modify source');
+    await page.click('.meo-format-html-btn');
+    await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
+    const formatted = await page.evaluate(() => (window as any).__htmlEditor.getText());
+    assert.notEqual(formatted, text);
+    assert.ok(formatted.startsWith('Intro.\n\n') && formatted.endsWith('\n\nAfter unchanged.'), 'Only the current fragment is formatted');
+    assert.ok(formatted.includes('onclick="alert(1)"') && formatted.includes('padding:8px'), 'Formatting retains filtered authored attributes');
+    assert.ok(await page.$('.meo-md-html-source-range-start'), 'Formatting keeps the fragment open');
+    await page.screenshot({ path: path.join(artifacts, `format-html-${language}.png`) });
+    await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control');
+    await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), text, 'One undo restores the complete fragment');
+    await page.keyboard.down('Control'); await page.keyboard.press('y'); await page.keyboard.up('Control');
+    await frames(page);
+    assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), formatted, 'One redo reapplies formatting');
+  }
+  const preserved = '<div style="white-space:pre-wrap">a  b\n c</div>';
+  await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), `Intro.\n\n${preserved}\n\nAfter.`);
+  await select(page, 'a  b', 1);
+  const beforePreserved = await page.evaluate(() => (window as any).__htmlEditor.getText());
+  await page.click('.meo-format-html-btn');
+  await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
+  assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), beforePreserved, 'Preserved whitespace is never rewritten');
+  assert.match(await page.$eval('.meo-format-html-btn', element => element.getAttribute('aria-label')!), /whitespace/);
+  await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), text);
+  await select(page, 'format-target', 3);
+  const raced = await page.evaluate(() => {
+    const view = (window as any).__htmlEditor.view;
+    (document.querySelector('.meo-format-html-btn') as HTMLButtonElement).click();
+    const position = view.state.doc.toString().indexOf('Hello') + 5;
+    view.dispatch({ changes: { from: position, insert: 'X' } });
+    return view.state.doc.toString();
+  });
+  await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
+  assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), raced, 'A late formatter result cannot overwrite newer input');
+  assert.match(await page.$eval('.meo-format-html-btn', element => element.getAttribute('aria-label')!), /changed/);
+  await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), 'Intro.\n\n<div title="ok"><p>Hello</p></div>\n\nAfter.');
+  await select(page, 'ok', 1);
+  await page.evaluate(() => {
+    const view = (window as any).__htmlEditor.view;
+    const position = view.state.doc.toString().indexOf('ok"') + 2;
+    view.dispatch({ changes: { from: position, to: position + 1 }, selection: { anchor: position } });
+  });
+  await frames(page);
+  const invalid = await page.evaluate(() => (window as any).__htmlEditor.getText());
+  await page.click('.meo-format-html-btn');
+  await page.waitForFunction(() => !(document.querySelector('.meo-format-html-btn') as HTMLButtonElement)?.disabled);
+  assert.equal(await page.evaluate(() => (window as any).__htmlEditor.getText()), invalid);
+  assert.match(await page.$eval('.meo-format-html-btn', element => element.getAttribute('aria-label')!), /incomplete|invalid/);
+  await page.evaluate(async text => {
+    const editor = (window as any).__htmlEditor;
+    editor.setText(text, true);
+    await editor.setMode('source');
+  }, text);
+  await select(page, 'format-target', 3);
+  await page.keyboard.down('Alt'); await page.keyboard.down('Shift'); await page.keyboard.press('f');
+  await page.keyboard.up('Shift'); await page.keyboard.up('Alt');
+  await page.waitForFunction(text => (window as any).__htmlEditor.getText() !== text, {}, text);
+  assert.ok((await page.evaluate(() => (window as any).__htmlEditor.getText())).endsWith('After unchanged.'));
+  await page.evaluate(async () => { await (window as any).__htmlEditor.setMode('live'); });
+}
+
 async function main(): Promise<void> {
   checkExport();
+  const plain = '<div id="one" title="long title" style="color:red"><p>Hello <strong>world</strong>.</p></div>';
+  const formatted = await formatHtmlFragment(plain, [0, plain.indexOf('world')]);
+  assert.equal(formatted.kind, 'formatted');
+  assert.match(formatted.source, /\n  <p>/);
+  assert.equal(formatted.source.slice(formatted.offsets[1], formatted.offsets[1] + 5), 'world');
+  assert.equal((await formatHtmlFragment(formatted.source, formatted.offsets)).kind, 'unchanged');
+  for (const text of ['<pre>  a\n b</pre>', '<code> a  b\n c </code>',
+    '<div style="white-space:pre-wrap">a  b\n c</div>', '<div style="display:inline">a</div><div style="display:inline">b</div>']) {
+    assert.equal((await formatHtmlFragment(text, [0])).source, text, 'Whitespace-sensitive source stays intact');
+  }
+  await assert.rejects(() => formatHtmlFragment('<div title="broken>', [0]));
   const build = await Bun.build({ entrypoints: [path.join(repoRoot, 'scripts/test-html-content-entry.ts')], outdir: tempDir,
     target: 'browser', format: 'iife', naming: 'bundle.js' });
   assert.ok(build.success, build.logs.map(String).join('\n'));
@@ -444,6 +533,7 @@ async function main(): Promise<void> {
       await select(page, 'x^2 + 1', 1);
       assert.deepEqual(await editingSurface('math'), htmlSurface, `${appearance}/${language}: HTML and display math share the editing surface`);
     }
+    await checkHtmlEditingTools(page);
     await checkSourceExpansionAnchor(page);
     assert.deepEqual(errors, [], 'No runtime errors');
     console.log(`HTML fragment rendering, source editing and invisible-source tests passed. Screenshots: ${artifacts}`);

@@ -117,18 +117,28 @@ export const htmlInlineStyleRules: Record<string, RegExp[]> = {
 };
 
 /** Document formatting only: no CSS URLs, selectors, positioning or editor chrome. */
-export function sanitizeHtmlStyle(source: string): string {
+export function inspectHtmlStyle(source: string): { style: string; unsupported: string[]; invalid: string[] } {
   const declarations = new Map<string, string>();
+  const unsupported = new Set<string>(), invalid = new Set<string>();
   for (const declaration of source.split(';')) {
     const colon = declaration.indexOf(':');
-    if (colon < 0) continue;
+    if (colon < 0) {
+      if (declaration.trim()) invalid.add(declaration.trim().split(/\s+/)[0]);
+      continue;
+    }
     const name = declaration.slice(0, colon).trim().toLowerCase();
     const value = declaration.slice(colon + 1).trim();
     const rules = Object.hasOwn(htmlInlineStyleRules, name) ? htmlInlineStyleRules[name] : undefined;
     const valid = rules?.some(rule => rule.test(value)) === true;
     if (valid) declarations.set(name, value);
+    else (rules ? invalid : unsupported).add(name);
   }
-  return [...declarations].map(([name, value]) => `${name}: ${value}`).join('; ');
+  return { style: [...declarations].map(([name, value]) => `${name}: ${value}`).join('; '),
+    unsupported: [...unsupported], invalid: [...invalid] };
+}
+
+export function sanitizeHtmlStyle(source: string): string {
+  return inspectHtmlStyle(source).style;
 }
 
 export function getSupportedHtmlAttributes(tagName: string): string[] {

@@ -216,6 +216,20 @@ export type UiStrings = Readonly<{
   cancelColorAdjustment: string;
   applyColorAdjustment: string;
   unsupportedHtmlSource: string;
+  htmlFilteredContent: (items: string[]) => string;
+  htmlUnsupportedTag: (name: string) => string;
+  htmlUnsupportedAttribute: (name: string) => string;
+  htmlUnsupportedStyle: (name: string) => string;
+  htmlInvalidValue: (name: string) => string;
+  htmlBlockedUrl: (name: string) => string;
+  formatHtml: string;
+  formattingHtml: string;
+  formattedHtml: string;
+  htmlFormatUnchanged: string;
+  htmlFormatPreserved: string;
+  htmlFormatInvalid: string;
+  htmlFormatChanged: string;
+  htmlFormatUnavailable: string;
   acceptCurrent: string;
   acceptIncoming: string;
   acceptBoth: string;
@@ -470,6 +484,19 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     brightness: 'Brightness', opacity: 'Opacity', closeColorControls: 'Close color controls',
     cancelColorAdjustment: 'Cancel', applyColorAdjustment: 'Apply',
     unsupportedHtmlSource: 'Invalid or unsupported HTML; source retained',
+    htmlFilteredContent: (items: string[]) => `Not used in the preview; source retained:\n${items.join('\n')}`,
+    htmlUnsupportedTag: (name: string) => `Unsupported tag: ${name}`,
+    htmlUnsupportedAttribute: (name: string) => `Unsupported attribute: ${name}`,
+    htmlUnsupportedStyle: (name: string) => `Unsupported style: ${name}`,
+    htmlInvalidValue: (name: string) => `Invalid or unsupported value: ${name}`,
+    htmlBlockedUrl: (name: string) => `Blocked link or image address: ${name}`,
+    formatHtml: 'Format this HTML fragment (Alt+Shift+F)',
+    formattingHtml: 'Formatting HTML…', formattedHtml: 'HTML formatted',
+    htmlFormatUnchanged: 'HTML is already formatted',
+    htmlFormatPreserved: 'Formatting would change preserved whitespace; source retained',
+    htmlFormatInvalid: 'HTML is incomplete or invalid; source retained',
+    htmlFormatChanged: 'Editing position or content changed; format again to retry',
+    htmlFormatUnavailable: 'Place the caret or selection inside one HTML fragment',
     acceptCurrent: 'Accept Current', acceptIncoming: 'Accept Incoming', acceptBoth: 'Accept Both',
     currentVersion: (label: string) => `Current: ${label},`,
     incomingVersion: (label: string) => `Incoming: ${label}`,
@@ -689,6 +716,19 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     brightness: '明度', opacity: '透明度', closeColorControls: '关闭颜色调整器',
     cancelColorAdjustment: '取消', applyColorAdjustment: '应用',
     unsupportedHtmlSource: 'HTML 标记无效或不受支持，已保留源码',
+    htmlFilteredContent: (items: string[]) => `预览未采用以下内容，源码已保留：\n${items.join('\n')}`,
+    htmlUnsupportedTag: (name: string) => `不支持的标签：${name}`,
+    htmlUnsupportedAttribute: (name: string) => `不支持的属性：${name}`,
+    htmlUnsupportedStyle: (name: string) => `不支持的样式：${name}`,
+    htmlInvalidValue: (name: string) => `值无效或不受支持：${name}`,
+    htmlBlockedUrl: (name: string) => `已拦截的链接或图片地址：${name}`,
+    formatHtml: '格式化当前 HTML 片段（Alt+Shift+F）',
+    formattingHtml: '正在格式化 HTML…', formattedHtml: 'HTML 已格式化',
+    htmlFormatUnchanged: 'HTML 已是格式化状态',
+    htmlFormatPreserved: '格式化会改变需要保留的空白，已保留原文',
+    htmlFormatInvalid: 'HTML 未完成或语法无效，已保留原文',
+    htmlFormatChanged: '编辑位置或内容已变化，请重新格式化',
+    htmlFormatUnavailable: '请将光标或选区放在一个 HTML 片段内',
     acceptCurrent: '接受当前更改', acceptIncoming: '接受传入更改', acceptBoth: '接受两者',
     currentVersion: (label: string) => `当前：${label}，`,
     incomingVersion: (label: string) => `传入：${label}`,
