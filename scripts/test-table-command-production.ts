@@ -310,7 +310,9 @@ async function main() {
       const retryDispatch = retryView.dispatch.bind(retryView);
       let retryDispatchFailed = false;
       (retryView as any).dispatch = (...transactions: any[]) => {
-        if (!retryDispatchFailed) {
+        // Pointer presentation also dispatches UI-only effects. Inject into
+        // the command's document change, not an unrelated capture handler.
+        if (!retryDispatchFailed && transactions.some(transaction => transaction.docChanged ?? Boolean(transaction.changes))) {
           retryDispatchFailed = true;
           throw new Error('expected production dispatch failure');
         }
@@ -347,7 +349,7 @@ async function main() {
       const blurDispatch = blurView.dispatch.bind(blurView);
       let blurDispatchFailed = false;
       (blurView as any).dispatch = (...transactions: any[]) => {
-        if (!blurDispatchFailed) {
+        if (!blurDispatchFailed && transactions.some(transaction => transaction.docChanged ?? Boolean(transaction.changes))) {
           blurDispatchFailed = true;
           throw new Error('expected production dispatch failure before blur');
         }
@@ -378,7 +380,7 @@ async function main() {
       const saveDispatch = saveView.dispatch.bind(saveView);
       let saveDispatchFailed = false;
       (saveView as any).dispatch = (...transactions: any[]) => {
-        if (!saveDispatchFailed) {
+        if (!saveDispatchFailed && transactions.some(transaction => transaction.docChanged ?? Boolean(transaction.changes))) {
           saveDispatchFailed = true;
           throw new Error('expected production dispatch failure before save');
         }
@@ -424,6 +426,9 @@ async function main() {
         afterFullRangeColumnDelete,
         afterQueuedDoubleDelete,
         dispatchFailureText,
+        retryDispatchFailed,
+        blurDispatchFailed,
+        saveDispatchFailed,
         afterFailedDispatch,
         retainedAfterFailedDispatch,
         afterDispatchRetry,
@@ -513,6 +518,8 @@ async function main() {
     assert.equal(result.afterFullRangeRowDelete, result.rowGuardText, 'deleting every body row must be a strict no-op');
     assert.equal(result.afterFullRangeColumnDelete, result.columnGuardText, 'deleting every column must be a strict no-op');
     assert.match(result.afterQueuedDoubleDelete, /\| two\s+\|/, 'queued deletion must not remove the last body row');
+    assert.ok(result.retryDispatchFailed && result.blurDispatchFailed && result.saveDispatchFailed,
+      'every injected failure must reach a document-changing dispatch');
     assert.equal(result.afterFailedDispatch, result.dispatchFailureText, 'failed structure dispatch must not change Markdown');
     assert.equal(result.retainedAfterFailedDispatch, 'retry kept', 'failed structure dispatch must retain the visible pending edit');
     assert.match(result.afterDispatchRetry, /\| retry kept\s+\|\n\|\s+\|/, 'retry must atomically apply the retained edit and command');
