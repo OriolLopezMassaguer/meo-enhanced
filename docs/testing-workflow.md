@@ -315,6 +315,9 @@ palette must paint syntax immediately; edits prepare only the latest revision.
 It also checks preparation behind a hidden Preview cover and cancellation.
 The Shiki lifecycle contracts verify bounded shared caches, unchanged palette
 reuse, real palette invalidation, stale-work cancellation and final disposal.
+The background-demotion unit check explicitly advances reading-pause timers and
+idle callbacks, including fast polling turns. A fixed count of zero-delay timer
+callbacks does not prove that a real 50ms pause expired on every operating system.
 Background Source preparation pauses between batches during native reading and
 retains completed work. Explicit Source transitions promote the same job, keep
 the current surface covered until prepared, and reuse the cache on return.
