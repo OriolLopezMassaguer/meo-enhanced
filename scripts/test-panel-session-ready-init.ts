@@ -25,6 +25,7 @@ const messages: Array<Record<string, unknown>> = [];
 let receiveMessage: ((value: unknown) => void) | undefined;
 let colors: UiColors = { light: {}, dark: { accent: '#2277CC' } };
 let failColors = false;
+let lineHeight = 1.8;
 let concurrentColors: UiColors | undefined;
 let releaseDiskRead: (() => void) | undefined;
 const diskRead = new Promise<void>((resolve) => { releaseDiskRead = resolve; });
@@ -49,6 +50,8 @@ const controller = createPanelSessionController(createPanelSessionControllerPara
   }),
   readDiskText: () => document.text,
   overrides: {
+    getEditorLineHeight: () => lineHeight,
+    setEditorLineHeight: async (value: number) => { lineHeight = value; },
     getUiColors: () => colors,
     setUiColors: async (next: UiColors) => {
       if (failColors) throw new Error('fixture color write failure');
@@ -82,6 +85,10 @@ await controller.handleMessage({ type: 'ready' });
 const initMessages = messages.filter((message) => message.type === 'init');
 assert.equal(initMessages.length, 2, 'a later ready must retry an init lost during Webview startup');
 assert.equal(initMessages[0]?.mode, 'preview');
+assert.equal(initMessages[0]?.editorLineHeight, 1.8);
+assert.equal(decodeInitMessage({...initMessages[0], editorLineHeight: 0.8}), null);
+await controller.handleMessage({type: 'setEditorLineHeight', value: 1.9});
+assert.equal(lineHeight, 1.9, 'validated line spacing reaches the Host owner');
 assert.deepEqual(initMessages[0]?.uiColors, colors, 'initial handshake includes saved UI color profiles');
 assert.equal(initMessages[0]?.text, '# Preview startup\n\nBody', 'initial Markdown must use the Webview editor line endings');
 for (const message of initMessages) {

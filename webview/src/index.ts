@@ -1,8 +1,8 @@
 import { effectiveShortcuts } from '../../src/application/editingPreferences';
-import type { EditorCommandId } from '../../src/foundation/editingPreferences';
 import { createImageLocationSettings } from './adapters/imageLocationSettings';
 import { createImageStorageTransport } from './adapters/imageStorageTransport';
 import { createSettingsWindow, type GeneralSetting } from './adapters/settingsWindow';
+import { DEFAULT_EDITOR_LINE_HEIGHT, normalizeEditorLineHeight } from '../../src/foundation/editorLineHeight';
 import { createUiColorsTransport } from './adapters/uiColorsTransport';
 import type { UiColors } from '../../src/foundation/uiColors';
 import { createPreviewPresetSettings } from './adapters/previewPresetSettings';
@@ -12,8 +12,9 @@ import { bindTooltips, createTooltip } from './adapters/tooltip';
 import { createEditingPreferencesTransport } from './adapters/editingPreferencesTransport';
 import { createPreviewFontsTransport } from './adapters/previewFontsTransport';
 import { createEditorServicesTransport } from './adapters/editorServicesTransport';
-import { defaultInputAssistance, type EditingPreferences } from '../../src/foundation/editingPreferences';
-import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Save, HardDriveUpload, PanelLeftRightDashed, SquareSplitHorizontal, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info, Highlighter, MessageSquareText } from 'lucide';
+import { defaultInputAssistance, isEditorCommandId, type EditingPreferences } from '../../src/foundation/editingPreferences';
+import { createElement, Heading, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, List, ListOrdered, SquareCheck, ListTree, Hash, Code, SquareCode, Terminal, Quote, Minus, Plus, Table2, Link, Unlink, Brackets, Image, Bold, Italic, Strikethrough, Search, FileCode2, Undo2, Redo2, RotateCcw, PanelLeftRightDashed, Settings, Settings2, Check, Ellipsis, Sun, Moon, SunMoon, Languages, Type, SlidersHorizontal, ExternalLink, History, Info, Highlighter, MessageSquareText } from 'lucide';
+import { createCodicon } from './helpers/codicons';
 import { setImageSrcResolver, initializeImageHandling, resolveImageSrc, settleImageSrcRequest, handleSavedImagePath, handleImagePaste, refreshWikiImagePresentations } from './helpers/images';
 import { createGitClient } from './helpers/gitClient';
 import { createOutlineController } from './helpers/outline';
@@ -42,6 +43,7 @@ import { createMermaidDiagramPresentationFactory } from './editor/mermaidDiagram
 import { isAcceptedLineJumpInput, parseLineJumpTarget } from './helpers/lineJump';
 import { createEditorNoticeController } from './helpers/notices';
 import { createDocumentCopyTransport } from './adapters/documentCopyTransport';
+import { createDocumentSaveAsTransport } from './adapters/documentSaveAsTransport';
 import { createPreviewController } from './helpers/preview';
 import type { ViewportAnchorToken } from './helpers/viewportController';
 import { createDocumentScrollToTopController } from './helpers/scrollToTop';
@@ -88,6 +90,7 @@ let uiColors: UiColors = { light: {}, dark: {} };
 let uiColorsPreview: UiColors | null = null;
 let editingPreferences: EditingPreferences = { input: { ...defaultInputAssistance }, shortcuts: {} };
 let editingPreferencesRevision = -1;
+let shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
 
 type CreateEditorFactory = (typeof import('./editor'))['createEditor'];
 
@@ -168,6 +171,7 @@ if (!root) {
 
 root.classList.add('editor-root');
 const tooltipBinding = bindTooltips(document.body, {
+  shortcutForCommand: command => isEditorCommandId(command) ? shortcutHints[command][0] : undefined,
   editableLinkHrefAtPoint: point => editor?.getLinkHrefAtPoint(point) ?? ''
 });
 let activeUiLanguage: UiLanguage = 'en';
@@ -211,6 +215,7 @@ for (let level = 1; level <= 6; level++) {
   option.className = 'heading-dropdown-option';
   option.dataset.tooltipPlacement = 'right';
   option.dataset.level = String(level);
+  option.dataset.tooltipCommand = 'heading' + level;
   option.dataset.tooltip = activeUiStrings.headingLevel(level);
   option.setAttribute('aria-label', activeUiStrings.headingLevel(level));
 
@@ -228,6 +233,7 @@ const bulletListBtn = document.createElement('button');
 bulletListBtn.type = 'button';
 bulletListBtn.className = 'format-button';
 bulletListBtn.dataset.action = 'bulletList';
+bulletListBtn.dataset.tooltipCommand = 'bullet';
 bulletListBtn.dataset.tooltip = activeUiStrings.bulletList;
 bulletListBtn.appendChild(createElement(List, { width: 18, height: 18 }));
 
@@ -235,6 +241,7 @@ const numberedListBtn = document.createElement('button');
 numberedListBtn.type = 'button';
 numberedListBtn.className = 'format-button';
 numberedListBtn.dataset.action = 'numberedList';
+numberedListBtn.dataset.tooltipCommand = 'ordered';
 numberedListBtn.dataset.tooltip = activeUiStrings.numberedList;
 numberedListBtn.appendChild(createElement(ListOrdered, { width: 18, height: 18 }));
 
@@ -242,6 +249,7 @@ const taskBtn = document.createElement('button');
 taskBtn.type = 'button';
 taskBtn.className = 'format-button';
 taskBtn.dataset.action = 'task';
+taskBtn.dataset.tooltipCommand = 'taskList';
 taskBtn.dataset.tooltip = activeUiStrings.task;
 taskBtn.appendChild(createElement(SquareCheck, { width: 18, height: 18 }));
 
@@ -664,6 +672,7 @@ const codeBlockBtn = document.createElement('button');
 codeBlockBtn.type = 'button';
 codeBlockBtn.className = 'format-button';
 codeBlockBtn.dataset.action = 'codeBlock';
+codeBlockBtn.dataset.tooltipCommand = 'codeBlock';
 codeBlockBtn.dataset.tooltip = activeUiStrings.codeBlock;
 codeBlockBtn.appendChild(createElement(SquareCode, { width: 18, height: 18 }));
 
@@ -671,6 +680,7 @@ const quoteBtn = document.createElement('button');
 quoteBtn.type = 'button';
 quoteBtn.className = 'format-button';
 quoteBtn.dataset.action = 'quote';
+quoteBtn.dataset.tooltipCommand = 'quote';
 quoteBtn.dataset.tooltip = activeUiStrings.quote;
 quoteBtn.appendChild(createElement(Quote, { width: 18, height: 18 }));
 
@@ -678,6 +688,7 @@ const hrBtn = document.createElement('button');
 hrBtn.type = 'button';
 hrBtn.className = 'format-button';
 hrBtn.dataset.action = 'hr';
+hrBtn.dataset.tooltipCommand = 'rule';
 hrBtn.dataset.tooltip = activeUiStrings.horizontalRule;
 hrBtn.appendChild(createElement(Minus, { width: 18, height: 18 }));
 
@@ -685,6 +696,7 @@ const linkBtn = document.createElement('button');
 linkBtn.type = 'button';
 linkBtn.className = 'format-button';
 linkBtn.dataset.action = 'link';
+linkBtn.dataset.tooltipCommand = 'link';
 linkBtn.dataset.tooltip = activeUiStrings.link;
 linkBtn.appendChild(createElement(Link, { width: 18, height: 18 }));
 
@@ -692,6 +704,7 @@ const wikiLinkBtn = document.createElement('button');
 wikiLinkBtn.type = 'button';
 wikiLinkBtn.className = 'format-button';
 wikiLinkBtn.dataset.action = 'wikiLink';
+wikiLinkBtn.dataset.tooltipCommand = 'wikiLink';
 wikiLinkBtn.dataset.tooltip = activeUiStrings.wikiLink;
 wikiLinkBtn.appendChild(createElement(Brackets, { width: 18, height: 18 }));
 
@@ -699,6 +712,7 @@ const imageBtn = document.createElement('button');
 imageBtn.type = 'button';
 imageBtn.className = 'format-button';
 imageBtn.dataset.action = 'image';
+imageBtn.dataset.tooltipCommand = 'image';
 imageBtn.dataset.tooltip = activeUiStrings.image;
 imageBtn.appendChild(createElement(Image, { width: 18, height: 18 }));
 
@@ -706,6 +720,7 @@ const tableBtn = document.createElement('button');
 tableBtn.type = 'button';
 tableBtn.className = 'format-button';
 tableBtn.dataset.action = 'table';
+tableBtn.dataset.tooltipCommand = 'insertTable';
 tableBtn.dataset.tooltipPlacement = 'right';
 tableBtn.dataset.tooltip = activeUiStrings.table;
 tableBtn.appendChild(createElement(Table2, { width: 18, height: 18 }));
@@ -884,9 +899,48 @@ const saveBtn = document.createElement('button');
 saveBtn.type = 'button';
 saveBtn.className = 'format-button';
 saveBtn.dataset.action = 'save';
+saveBtn.dataset.tooltipCommand = 'save';
 saveBtn.dataset.tooltip = activeUiStrings.save;
 saveBtn.setAttribute('aria-label', activeUiStrings.saveDocument);
-saveBtn.appendChild(createElement(Save, { width: 18, height: 18 }));
+saveBtn.appendChild(createCodicon('save'));
+
+const saveAsBtn = document.createElement('button');
+saveAsBtn.type = 'button';
+saveAsBtn.className = 'format-button';
+saveAsBtn.dataset.action = 'saveAs';
+saveAsBtn.dataset.tooltipCommand = 'saveAs';
+saveAsBtn.dataset.tooltip = activeUiStrings.saveAs;
+saveAsBtn.setAttribute('aria-label', activeUiStrings.saveAs);
+saveAsBtn.appendChild(createCodicon('save-as'));
+saveAsBtn.disabled = true;
+const undoBtn = document.createElement('button');
+undoBtn.type = 'button';
+undoBtn.className = 'format-button';
+undoBtn.dataset.action = 'undo';
+undoBtn.dataset.tooltipCommand = 'undo';
+undoBtn.dataset.tooltip = activeUiStrings.undo;
+undoBtn.setAttribute('aria-label', activeUiStrings.undo);
+undoBtn.appendChild(createElement(Undo2, { width: 18, height: 18 }));
+undoBtn.disabled = true;
+const redoBtn = document.createElement('button');
+redoBtn.type = 'button';
+redoBtn.className = 'format-button';
+redoBtn.dataset.action = 'redo';
+redoBtn.dataset.tooltipCommand = 'redo';
+redoBtn.dataset.tooltip = activeUiStrings.redo;
+redoBtn.setAttribute('aria-label', activeUiStrings.redo);
+redoBtn.appendChild(createElement(Redo2, { width: 18, height: 18 }));
+redoBtn.disabled = true;
+let historyAvailability = { undo: false, redo: false };
+let historyActionPending = false;
+let saveAsPending = false;
+const refreshDocumentActionButtons = (): void => {
+  saveAsBtn.disabled = !editor || saveAsPending;
+  saveAsBtn.setAttribute('aria-busy', String(saveAsPending));
+  const editable = !!editor && root.dataset.mode !== 'preview' && !historyActionPending;
+  undoBtn.disabled = !editable || !historyAvailability.undo;
+  redoBtn.disabled = !editable || !historyAvailability.redo;
+};
 
 const discardBtn = document.createElement('button');
 discardBtn.type = 'button';
@@ -895,12 +949,15 @@ discardBtn.dataset.action = 'discard';
 discardBtn.dataset.tooltip = activeUiStrings.reloadDiskVersion;
 discardBtn.dataset.tooltipLiveUpdate = 'true';
 discardBtn.setAttribute('aria-label', activeUiStrings.reloadDiskVersion);
-discardBtn.appendChild(createElement(HardDriveUpload, { width: 18, height: 18 }));
+discardBtn.appendChild(createElement(RotateCcw, { width: 18, height: 18 }));
 
 formatGroup.append(
   outlineLeftBtn,
   lineJumpControl,
   saveBtn,
+  saveAsBtn,
+  undoBtn,
+  redoBtn,
   discardBtn,
   outlineLeftSeparator,
   headingWrapper,
@@ -924,6 +981,7 @@ const findToggleBtn = document.createElement('button');
 findToggleBtn.type = 'button';
 findToggleBtn.className = 'format-button toggle-button';
 findToggleBtn.dataset.action = 'find';
+findToggleBtn.dataset.tooltipCommand = 'find';
 findToggleBtn.dataset.tooltip = activeUiStrings.findAndReplace;
 findToggleBtn.appendChild(createElement(Search, { width: 18, height: 18 }));
 
@@ -1230,6 +1288,10 @@ const applyUiLanguage = (language: UiLanguage): void => {
   lineJumpInput.setAttribute('aria-label', strings.goToLine);
   saveBtn.dataset.tooltip = strings.save;
   saveBtn.setAttribute('aria-label', strings.saveDocument);
+  for (const [button, text] of [[saveAsBtn, strings.saveAs], [undoBtn, strings.undo], [redoBtn, strings.redo]] as const) {
+    button.dataset.tooltip = text;
+    button.setAttribute('aria-label', text);
+  }
   discardBtn.dataset.tooltip = discardBtn.classList.contains('is-discard-armed')
     ? strings.reloadDiskVersionDoubleClick
     : strings.reloadDiskVersion;
@@ -1447,18 +1509,7 @@ sourcePreviewButton.dataset.tooltip = activeUiStrings.showSidePreview;
 sourcePreviewButton.dataset.tooltipLiveUpdate = 'true';
 sourcePreviewButton.setAttribute('aria-label', activeUiStrings.showSidePreview);
 sourcePreviewButton.setAttribute('aria-pressed', 'false');
-const sourcePreviewButtonLabel = document.createElement('span');
-sourcePreviewButtonLabel.className = 'source-preview-button-label';
-sourcePreviewButtonLabel.textContent = activeUiStrings.sidePreview;
-sourcePreviewButton.append(
-  createElement(SquareSplitHorizontal, {
-    width: 16,
-    height: 16,
-    'aria-hidden': 'true',
-    'data-icon': 'square-split-horizontal'
-  }),
-  sourcePreviewButtonLabel
-);
+sourcePreviewButton.appendChild(createCodicon('open-preview'));
 rightGroup.insertBefore(sourcePreviewButton, changesControls);
 
 const sourcePreviewScrollSyncButton = document.createElement('button');
@@ -1748,11 +1799,9 @@ const previewController = createPreviewController({
     readingPositionLifecycle?.userInteracted();
     return true;
   },
-  onNavigateToSource: (line) => {
-    if (!isSidePreviewVisible() || !editor) return;
-    editor.holdLinkedPreviewAttention?.();
-    editor.scrollToLine(line, 'center');
-    readingPositionLifecycle?.userInteracted();
+  onAlignViewport: owner => {
+    if (!isSidePreviewVisible() || sourcePreviewScrollSyncEnabled) return;
+    editor?.alignLinkedViewport(owner === 'source' ? 'editor' : 'preview');
   },
   onPaintReady: () => {
     previewPaintReady = true;
@@ -1773,11 +1822,15 @@ const previewController = createPreviewController({
     }
     readingPositionLifecycle?.surfaceReady();
   },
-  onViewportInteraction: () => {
+  onViewportInteraction: (owner) => {
     previewViewportInteractionGeneration += 1;
-    editor?.markPreviewViewportInteraction?.();
-    sourcePreviewPosition = { ...sourcePreviewPosition, active: false };
-    presentSourcePreviewPosition();
+    if (owner === 'source') {
+      editor?.markViewportInteraction();
+    } else {
+      editor?.markPreviewViewportInteraction?.();
+      sourcePreviewPosition = { ...sourcePreviewPosition, active: false };
+      presentSourcePreviewPosition();
+    }
     readingPositionLifecycle?.userInteracted();
   },
   onViewportChange: () => {
@@ -1943,14 +1996,12 @@ const presentSourcePreviewPosition = (revealIfOutside = false, deferLayout = fal
 );
 function presentSourcePreviewControls(): void {
   const split = isSidePreviewVisible();
+  previewController.setSourcePreviewControls(split, sourcePreviewScrollSyncEnabled);
   const sourcePreviewLabel = split
     ? activeUiStrings.hideSidePreview
     : activeUiStrings.showSidePreview;
   sourcePreviewButton.dataset.tooltip = sourcePreviewLabel;
   sourcePreviewButton.setAttribute('aria-label', sourcePreviewLabel);
-  sourcePreviewButtonLabel.textContent = split
-    ? activeUiStrings.exitSidePreview
-    : activeUiStrings.sidePreview;
 
   const syncLabel = sourcePreviewScrollSyncEnabled
     ? activeUiStrings.disableSynchronizedScrolling
@@ -2055,7 +2106,6 @@ const presentPreviewSurface = (
     previewFormatGroup.insertBefore(previewController.presetControl, previewOptionsControl);
     previewFormatGroup.insertBefore(previewController.appearanceControl, previewOptionsControl);
   }
-  previewController.setSourcePreviewControls(split);
   if (atomicSplit && split) {
     const generation = ++sourcePreviewRevealGeneration;
     pendingSourcePreviewReveal = { generation, editorReady: false, previewReady: false };
@@ -2095,6 +2145,7 @@ let pendingRevealDocumentFragment: string | null = null;
 let pendingEditorSurfaceRecoveryRaf: number | null = null;
 let createEditorFactoryPromise: Promise<CreateEditorFactory> | null = null;
 let editorFontSizePreference: EditorFontSizePreference = { mode: 'auto', value: 14 };
+let editorLineHeight = DEFAULT_EDITOR_LINE_HEIGHT;
 const INITIAL_EDITOR_MOUNT_FALLBACK_MS = 120;
 const LIVE_PRESENTATION_REVEAL_WAIT_MS = 500;
 
@@ -2145,6 +2196,15 @@ const switchToSourceAction = (emphasis: 'primary' | 'secondary' = 'secondary'): 
   run: () => requestModeFromNotice('source')
 });
 
+const applyEditorLineHeight = (value: number, { post = false, refreshPreview = true } = {}): void => {
+  editorLineHeight = normalizeEditorLineHeight(value);
+  const mutate = () => document.documentElement.style.setProperty('--meo-user-editor-line-height', String(editorLineHeight));
+  if (editor?.preserveViewport) editor.preserveViewport(mutate, true); else mutate();
+  if (refreshPreview) previewAdapter.refreshVisible(getCurrentEditorText(), { preserveViewport: true, preserveFrame: true });
+  if (post) vscode.postMessage({ type: 'setEditorLineHeight', value: editorLineHeight });
+  settingsWindow?.present();
+};
+
 const syncEditorFontSizeControls = (): void => {
   const custom = editorFontSizePreference.mode === 'custom';
   editorFontSizeModeControl.setActive(editorFontSizePreference.mode);
@@ -2152,6 +2212,7 @@ const syncEditorFontSizeControls = (): void => {
   editorFontSizeStepper.classList.toggle('is-disabled', !custom);
   decreaseEditorFontSizeBtn.disabled = !custom || editorFontSizePreference.value <= EDITOR_FONT_SIZE_MIN;
   increaseEditorFontSizeBtn.disabled = !custom || editorFontSizePreference.value >= EDITOR_FONT_SIZE_MAX;
+  settingsWindow?.present();
 };
 
 const applyEditorFontSizePreference = (
@@ -2530,7 +2591,7 @@ const clearDiscardConfirmation = () => {
   discardBtn.classList.remove('is-discard-armed');
   discardBtn.dataset.tooltip = activeUiStrings.reloadDiskVersion;
   discardBtn.setAttribute('aria-label', activeUiStrings.reloadDiskVersion);
-  discardBtn.replaceChildren(createElement(HardDriveUpload, { width: 18, height: 18 }));
+  discardBtn.replaceChildren(createElement(RotateCcw, { width: 18, height: 18 }));
 };
 
 const discardUnsavedChanges = () => {
@@ -2758,6 +2819,21 @@ const documentCopyTransport = createDocumentCopyTransport({
   getCurrentText: () => editor?.getTextForSave() ?? pendingInitialText,
   whenDocumentIdle: () => documentSessionAdapter.whenIdle()
 });
+const documentSaveAsTransport = createDocumentSaveAsTransport({
+  getUiLanguage: () => activeUiLanguage,
+  postMessage: message => vscode.postMessage(message),
+  commitTransientEdits: commitEditorTransientEdits,
+  getCurrentText: () => editor?.getTextForSave() ?? pendingInitialText,
+  getViewState: () => {
+    const position = getActiveEditorMode() === 'preview'
+      ? previewController.getTopVisiblePosition() : getTopVisiblePosition();
+    if (!position || !editor) return null;
+    const { anchor, head } = editor.view.state.selection.main;
+    return { mode: getActiveEditorMode(),
+      position: { line: position.topLine, lineOffset: position.topLineOffset }, selection: { anchor, head } };
+  },
+  whenDocumentIdle: () => documentSessionAdapter.whenIdle()
+});
 
 const saveCopyAction = (emphasis: 'primary' | 'secondary' = 'primary'): EditorNoticeAction => ({
   id: 'save-copy',
@@ -2820,6 +2896,49 @@ const requestSave = () => {
 saveBtn.addEventListener('click', () => {
   void requestSave();
 });
+const requestSaveAs = async (): Promise<void> => {
+  if (saveAsPending || !editor) return;
+  saveAsPending = true;
+  failureNotice.clearFailureNotice('document-save-as');
+  refreshDocumentActionButtons();
+  try {
+    const result = await documentSaveAsTransport.save();
+    if (!result.ok) {
+      const unknownResult = result.error.code === 'timeout';
+      failureNotice.setFailureNotice(() => unknownResult ? {
+        title: activeUiStrings.saveAsResultUnknown,
+        message: activeUiStrings.saveAsResultUnknownMessage
+      } : {
+        title: activeUiStrings.saveAsFailed, message: result.error.message,
+        actions: [{ id: 'retry-save-as', label: activeUiStrings.retrySaveAs, emphasis: 'primary', run: requestSaveAs }, saveCopyAction('secondary')]
+      }, unknownResult ? 'warning' : 'error', 'document-save-as');
+    }
+  } finally {
+    saveAsPending = false;
+    refreshDocumentActionButtons();
+  }
+};
+saveAsBtn.addEventListener('click', () => { void requestSaveAs(); });
+const showHistoryFailure = (): void => {
+  // A new failed replay must be visible even if a previous failure was dismissed.
+  failureNotice.clearFailureNotice('editor-history');
+  failureNotice.setFailureNotice(() => ({
+    title: activeUiStrings.historyFailed, message: activeUiStrings.historyFailedMessage,
+    actions: [saveCopyAction()]
+  }), 'error', 'editor-history');
+};
+for (const [button, direction] of [[undoBtn, 'undo'], [redoBtn, 'redo']] as const) {
+  button.addEventListener('pointerdown', event => event.preventDefault());
+  button.addEventListener('click', async () => {
+    if (!editor || historyActionPending || root.dataset.mode === 'preview') return;
+    failureNotice.clearFailureNotice('editor-history');
+    historyActionPending = true;
+    refreshDocumentActionButtons();
+    try { await editor[direction](); }
+    catch (error) { logWebviewRenderError(`toolbar.${direction}`, error); showHistoryFailure(); }
+    finally { historyActionPending = false; refreshDocumentActionButtons(); }
+  });
+}
 
 const shortcutHandlerContext: ShortcutHandlerContext = {
   get editor() { return editor; },
@@ -2830,6 +2949,7 @@ const shortcutHandlerContext: ShortcutHandlerContext = {
   requestTableCopy: format => { void copyTableToHost(format); },
   get editorSurfaceActive() { return getActiveEditorMode() !== 'preview'; },
   requestSave,
+  requestSaveAs,
   openFindPanel: (target) => findPanelController.open(target),
   requestMode: (mode) => {
     void editorModeRuntime.dispatch({ type: 'requestMode', mode, source: 'user' });
@@ -2863,6 +2983,11 @@ const mountEditorForMode = async (mode: 'live' | 'source', signal: AbortSignal):
     onOpenLink: (href: string) => vscode.postMessage({ type: 'openLink', href }),
     onCommentBlocked: () => editorNotice.setEditorNotice(activeUiStrings.commentSelectionBlocked),
     onSelectionChange: (state: any) => selectionMenuController.update(state),
+    onHistoryAvailabilityChange: availability => {
+      historyAvailability = availability;
+      queueMicrotask(refreshDocumentActionButtons);
+    },
+    onHistoryError: () => { queueMicrotask(showHistoryFailure); },
     onSourcePositionChange: (change) => {
       sourcePreviewPosition = { line: change.line, active: change.active };
       const canReveal = change.revealIfOutside
@@ -3064,6 +3189,7 @@ const editorModeEffectAdapter = createEditorModeEffectAdapter({
   },
   presentModeControl(mode) {
     root.dataset.mode = mode;
+    refreshDocumentActionButtons();
     outlineController.refreshAppearance();
     modeControl.setActive(mode);
     changesReviewMode = mode;
@@ -3190,6 +3316,7 @@ editorModeRuntime = createEditorModeRuntime(
 );
 
 const handleInit = (message: InitMessage) => {
+  applyEditorLineHeight(message.editorLineHeight ?? DEFAULT_EDITOR_LINE_HEIGHT, { refreshPreview: false });
   acceptEditingPreferences(message.editingPreferences, message.editingPreferencesRevision ?? 0);
   activeUiLanguagePreference = message.uiLanguagePreference;
   automaticUiLanguage = message.automaticUiLanguage;
@@ -3216,7 +3343,8 @@ const handleInit = (message: InitMessage) => {
   setRestoreReadingPositionOnOpen(message.restoreReadingPositionOnOpen, { post: false });
   readingPositionLifecycle?.start({
     enabled: message.restoreReadingPositionOnOpen,
-    restore: message.readingPositionRestore
+    restore: message.readingPositionRestore,
+    transientRestore: message.saveAsViewState?.position
   });
   if (typeof message.contentMaxWidthEnabled === 'boolean') {
     setContentMaxWidthEnabled(message.contentMaxWidthEnabled, { post: false });
@@ -3362,6 +3490,12 @@ const previewPresetSettings = createPreviewPresetSettings({
 settingsWindow = createSettingsWindow({
   appearance: {
     getColors: () => uiColors, getMode: () => themeAdapter.getPreference(), getScheme: () => themeAdapter.getAppearance(),
+    getFontSize: () => editorFontSizePreference,
+    setFontSize: value => applyEditorFontSizePreference(value, { post: true }),
+    getLineHeight: () => editorLineHeight,
+    setLineHeight: value => applyEditorLineHeight(value, { post: true }),
+    reportSaveError: message => failureNotice.setFailureNotice(() => ({ title: activeUiLanguage === 'zh-CN' ? '外观设置保存失败' : 'Unable to save appearance settings', message }), 'error', 'appearance-settings'),
+    clearSaveError: () => failureNotice.clearFailureNotice('appearance-settings'),
     setMode: mode => themeAdapter.setAppearance(mode, { post: true }),
     preview: colors => { uiColorsPreview = colors; refreshUiColors(); },
     update: colors => uiColorsTransport.update(colors)
@@ -3385,7 +3519,6 @@ settingsWindow = createSettingsWindow({
       switchItem('restorePosition', 'opening', strings.resumeReadingPositionLabel, () => restoreReadingPositionOnOpen, setRestoreReadingPositionOnOpen),
       switchItem('largeDocument', 'opening', strings.largeDocumentStartup, () => largeDocumentOptimizationEnabled, setLargeDocumentOptimizationEnabled, strings.largeDocumentStartupDescription),
       { id: 'language', section: 'interface', title: strings.interfaceLanguage, control: { kind: 'choice', get: () => activeUiLanguagePreference, set: value => { activeUiLanguagePreference = value as UiLanguagePreference; uiLanguageControl.setActive(activeUiLanguagePreference); applyUiLanguage(value === 'auto' ? automaticUiLanguage : value as UiLanguage); vscode.postMessage({ type: 'setUiLanguagePreference', language: activeUiLanguagePreference }); }, options: [{ value: 'auto', label: strings.auto }, { value: 'zh-CN', label: '简体中文' }, { value: 'en', label: 'English' }] } },
-      { id: 'fontSize', section: 'interface', title: strings.editorFontSize, control: { kind: 'font', get: () => editorFontSizePreference, set: value => applyEditorFontSizePreference(value, { post: true }) } }
     ];
   }
 });
@@ -3417,6 +3550,7 @@ window.addEventListener('message', (event) => {
   queueMicrotask(() => { if (settingsWindow?.isOpen()) settingsWindow.present(); });
   if (message.type === 'webviewVisibilityResult') { readingLayout.accept(message); return; }
   if (message.type === 'webviewVisibilityChanged') { readingLayout.refresh(); return; }
+  if (message.type === 'editorLineHeightChanged') { applyEditorLineHeight(message.value); return; }
   if (message.type === 'uiColorsResult') { uiColorsTransport.accept(message); return; }
   if (message.type === 'uiColorsChanged') { uiColors = message.colors; refreshUiColors(); return; }
   if (message.type === 'openPreviewPresetSettings') { setMoreToolsVisible(false); settingsWindow?.open('presets'); return; }
@@ -3487,6 +3621,12 @@ window.addEventListener('message', (event) => {
       void editorModeRuntime.dispatch({ type: 'initialize', hostMode: message.mode })
         .then(async () => {
           const initializedMode = editorModeApplication.getState().mode;
+          if (message.saveAsViewState && editor) {
+            const { anchor, head } = message.saveAsViewState.selection;
+            editor.revealSelection(Math.min(anchor, message.text.length), Math.min(head, message.text.length), {
+              focusEditor: false, align: 'none'
+            });
+          }
           readingPositionLifecycle?.surfaceReady();
           if (initializedMode === 'preview') {
             await waitForInitialPreviewPaint();
@@ -3512,6 +3652,10 @@ window.addEventListener('message', (event) => {
 
   if (message.type === 'documentCopyResult') {
     documentCopyTransport.accept(message);
+    return;
+  }
+  if (message.type === 'documentSaveAsResult') {
+    documentSaveAsTransport.accept(message);
     return;
   }
   if (themeAdapter.accept(message)) {
@@ -3805,6 +3949,7 @@ window.addEventListener('beforeunload', () => {
   documentSessionAdapter.dispose();
   documentSaveFlushAdapter.dispose();
   documentCopyTransport.dispose();
+  documentSaveAsTransport.dispose();
   previewAdapter.dispose();
   exportAdapter.dispose();
   editorFocusController.dispose();
@@ -4118,18 +4263,6 @@ scheduleReadyHandshake();
 scheduleEditorBundleWarmupAfterReady();
 
 function refreshShortcutHints(): void {
-  const keys = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
-  const controls: [HTMLElement, EditorCommandId][] = [[saveBtn, 'save'], [findToggleBtn, 'find'], [bulletListBtn, 'bullet'], [numberedListBtn, 'ordered'], [taskBtn, 'taskList'], [codeBlockBtn, 'codeBlock'], [quoteBtn, 'quote'], [hrBtn, 'rule'], [linkBtn, 'link'], [wikiLinkBtn, 'wikiLink'], [imageBtn, 'image'], [tableBtn, 'insertTable']];
-  for (const option of headingDropdown.querySelectorAll<HTMLElement>('[data-level]')) {
-    controls.push([option, ('heading' + option.dataset.level) as EditorCommandId]);
-  }
-  for (const control of selectionMenuElements.menu.querySelectorAll<HTMLElement>('[data-action]')) {
-    const action = control.dataset.action === 'lineover' ? 'strike' : control.dataset.action;
-    if (action && Object.hasOwn(keys, action)) controls.push([control, action as EditorCommandId]);
-  }
-  for (const [control, command] of controls) {
-    // The control owns its copy; rebinding only updates the shortcut badge.
-    if (keys[command][0]) control.dataset.tooltipShortcut = keys[command][0];
-    else delete control.dataset.tooltipShortcut;
-  }
+  shortcutHints = effectiveShortcuts(editingPreferences.shortcuts, /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? 'mac' : 'other');
+  tooltipBinding.refreshShortcuts();
 }

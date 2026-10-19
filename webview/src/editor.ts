@@ -29,7 +29,8 @@ import { formatSourceLineNumber, sourceLineNumberModeFacet } from './editor/sour
 import { flushEditorLayout } from './editor/layoutMeasurement';
 import { assessLargeDocument } from '../../src/foundation/largeDocument';
 import { uiLanguageFacet } from './editor/uiLanguage';
-import { liveModeExtensions, preserveLiveDecorationsForSearchEffect, refreshLiveDecorationsAfterSearchEffect, setLiveDocumentIdleEffect, setLivePointerSelectionActiveEffect } from './liveMode';
+import { liveModeExtensions, preserveLiveDecorationsForSearchEffect, refreshLiveDecorationsAfterSearchEffect, setLiveDocumentIdleEffect } from './liveMode';
+import { setLivePointerSelectionActiveEffect } from './editor/livePointerSelection';
 import { detailsBlockStateExtensions } from './helpers/detailsBlocks';
 import { insertMountedTableCellBreak } from './helpers/tables';
 import { insertCodeBlock, sourceCodeBlockField } from './helpers/codeBlocks';
@@ -107,7 +108,9 @@ import {
   tableUsableViewportBounds
 } from './helpers/tables';
 import { parseFrontmatter, parseFrontmatterCandidate } from './helpers/frontmatter';
-import { collectLatexMathRanges } from './helpers/math';
+import { collectLatexMathRanges, renderLatexMathToHtml } from './helpers/math';
+import { observeRenderedBlockImageAvailability, refreshRenderedBlockImageLabel } from './helpers/renderedBlockImage';
+import { suppressRenderedBlockPointerFocus } from './helpers/renderedBlockActionFocus';
 import { diagnosticDataField, diagnosticField, setDiagnosticsEffect, type EditorDiagnostic } from './helpers/diagnostics';
 import type { GitBaselinePayload } from '../../src/protocol/git';
 import type { SelectionMenuState } from './helpers/selectionMenu';
@@ -123,7 +126,11 @@ import {
 } from './helpers/latexMathEditing';
 import { getLiveRenderedBlocks } from './helpers/liveRenderedBlocks';
 import { parseBlockLinePrefix } from './helpers/blockIndent';
-import { displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
+import { canFormatDisplayMathSource, formatActiveDisplayMathSource, displayMathPasteText, indentDisplayMathSource, insertDisplayMathNewline, selectedDisplayMathBody } from './helpers/displayMathEditing';
+import { createHtmlSourceEditing } from './editor/htmlSource';
+import { formatActiveHtmlSource, getHtmlEditingRange } from './helpers/htmlContent';
+import { supportedHtmlTags } from '../../src/shared/htmlPolicy';
+import { getMathCompletionBody } from './helpers/displayMathBlocks';
 import {
   ViewportController,
   visualLineContextMargin,
@@ -229,6 +236,10 @@ type CreateEditorOptions = {
   onOpenLink?: (href: string) => void;
   onCommentBlocked?: () => void;
   onSelectionChange?: (state: SelectionMenuState & { from?: number; to?: number }) => void;
+  /** Includes confirmed native-cell drafts; unfinished IME input keeps history unavailable. */
+  onHistoryAvailabilityChange?: (availability: { undo: boolean; redo: boolean }) => void;
+  /** Reports both native replay and interaction-restore failures, including keyboard actions. */
+  onHistoryError?: () => void;
   onSourcePositionChange?: (change: SourcePositionChange) => void;
   onGitDiffSummaryChange?: (summary: ChangesReviewDiffSummary) => void;
   onViewportChange?: () => void;
@@ -379,6 +390,8 @@ export function createEditor({
   onOpenLink,
   onCommentBlocked,
   onSelectionChange,
+  onHistoryAvailabilityChange,
+  onHistoryError,
   onSourcePositionChange,
   onGitDiffSummaryChange,
   onViewportChange,
@@ -1137,6 +1150,24 @@ export function createEditor({
       return false;
     }
     return commitPendingTableEdits(view);
+  };
+  let historyCompositionActive = false;
+  let previousHistoryAvailability = '';
+  const emitHistoryAvailability = () => {
+    if (!view || !onHistoryAvailabilityChange) return;
+    const input = getActiveTableInput();
+    const range = input ? getTableInputSourceRange(input) : null;
+    const pendingCell = input && range
+      ? tableCellEditorValueToSource(input.value) !== view.state.doc.sliceString(range.from, range.to) : false;
+    const composing = historyCompositionActive || imeCompositionActive;
+    const availability = {
+      undo: !composing && (pendingCell || undoDepth(view.state) > 0),
+      redo: !composing && !pendingCell && redoDepth(view.state) > 0
+    };
+    const key = `${availability.undo}:${availability.redo}`;
+    if (key === previousHistoryAvailability) return;
+    previousHistoryAvailability = key;
+    onHistoryAvailabilityChange(availability);
   };
 
   const restoreTableModeSelection = (
@@ -2240,7 +2271,18 @@ export function createEditor({
   const tableHistoryFocusAdapter = createCodeMirrorTableHistoryFocusAdapter();
   const tableColumnWidthAdapter = createCodeMirrorDomTableColumnWidthAdapter({
     root: parent,
-    policy: tableColumnWidthPolicy
+    policy: tableColumnWidthPolicy,
+    preserveLayout(table, apply) {
+      const active = table.ownerDocument.activeElement;
+      if (viewportController && active instanceof HTMLTextAreaElement && table.contains(active)
+        && !table.closest('.is-context-menu-open') && !viewportController.isUserScrolling()) {
+        viewportController.retainElementTopWhileMutation(
+          active, () => active.isConnected && active === table.ownerDocument.activeElement ? active : null,
+          apply, () => currentMode === 'live' && active.isConnected
+            && active === table.ownerDocument.activeElement && !viewportController.isUserScrolling()
+        );
+      } else apply();
+    }
   });
   const tableStickyHeaderAdapterFactory: TableStickyHeaderAdapterFactory =
     createToggleableTableStickyHeaderAdapterFactory({
@@ -2303,7 +2345,8 @@ export function createEditor({
       Prec.highest(htmlCommentEditing),
       Prec.highest(typingAssistance),
       Prec.highest(pasteAssistance(displayMathPasteText)),
-      Prec.highest(createInputSuggestions({ inputContext, requestLinks: requestLinkCandidates, currentHeadings: () => currentHeadingSuggestions(view.state.doc.toString()),
+      Prec.highest(createInputSuggestions({ inputContext, mathContext: getMathCompletionBody, requestLinks: requestLinkCandidates, currentHeadings: () => currentHeadingSuggestions(view.state.doc.toString()),
+        renderMathPreview: source => renderLatexMathToHtml(source, 'inline'),
         cellCoords: measureTextareaSelectionStart,
         focusTable: focusInsertedTable,
         focusMath: () => {
@@ -2561,6 +2604,7 @@ export function createEditor({
       ),
       markdownInlineStyleTheme,
       sourceSyntaxPreparation,
+      createHtmlSourceEditing(getHtmlEditingRange, supportedHtmlTags),
       modeCompartment.of(startMode === 'live' ? [shikiCodeHighlight, ...liveModeExtensions({ largeDocument })] : sourceMode()),
       searchQueryField,
       searchAnchorField,
@@ -2672,6 +2716,7 @@ export function createEditor({
             searchOverviewRuler?.refresh({ positionsChanged: update.docChanged || searchQueryChanged });
           });
         }
+        if (!liveDerivedRefresh) emitHistoryAvailability();
       })
     ]
   });
@@ -2680,6 +2725,7 @@ export function createEditor({
     state,
     parent
   });
+  const stopImageAvailability = observeRenderedBlockImageAvailability(view.dom);
   const editableTarget = (target: EventTarget | null): HTMLElement | null => {
     if (!(target instanceof Element) || !view.contentDOM.contains(target)) return null;
     const editable = target.closest<HTMLElement>('textarea, input, [contenteditable="true"]');
@@ -2711,6 +2757,15 @@ export function createEditor({
   };
   onEditorPointerDown = (event) => {
     if (event.button === 0) {
+      suppressRenderedBlockPointerFocus(view.dom);
+      if (currentMode === 'live' && event.target instanceof Element &&
+        event.target.closest('.meo-md-html-table-shell')) {
+        // Table widgets bypass CodeMirror's pointer handlers. Keep the same
+        // source presentation until their own pointerup resolves the cell.
+        liveSelectionGeneration += 1;
+        liveSelectionPointerId = event.pointerId;
+        view.dispatch({ effects: setLivePointerSelectionActiveEffect.of({ active: true, preservedLine: null }) });
+      }
       const target = editableTarget(event.target);
       if (target) {
         // A new document click takes precedence over the focus target saved before blur.
@@ -2747,6 +2802,16 @@ export function createEditor({
   // CodeMirror filters events owned by embedded editors. Their projected
   // changes still belong to this document and must share its IME save boundary.
   const onNestedComposition = (event: Event) => {
+    const compositionEnded = event.type === 'compositionend' || event.type === 'blur'
+      || (event.type === 'beforeinput' && event instanceof InputEvent
+        && event.inputType === 'insertText' && !event.isComposing);
+    if (event.type === 'compositionstart' || compositionEnded) {
+      historyCompositionActive = event.type === 'compositionstart';
+      emitHistoryAvailability();
+      if (compositionEnded) {
+        queueMicrotask(() => { if (!editorDestroyed) emitHistoryAvailability(); });
+      }
+    }
     const content = event.target instanceof Element ? event.target.closest('.cm-content') : null;
     if (!content || content === view.contentDOM) return;
     if (event.type === 'compositionstart') startImeComposition();
@@ -2770,14 +2835,15 @@ export function createEditor({
       if (!editorDestroyed && currentMode === 'live') {
         view.dispatch({ effects: refreshDecorationsEffect.of(null) });
       }
-    }
+    },
+    () => viewportController.isUserScrolling()
   );
   if (startMode === 'live') mermaidDocumentPreloader.schedule(view.state);
   interactionContinuity = createEditorInteractionContinuity({
     view,
     viewport: {
-      retainCaretTop(position, top, isCurrent) {
-        viewportController.retainPositionTop(position, top, isCurrent);
+      retainCaretTop(position, top, isCurrent, measuredLayout) {
+        viewportController.retainPositionTop(position, top, isCurrent, measuredLayout);
       },
       revealCaret(position, isCurrent, originScrollTop) {
         viewportController.revealPosition(position, {
@@ -2947,6 +3013,7 @@ export function createEditor({
     },
     reportError(operation, error) {
       console.error(`Editor history ${operation} failed`, error);
+      if (!editorDestroyed) onHistoryError?.();
     },
     dispose() {
       pendingTableHistoryFocus = null;
@@ -2970,7 +3037,10 @@ export function createEditor({
   editorHistoryRuntime = createEditorHistoryRuntime(
     editorHistoryApplication,
     editorHistoryEffectAdapter,
-    (error) => console.error('Editor history Runtime failed', error)
+    (error) => {
+      console.error('Editor history Runtime failed', error);
+      if (!editorDestroyed) onHistoryError?.();
+    }
   );
   setEditorHistoryRunner(view, (direction) => requestEditorHistoryReplay(direction));
   onHistoryKeyDown = (event) => {
@@ -3093,6 +3163,7 @@ export function createEditor({
   view.dom.addEventListener('meo-activate-image', onWidgetActivateImage);
   onTableSelectionChange = () => {
     emitSelectionChange();
+    emitHistoryAvailability();
   };
   view.dom.addEventListener('meo-table-selection-change', onTableSelectionChange);
   onHtmlContentPointerDown = (event) => {
@@ -3180,7 +3251,11 @@ export function createEditor({
     // Keep the originating diff domain while the completed selection remains.
     // Otherwise Chromium repaints the DOM range after pointerup and reveals
     // text from the other version under the same native range.
-    clearPointerSelection(true);
+    if (liveSelectionPointerId === event.pointerId && event.target instanceof Element &&
+      event.target.closest('.meo-md-html-table-shell')) {
+      // The table still needs the original hit geometry during this release.
+      finishPointerSelection(event.pointerId, true, true);
+    } else clearPointerSelection(true);
     if (completedSelection && quoteClick?.pointerId === event.pointerId && isLiveMode(view)
       && isPlainPrimaryPointerEvent(event) && view.state.selection.ranges.length === 1
       && view.state.selection.main.empty && Math.hypot(event.clientX - quoteClick.x, event.clientY - quoteClick.y) <= 3) {
@@ -3271,6 +3346,7 @@ export function createEditor({
   }
   emitSelectionChange();
   emitSourcePositionChange(view.hasFocus);
+  emitHistoryAvailability();
 
   return {
     view,
@@ -3508,6 +3584,9 @@ export function createEditor({
     holdLinkedPreviewAttention(): void {
       viewportController.holdLinkedPreviewAttention();
     },
+    alignLinkedViewport(owner: ViewportAnchorOwner): boolean {
+      return viewportController.alignLinkedViewport(owner);
+    },
     navigateLinkedViewportToTop(owner: ViewportAnchorOwner): boolean {
       return viewportController.navigateLinkedToTop(owner);
     },
@@ -3554,6 +3633,7 @@ export function createEditor({
     },
     destroy() {
       editorDestroyed = true;
+      stopImageAvailability();
       if (onEditorFocusIn) view.dom.removeEventListener('focusin', onEditorFocusIn, true);
       if (onEditorFocusOut) view.dom.removeEventListener('focusout', onEditorFocusOut, true);
       if (onEditorPointerDown) view.dom.removeEventListener('pointerdown', onEditorPointerDown, true);
@@ -3912,6 +3992,13 @@ export function createEditor({
     },
     executeCommand(command: EditorCommandId): boolean {
       if (view.state.readOnly) return false;
+      if (command === 'formatHtml') {
+        if (getActiveTableInput()) return false;
+        if (canFormatDisplayMathSource(view.state)) { void formatActiveDisplayMathSource(view); return true; }
+        if (!getHtmlEditingRange(view.state)) return false;
+        void formatActiveHtmlSource(view);
+        return true;
+      }
       if (command === 'lineComment' || command === 'selectionComment') {
         const input = getActiveTableInput();
         if (!input) return runCommentCommand(command === 'lineComment');
@@ -3958,6 +4045,9 @@ export function createEditor({
         effects: uiLanguageCompartment.reconfigure(uiLanguageFacet.of(language))
       });
       refreshMountedTableUiLanguage(view, language);
+      for (const button of view.dom.querySelectorAll<HTMLElement>('.meo-copy-image-btn')) {
+        refreshRenderedBlockImageLabel(button, language);
+      }
     },
     insertFormat(action: EditorFormatAction, level?: EditorFormatLevel) {
       const activeTableInput = getActiveTableInput();
@@ -4757,23 +4847,17 @@ function insertHr(
   const lineText = state.doc.sliceString(line.from, line.to);
   const trimmed = lineText.trim();
 
-  if (!trimmed) {
-    const insert = '---';
-    const cursorPos = line.from + insert.length;
-    view.dispatch({
-      changes: { from: line.from, to: line.to, insert },
-      selection: { anchor: cursorPos },
-      annotations: userEvent
-    });
-  } else {
-    const insert = '\n---';
-    const cursorPos = line.to + insert.length;
-    view.dispatch({
-      changes: { from: line.to, insert },
-      selection: { anchor: cursorPos },
-      annotations: userEvent
-    });
-  }
+  // Blank lines keep this command unambiguous with Setext headings and frontmatter.
+  const before = trimmed ? '\n\n'
+    : line.number === 1 || state.doc.line(line.number - 1).text.trim() ? '\n' : '';
+  const after = line.to === state.doc.length ? '\n\n'
+    : state.doc.line(line.number + 1).text.trim() || line.number + 1 === state.doc.lines ? '\n' : '';
+  const from = trimmed ? line.to : line.from;
+  view.dispatch({
+    changes: { from, to: line.to, insert: before + '---' + after },
+    selection: { anchor: from + before.length + 3 },
+    annotations: userEvent
+  });
 }
 
 function insertLink(

@@ -3,6 +3,7 @@ import { EditorView, Decoration, WidgetType, ViewPlugin, type DecorationSet, typ
 import { moveLineUp, moveLineDown, copyLineUp, copyLineDown, deleteLine, selectParentSyntax, toggleComment, toggleBlockComment, isolateHistory } from '@codemirror/commands';
 import { selectNextOccurrence } from '@codemirror/search';
 import { syntaxTree } from '@codemirror/language';
+import type { SyntaxNode } from '@lezer/common';
 import { parseDelimitedTable, markdownTableFromCells } from '../application/delimitedTable';
 import { inlineCodeMarkers, planInlineWrapper } from '../application/symbolInput';
 import { isCodeInput } from './pasteAssistance';
@@ -30,14 +31,42 @@ function selectedLines(view: EditorView) {
 
 function toggleLines(view: EditorView, command: EditorCommandId): boolean {
   if (isCodeInput(view)) return false;
-  const lines = selectedLines(view);
+  let lines = selectedLines(view);
   const heading = /^heading([1-6])$/.exec(command);
+  const setextByLine = new Map<number, SyntaxNode>();
+  if (command.startsWith('heading')) {
+    const seen = new Set<number>();
+    lines = lines.filter(line => {
+      let node = syntaxTree(view.state).resolveInner(line.to, -1);
+      while (node.parent && !node.name.startsWith('SetextHeading')) node = node.parent;
+      if (!node.name.startsWith('SetextHeading')) return true;
+      if (seen.has(node.from)) return false;
+      seen.add(node.from); setextByLine.set(line.from, node); return true;
+    });
+  }
   const targetPrefix = command === 'bullet' ? '- ' : command === 'ordered' ? '1. ' : command === 'taskList' ? '- [ ] ' : command === 'quote' ? '> ' : heading ? '#'.repeat(Number(heading[1])) + ' ' : '';
   const ownMarker = command === 'bullet' ? /^\s*[-+*]\s+(?!\[[ xX]\])/ : command === 'ordered' ? /^\s*\d+[.)]\s+/ : command === 'taskList' ? /^\s*[-+*]\s+\[[ xX]\]\s+/ : command === 'quote' ? /^\s*>\s?/ : heading ? new RegExp('^\\s*#{' + heading[1] + '} ') : null;
-  const remove = !!ownMarker && lines.every(line => ownMarker.test(line.text));
+  const remove = !!ownMarker && lines.every(line => {
+    const setext = setextByLine.get(line.from);
+    return setext ? Number(setext.name.slice(-1)) === Number(heading?.[1]) : ownMarker.test(line.text);
+  });
   let ordinal = 0;
   const contentOffsets = new Map<number, number>();
+  const convertedHeadings: { from: number; to: number; contentFrom: number; contentTo: number; prefix: string }[] = [];
+  const singleLineHeading = (text: string) => text.replace(/\n[ \t]*(?:>[ \t]*)*/g, ' ');
   const changes = lines.map(line => {
+    const setext = setextByLine.get(line.from);
+    if (setext) {
+      const content = { from: setext.from, to: view.state.doc.lineAt(setext.lastChild!.from).from - 1 };
+      let level = remove ? 0 : Number(heading?.[1]);
+      if (command === 'headingUp' || command === 'headingDown') {
+        level = Math.max(0, Math.min(6, Number(setext.name.slice(-1)) + (command === 'headingDown' ? 1 : -1)));
+      }
+      const prefix = level ? '#'.repeat(level) + ' ' : '';
+      // Heading commands replace the whole two-line form, including its underline.
+      convertedHeadings.push({ from: setext.from, to: setext.to, contentFrom: content.from, contentTo: content.to, prefix });
+      return { from: setext.from, to: setext.to, insert: prefix + singleLineHeading(view.state.sliceDoc(content.from, content.to)) };
+    }
     if (command === 'taskDone') {
       const match = /^(\s*[-+*]\s+\[)([ xX])(\])/.exec(line.text);
       return match ? { from: line.from + match[1].length, to: line.from + match[1].length + 1, insert: match[2] === ' ' ? 'x' : ' ' } : { from: line.from, insert: '' };
@@ -62,6 +91,11 @@ function toggleLines(view: EditorView, command: EditorCommandId): boolean {
     selection: EditorSelection.create(view.state.selection.ranges.map(range => {
       const mapped = range.map(changeSet, command === 'taskDone' ? -1 : 1);
       if (!range.empty) return mapped;
+      const heading = convertedHeadings.find(value => range.head >= value.from && range.head <= value.to);
+      if (heading) {
+        const beforeCaret = view.state.sliceDoc(heading.contentFrom, Math.min(range.head, heading.contentTo));
+        return EditorSelection.cursor(changeSet.mapPos(heading.from, -1) + heading.prefix.length + singleLineHeading(beforeCaret).length, range.assoc);
+      }
       const line = view.state.doc.lineAt(range.head);
       const offset = contentOffsets.get(line.from);
       if (offset === undefined) return mapped;

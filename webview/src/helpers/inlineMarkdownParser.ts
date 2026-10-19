@@ -1,5 +1,7 @@
 import { markdownLanguage } from '@codemirror/lang-markdown';
-import type { MarkdownParser } from '@lezer/markdown';
+import { Table, type LeafBlock, type LeafBlockParser, type MarkdownConfig, type MarkdownParser } from '@lezer/markdown';
+import { parseMarkdownTable } from '../application/delimitedTable';
+import { isThematicBreakLine } from './frontmatter';
 import { criticMarkdownExtension } from './criticMarkupSyntax';
 import { footnoteMarkdownExtension } from './footnotes';
 import { highlightMarkdownExtension } from './highlightSyntax';
@@ -8,7 +10,33 @@ import { collectInlineMathExcludedRanges, createMathLiteralSyntaxExtension, html
 import { createPunctuationInlineStyleExtension } from './punctuationSyntax';
 import { wikiImageMarkdownExtension } from '../../../src/foundation/wikiReference';
 
-const literalExtensions = [footnoteMarkdownExtension, criticMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension, wikiImageMarkdownExtension];
+const tableBlock = Table.parseBlock![0];
+const tableParsers = new WeakMap<LeafBlock, { parser: LeafBlockParser; confirmed: boolean }>();
+const tableBlockBoundaryExtension: MarkdownConfig = { parseBlock: [{
+  ...tableBlock,
+  leaf(context, leaf) {
+    const parser = tableBlock.leaf!(context, leaf);
+    if (parser) tableParsers.set(leaf, { parser, confirmed: false });
+    return parser;
+  },
+  endLeaf(context, line, leaf) {
+    const table = tableParsers.get(leaf);
+    const firstBreak = leaf.content.indexOf('\n');
+    if (table && !table.confirmed && firstBreak >= 0) {
+      const secondBreak = leaf.content.indexOf('\n', firstBreak + 1);
+      table.confirmed = Boolean(parseMarkdownTable(leaf.content.slice(0, secondBreak < 0 ? undefined : secondBreak)));
+    }
+    if (table?.confirmed) {
+      // Once a table header is established, later underlines cannot turn its
+      // rows into a Setext heading. A thematic break ends the table instead.
+      leaf.parsers = [table.parser];
+      return isThematicBreakLine(line.text.slice(line.pos));
+    }
+    return tableBlock.endLeaf!(context, line, leaf);
+  }
+}] };
+
+const literalExtensions = [footnoteMarkdownExtension, criticMarkdownExtension, highlightMarkdownExtension, inlineScriptMarkdownExtension, htmlCodeLiteralSyntaxExtension, wikiImageMarkdownExtension, tableBlockBoundaryExtension];
 const literalParser = (markdownLanguage.parser as MarkdownParser).configure(literalExtensions);
 export const inlineMarkdownExtensions = [...literalExtensions, createMathLiteralSyntaxExtension(literalParser), createPunctuationInlineStyleExtension(literalParser)];
 const inlineParser = (markdownLanguage.parser as MarkdownParser).configure(inlineMarkdownExtensions);

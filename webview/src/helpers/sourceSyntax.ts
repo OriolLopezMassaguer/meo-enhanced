@@ -1,6 +1,7 @@
 import { Prec, RangeSetBuilder, StateEffect, type ChangeDesc } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { activateShikiCodeHighlighting, getShikiTokens, getShikiThemeVersion, isShikiThemeReady, requestShikiTokens, subscribeShikiRefresh, type ShikiToken } from './shikiHighlighter';
+import { getViewportController } from './viewportController';
 
 const refreshSourceSyntax = StateEffect.define<null>();
 
@@ -52,7 +53,8 @@ export const sourceSyntaxPreparation = ViewPlugin.fromClass(class {
     if (getShikiTokens('markdown', text, 'source')) return true;
     requestShikiTokens('markdown', text, 'source', () =>
       !this.destroyed && isCurrent() && this.view.state.doc === doc
-      && (foreground || this.view.inView), foreground ? 'foreground' : 'background');
+      && (foreground || this.view.inView), foreground ? 'foreground' : 'background',
+      () => !foreground && Boolean(getViewportController(this.view)?.isUserScrolling()));
     return false;
   }
 

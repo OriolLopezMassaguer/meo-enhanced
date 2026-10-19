@@ -51,13 +51,19 @@ async function main(): Promise<void> {
             }, lineNumber);
             await page.waitForSelector('.meo-math-copy-actions');
             if (state === 'editing') {
+              await page.click('.meo-md-math-fenced-display .katex');
+              await page.waitForSelector('.meo-math-source-actions');
               await page.click('.meo-math-copy-actions [aria-label="Select formula source"]');
               await page.waitForSelector('.meo-math-live-result');
               assert.equal(await page.evaluate(() => {
                 const view = (window as any).__historyMatrixEditor.view;
                 return view.state.doc.lineAt(view.state.selection.main.from).number;
               }), lineNumber + 1, 'Relocated formula action must select the current document source');
-            } else assert.equal(await page.$('.meo-math-source-line'), null, 'Reading formula must hide document source');
+            } else {
+              assert.equal(await page.$('.meo-math-source-line'), null, 'Reading formula must hide document source');
+              assert.equal(await page.$('.meo-math-copy-actions .meo-select-all-code-btn'), null,
+                'Reading formula must hide source selection actions');
+            }
           };
           await settle(103, mode);
           const originalLength = await page.evaluate(() => {

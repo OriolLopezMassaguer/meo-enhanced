@@ -117,7 +117,12 @@ try {
     const codeMirrorLineTop = codeMirrorLine ? codeMirrorLine.getBoundingClientRect().top - bounds.top : null;
     const table = sampleMode === 'preview' ? null : Array.from(document.querySelectorAll<HTMLElement>('.editor-host .meo-md-html-table-shell'))
       .find((item) => item.getBoundingClientRect().top <= bounds.top + 2 && item.getBoundingClientRect().bottom > bounds.top + 2);
-    const rows = table ? Array.from(table.querySelectorAll<HTMLElement>('tr')) : [];
+    const tableStartLine = table?.dataset.meoRenderedBlockStartLine;
+    const tableRows = (shell: HTMLElement | null | undefined) => Array.from(
+      shell?.querySelector<HTMLElement>('.meo-md-html-table:not(.meo-md-html-table-sticky-table)')
+        ?.querySelectorAll<HTMLElement>(':scope > thead > tr, :scope > tbody > tr') ?? []
+    );
+    const rows = tableRows(table);
     const rowIndex = rows.findIndex((item) => item.getBoundingClientRect().bottom > bounds.top + 2);
     const topPlaceholder = sampleMode === 'live'
       ? doc.elementFromPoint(bounds.left + 100, bounds.top + 2)?.closest<HTMLElement>('.meo-md-long-code-placeholder')
@@ -146,8 +151,8 @@ try {
           : rect.top - bounds.top;
       }
       if (table && rowIndex >= 0) {
-        const currentTable = document.querySelector<HTMLElement>(`.editor-host .meo-md-html-table-shell[data-meo-rendered-block-start-line="${table.dataset.meoRenderedBlockStartLine}"]`);
-        const row = currentTable?.querySelectorAll<HTMLElement>('tr')[rowIndex];
+        const currentTable = document.querySelector<HTMLElement>(`.editor-host .meo-md-html-table-shell[data-meo-rendered-block-start-line="${tableStartLine}"]`);
+        const row = tableRows(currentTable)[rowIndex];
         if (row) return row.getBoundingClientRect().top - bounds.top;
       }
       if (placeholderLine) {
@@ -187,16 +192,16 @@ try {
     // count as visible flashes.
     const initialTop = trace[0]!.top;
     const painted = trace.slice(2);
-    // When enlargement reaches the scroll limit, keeping the old top anchor
-    // would require scrolling past the document end. Check those frames against
-    // the bottom boundary instead of treating the unavoidable shift as a jump.
-    const isBottomConstrained = (item: (typeof trace)[number]) => delta > 0
-      && initialTop !== null && item.top !== null && item.top > initialTop
+    // Either direction can hit the document end: shrinkage also lowers the
+    // maximum scroll. Prove that preserving this source anchor would require an
+    // unavailable scroll position, then account for the unavoidable deficit.
+    const isBottomConstrained = (item: (typeof trace)[number]) => initialTop !== null && item.top !== null
+      && item.scroll + item.top - initialTop > item.maxScroll + 1
       && item.scroll >= item.maxScroll - 1;
     const bottomConstrained = painted.some(isBottomConstrained);
     const displacement = initialTop === null ? 0 : Math.max(...painted.map((item) => item.top === null
       ? 9999 : isBottomConstrained(item) ? 0 : Math.abs(item.top - initialTop)));
-    return { sourceLine: sourceLine ?? previewLine?.dataset.sourceLine, codeMirrorLineTop, placeholderLine, renderedBlockLine, tableRow: rowIndex, displacement, bottomConstrained, trace };
+    return { sourceLine: sourceLine ?? previewLine?.dataset.sourceLine, codeMirrorLineTop, placeholderLine, renderedBlockLine, tableStartLine, tableRow: rowIndex, displacement, bottomConstrained, trace };
   }, { sampleMode: mode, delta: direction });
   for (const mode of modes) {
     if (mode !== 'live') {
@@ -310,6 +315,7 @@ try {
         for (let step = 0; step < 5; step++) {
           const down = await measureStep(mode, -1);
           samples += 1;
+          if (down.bottomConstrained) bottomConstrainedSteps += 1;
           if (down.displacement > 12) failures.push({ mode, line, blockMode, direction: `decrease-${step}`, ...down });
         }
       }

@@ -20,4 +20,16 @@ const spareSpace = planPreviewTableWidths([100, 100], 500);
 assert.equal(Math.round(spareSpace.widths.reduce((sum, width) => sum + width, 0)), 500);
 assert.deepEqual(spareSpace.widths.map(Math.round), [250, 250]);
 
+const compactColumns = planPreviewTableWidths([40, 65, 900], 600);
+assert.deepEqual(compactColumns.widths.map(Math.round), [40, 65, 495],
+  'short columns should fit their contents while a wrapping description uses the remaining space');
+const longDescription = planPreviewTableWidths([110, 760, 150], 720);
+assert.deepEqual(longDescription.widths.map(Math.round), [110, 460, 150],
+  'space above the long-content demand cap should go to content that still wraps');
+const narrowCompact = planPreviewTableWidths([40, 760, 150], 180);
+assert.equal(Math.round(narrowCompact.widths[0]), 40,
+  'a short column that fits an equal share should remain unwrapped in a narrow table');
+assert.equal(Math.round(narrowCompact.totalWidth), 180);
+assert.equal(narrowCompact.overflows, false);
+
 console.log('Preview table width planning checks passed');

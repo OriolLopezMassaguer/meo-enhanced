@@ -19,7 +19,7 @@ const browser = await launchTestBrowser();
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 900, height: 720 });
-  await page.setContent('<!doctype html><body><div id="app"></div></body>');
+  await page.setContent('<!doctype html><body class="vscode-light"><div id="app"></div></body>');
   await page.addStyleTag({ content: 'html,body,#app{height:100%;margin:0}:root{--meo-background:#fff;--meo-foreground:#24292f;--meo-code-background:#f6f8fa;--meo-surface-background:#fff;--meo-font-live:Arial;--meo-font-live-weight:400;--meo-font-live-size:16px;--meo-font-source:monospace;--meo-font-source-weight:400;--meo-font-source-size:14px;--meo-line-height-live:1.6;--meo-line-height-source:1.5;--vscode-editor-font-size:14px}' });
   await page.addStyleTag({ path: path.join(root, 'webview/src/styles.css') });
   await page.addStyleTag({ content: '#app > .cm-editor{height:100%;overflow:hidden}#app > .cm-editor > .cm-scroller{height:100%;overflow:auto}' });
@@ -119,33 +119,47 @@ try {
   assert.ok(narrowMermaid.visiblePairs.some((pair) => pair.number >= 50)
     && narrowMermaid.visiblePairs.every((pair) => pair.textDelta !== null && Math.abs(pair.textDelta) <= 3),
   `Narrow Mermaid source line numbers should align: ${JSON.stringify(narrowMermaid)}`);
-  await page.setViewport({ width: 900, height: 720 });
-  await page.evaluate(() => {
-    (window as any).__embeddedFontEditor.destroy();
-    document.getElementById('app')!.replaceChildren();
-    (window as any).__embeddedFontEditor = (window as any).MermaidEditingHarness.createEditor({
-      parent: document.getElementById('app')!,
-      text: ['# Before', '$$', ...Array.from({ length: 76 }, (_, index) =>
-        `x_{${index}} = ${'a+b+c+d+'.repeat(index % 5 === 0 ? 14 : 1)}`), '$$', '# After'].join('\n'),
-      initialMode: 'live',
-      onApplyChanges() {}
-    });
-  });
-  await page.evaluate(() => { const editor = (window as any).__embeddedFontEditor;
-    editor.view.dispatch({ selection: { anchor: editor.view.state.doc.line(55).from } }); editor.view.focus(); editor.scrollToLine(55, 'center'); });
-  for (const size of [15, 20, 15, null]) {
-    await page.evaluate(value => { if (value === null) document.documentElement.style.removeProperty('--meo-user-editor-font-size');
-      else document.documentElement.style.setProperty('--meo-user-editor-font-size', value + 'px'); }, size);
-    await page.evaluate(async () => { for (let frame = 0; frame < 12; frame++) await new Promise(requestAnimationFrame); });
-    const layout = await page.evaluate(() => { const view = (window as any).__embeddedFontEditor.view;
-      const line = view.state.doc.line(55), coords = view.coordsAtPos(line.from)!;
-      const marker = Array.from(view.dom.querySelectorAll('.cm-lineNumbers > .cm-gutterElement')).find((element: any) => element.textContent.trim() === '55') as HTMLElement;
-      const node = view.domAtPos(line.from).node;
-      return { editors: view.dom.querySelectorAll('.cm-editor').length, font: getComputedStyle(node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node.parentElement!).fontSize,
-        delta: marker.getBoundingClientRect().top + marker.getBoundingClientRect().height / 2 - (coords.top + coords.bottom) / 2 }; });
-    assert.equal(layout.editors, 0, 'Formula uses the main editor');
-    assert.equal(layout.font, (size ?? 14) + 'px');
-    assert.ok(Math.abs(layout.delta) <= 3, 'Formula document line numbers align with source');
+  for (const kind of ['math', 'html'] as const) {
+    for (const width of [900, 700]) {
+      await page.setViewport({ width, height: 720 });
+      await page.evaluate(kind => {
+        (window as any).__embeddedFontEditor.destroy();
+        document.getElementById('app')!.replaceChildren();
+        const rows = Array.from({ length: 76 }, (_, index) => kind === 'math'
+          ? `x_{${index}} = ${'a+b+c+d+'.repeat(index % 5 === 0 ? 14 : 1)}`
+          : `<p>Row ${index}: ${'HTML source text '.repeat(index % 5 === 0 ? 14 : 1)}</p>`);
+        (window as any).__embeddedFontEditor = (window as any).MermaidEditingHarness.createEditor({
+          parent: document.getElementById('app')!,
+          text: ['# Before', '', kind === 'math' ? '$$' : '<div>', ...rows,
+            kind === 'math' ? '$$' : '</div>', '', '# After'].join('\n'),
+          initialMode: 'live',
+          onApplyChanges() {}
+        });
+      }, kind);
+      await page.evaluate(() => { const editor = (window as any).__embeddedFontEditor;
+        editor.view.dispatch({ selection: { anchor: editor.view.state.doc.line(55).from } }); editor.view.focus(); editor.scrollToLine(55, 'center'); });
+      for (const size of [15, 20, 15, null]) {
+        await page.evaluate(value => { (window as any).__embeddedFontEditor.preserveViewport(() => {
+          if (value === null) document.documentElement.style.removeProperty('--meo-user-editor-font-size');
+          else document.documentElement.style.setProperty('--meo-user-editor-font-size', value + 'px');
+        }, true); }, size);
+        await page.evaluate(async () => { for (let frame = 0; frame < 12; frame++) await new Promise(requestAnimationFrame); });
+        const layout = await page.evaluate(() => { const view = (window as any).__embeddedFontEditor.view;
+          const line = view.state.doc.line(55), coords = view.coordsAtPos(line.from)!;
+          const marker = Array.from(view.dom.querySelectorAll('.cm-lineNumbers > .cm-gutterElement')).find((element: any) => element.textContent.trim() === '55') as HTMLElement;
+          const node = view.domAtPos(line.from).node;
+          return { editors: view.dom.querySelectorAll('.cm-editor').length, font: getComputedStyle(node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node.parentElement!).fontSize,
+            text: line.text, caret: { top: coords.top, bottom: coords.bottom }, marker: { top: marker.getBoundingClientRect().top, height: marker.getBoundingClientRect().height },
+            delta: marker.getBoundingClientRect().top + marker.getBoundingClientRect().height / 2 - (coords.top + coords.bottom) / 2 }; });
+        assert.equal(layout.editors, 0, `${kind}/${width}: source uses the main editor`);
+        assert.equal(layout.font, (size ?? 14) + 'px', `${kind}/${width}: source follows the current font size`);
+        assert.ok(Math.abs(layout.delta) <= 3, `${kind}/${width}: document line numbers align with source: ${JSON.stringify(layout)}`);
+        if (size === 20) {
+          fs.mkdirSync('.local/embedded-source-font', { recursive: true });
+          await page.screenshot({ path: `.local/embedded-source-font/${kind}-${width}.png` });
+        }
+      }
+    }
   }
   const fallbackFonts = await page.evaluate(() => {
     document.documentElement.style.setProperty('--meo-user-editor-font-size', '20px');

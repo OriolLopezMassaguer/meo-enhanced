@@ -1,7 +1,7 @@
 import { EditorState, Facet, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, ViewPlugin, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
-import { getFencedCodeInfo } from './markdownSyntax';
+import { getFencedCodeBodyRange, getFencedCodeInfo } from './markdownSyntax';
 import {
   applyLiveBlockIndent,
   getLiveBlockIndent,
@@ -75,20 +75,10 @@ function collectLongCodeBlockDescriptors(state: EditorState): LongCodeBlockDescr
 
       const startLine = state.doc.lineAt(node.from);
       const endLine = state.doc.lineAt(Math.max(node.to - 1, node.from));
-      if (startLine.number >= state.doc.lines) {
-        return false;
-      }
-      const contentStartLine = state.doc.line(startLine.number + 1);
-      const lastChild = node.node.lastChild;
-      const hasClosingFence = lastChild?.name === 'CodeMark' &&
-        state.doc.lineAt(lastChild.from).number === endLine.number;
-      const contentEndLineNumber = endLine.number - (hasClosingFence ? 1 : 0);
-
-      if (contentStartLine.number > contentEndLineNumber) {
-        return false;
-      }
-
-      const contentEndLine = state.doc.line(contentEndLineNumber);
+      const body = getFencedCodeBodyRange(state, node.node);
+      if (!body) return false;
+      const contentStartLine = state.doc.lineAt(body.from);
+      const contentEndLine = state.doc.lineAt(body.to);
       const lineCount = contentEndLine.number - contentStartLine.number + 1;
       const isLong = lineCount > LONG_CODE_LINE_THRESHOLD;
       const collapsedFrom = isLong

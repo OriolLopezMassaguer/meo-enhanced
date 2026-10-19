@@ -6,7 +6,8 @@ export type InteractionContinuityViewport = {
   retainCaretTop(
     position: number,
     top: number,
-    isCurrent: () => boolean
+    isCurrent: () => boolean,
+    measuredLayout?: boolean
   ): void;
   revealCaret(
     position: number,
@@ -53,6 +54,15 @@ type ActiveMainInput = ActiveInput & {
 
 type ActiveNestedInput = ActiveInput & {
   scrollTopBeforeInput: number;
+  viewportMoved: boolean;
+};
+
+type MainInputMeasurement = {
+  caretTop: number | null;
+  inputLineHeight: number;
+  inputLineNumber: number;
+  position: number;
+  visible: boolean;
   viewportMoved: boolean;
 };
 
@@ -111,9 +121,9 @@ export function createEditorInteractionContinuity(input: {
     !disposed && active === candidate && candidate.generation === nextGeneration
   );
 
-  const schedule = (candidate: ActiveMainInput, immediate = false): void => {
-    if (!isCurrent(candidate) || candidate.frame !== null) return;
-    const measure = () => {
+  const schedule = (candidate: ActiveMainInput, immediate = false, measuredLayout = false): void => {
+    if (!isCurrent(candidate) || (!immediate && candidate.frame !== null)) return;
+    const measure = (animationFrame = false) => {
       if (
         !isCurrent(candidate) || !view.hasFocus ||
         (getMode() !== 'live' && !candidate.settleInSource)
@@ -121,16 +131,20 @@ export function createEditorInteractionContinuity(input: {
         cancel();
         return;
       }
-      view.requestMeasure({
-        read: () => {
+      const request = {
+        read: (): MainInputMeasurement | null => {
           if (!isCurrent(candidate)) return null;
           const position = Math.max(0, Math.min(candidate.position, view.state.doc.length));
+          // Height-map access can flush a queued editor measure. Read the
+          // physical caret afterwards so this snapshot describes one layout.
+          const inputLineHeight = view.lineBlockAt(position).height;
+          const inputLineNumber = view.state.doc.lineAt(position).number;
           const coords = view.coordsAtPos(position);
           const scroller = view.scrollDOM.getBoundingClientRect();
           return {
             caretTop: coords?.top ?? null,
-            inputLineHeight: view.lineBlockAt(position).height,
-            inputLineNumber: view.state.doc.lineAt(position).number,
+            inputLineHeight,
+            inputLineNumber,
             position,
             visible: Boolean(coords && coords.top >= scroller.top && coords.bottom <= scroller.bottom),
             viewportMoved: candidate.viewportMoved || (
@@ -138,9 +152,9 @@ export function createEditorInteractionContinuity(input: {
             )
           };
         },
-        write: (measurement) => {
+        write: (measurement: MainInputMeasurement | null) => {
           if (!measurement || !isCurrent(candidate)) return;
-          candidate.remainingFrames -= 1;
+          if (animationFrame) candidate.remainingFrames -= 1;
           candidate.viewportMoved = measurement.viewportMoved;
           const inputLineReflowed = (
             candidate.inputLineHeightBefore !== null &&
@@ -191,7 +205,8 @@ export function createEditorInteractionContinuity(input: {
               viewport.retainCaretTop(
                 measurement.position,
                 candidate.caretTopBeforeInput,
-                () => isCurrent(candidate)
+                () => isCurrent(candidate),
+                measuredLayout
               );
             }
           } else if (!measurement.visible || measurement.viewportMoved) {
@@ -205,19 +220,28 @@ export function createEditorInteractionContinuity(input: {
             candidate.stableFrames += 1;
           }
 
+          if (!animationFrame) {
+            // Transactions and completed geometry receipts can both queue
+            // several measures in one frame. Only the RAF owns this budget.
+            candidate.stableFrames = 0;
+            schedule(candidate);
+            return;
+          }
           if (candidate.remainingFrames <= 0 || candidate.stableFrames >= REQUIRED_STABLE_FRAMES) {
             if (!candidate.awaitingDerivedPresentation) active = null;
             return;
           }
           schedule(candidate);
         }
-      });
+      };
+      if (measuredLayout) request.write(request.read());
+      else view.requestMeasure(request);
     };
     if (immediate) measure();
     else {
       candidate.frame = requestAnimationFrame(() => {
         candidate.frame = null;
-        measure();
+        measure(true);
       });
     }
   };
@@ -354,6 +378,11 @@ export function createEditorInteractionContinuity(input: {
           selection.head === inputSessionPosition
         ) return;
         cancel();
+      }
+      // A height-map correction is already in CodeMirror's measure pass.
+      // Waiting for the queued input RAF would expose the displaced caret.
+      if ((update.geometryChanged || update.viewportChanged) && active) {
+        schedule(active, true, update.transactions.length === 0);
       }
     },
     cancel,

@@ -5,6 +5,7 @@ import { markdownFileExtensions } from '../foundation/markdownFileExtensions';
 export { normalizeOutlineWidth } from './outlineWidth';
 
 export const EXTENSION_CONFIG_SECTION = 'meoEnhanced';
+export const MARKDOWN_EDITOR_VIEW_TYPE = 'meoEnhanced.editor';
 export const GIT_CHANGES_GUTTER_SETTING_KEY = 'gitChanges.visible';
 export const GIT_DIFF_LINE_HIGHLIGHTS_SETTING_KEY = 'gitChanges.lineHighlights';
 export const DIFF_BASELINE_MODE_SETTING_KEY = 'changes.baseline';

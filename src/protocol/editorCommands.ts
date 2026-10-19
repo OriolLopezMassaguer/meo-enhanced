@@ -1,4 +1,5 @@
 import { normalizePreviewFontFamily } from './editorStyleEnvironment';
+import { normalizeEditorLineHeight } from '../foundation/editorLineHeight';
 import { decodePreviewPresetPreference, decodePreviewPresetPreferencePatch, isPreviewPresetId, type PreviewPresetId, type PreviewPresetPreference, type PreviewPresetPreferencePatch } from '../foundation/previewPresets';
 import { isUiLanguagePreference, type UiLanguagePreference } from '../foundation/uiLanguage';
 import type { SourceLineNumberMode } from './readyInit';
@@ -54,6 +55,7 @@ export type EditorCommand =
   | { readonly type: 'setLiveStrongColoring'; readonly enabled: boolean }
   | { readonly type: 'setEditorAppearance'; readonly appearance: EditorAppearance }
   | { readonly type: 'setEditorFontSize'; readonly mode: EditorFontSizeMode; readonly value: number }
+  | { readonly type: 'setEditorLineHeight'; readonly value: number }
   | { readonly type: 'setUiLanguagePreference'; readonly language: UiLanguagePreference }
   | { readonly type: 'setSourceLineNumbers'; readonly mode: SourceLineNumberMode };
 
@@ -131,6 +133,8 @@ export function decodeEditorCommand(value: unknown): EditorCommand | null {
     case 'setEditorAppearance':
       return value.appearance === 'auto' || value.appearance === 'dark' || value.appearance === 'light'
         ? value as EditorCommand : null;
+    case 'setEditorLineHeight':
+      return isFiniteNumber(value.value) && normalizeEditorLineHeight(value.value) === value.value ? value as EditorCommand : null;
     case 'setEditorFontSize':
       return (value.mode === 'auto' || value.mode === 'custom')
         && isFiniteNumber(value.value)

@@ -497,7 +497,7 @@ async function runComponentFocusReturn(browser: Browser): Promise<void> {
     { kind: 'code', text: 'intro\n\n```js\nconst value = 1;\n```\n\ntail',
       selector: '.cm-content', line: 'const value = 1;', from: 'const value = 1;', to: 'const value = 1;R' },
     { kind: 'html', text: 'intro\n\n<div>\n<p>alpha beta</p>\n</div>\n\ntail',
-      selector: '.cm-content', button: '.meo-md-html-source-toggle', clicks: 1,
+      selector: '.cm-content',
       line: '<p>alpha beta</p>', from: '<p>alpha beta</p>', to: '<p>alpha beta</p>R' },
     ...[1, 2].map((clicks) => ({ kind: `mermaid-${clicks === 1 ? 'split' : 'source'}`,
       text: 'intro\n\n```mermaid\ngraph TD\nA --> B\n```\n\ntail',
@@ -511,6 +511,7 @@ async function runComponentFocusReturn(browser: Browser): Promise<void> {
     const page = await open(browser, 'mode' in fixture ? fixture.mode : 'live', fixture.text, fixture.kind.startsWith('mermaid'));
     try {
       if (fixture.kind === 'math-live') await page.click('.meo-md-math-fenced-display');
+      if (fixture.kind === 'html') await page.click('.meo-md-html-content');
       if ('button' in fixture) {
         for (let step = 0; step < fixture.clicks; step += 1) {
           await page.evaluate((selector) => document.querySelector<HTMLButtonElement>(selector)!.click(), fixture.button);
@@ -616,6 +617,16 @@ async function runPassiveControls(browser: Browser, mode: 'live' | 'source'): Pr
       'line 40 ordinary content', `${mode} line-jump focus recovery moved the insertion point`);
     assert.ok(await page.$eval('.cm-scroller', element => element.scrollTop) > 0,
       `${mode} line-jump focus recovery undid navigation`);
+
+    await page.click('.line-jump-input');
+    await page.keyboard.type('9999');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.activeElement === document.querySelector('.cm-content'), { timeout: 3000 });
+    assert.equal(await page.evaluate(() => document.getSelection()?.anchorNode?.parentElement?.closest('.cm-line')?.textContent),
+      'line 40 ordinary content', `${mode} an oversized line number did not jump to the final line`);
+    assert.deepEqual(await page.$eval('.line-jump-input', element => ({
+      value: (element as HTMLInputElement).value, invalid: element.getAttribute('aria-invalid')
+    })), { value: '', invalid: null }, `${mode} an oversized line number left an error in the toolbar`);
 
     await page.click('[data-action="outline-right"]');
     await page.click('.outline-header-button[data-action="expand-all"]');

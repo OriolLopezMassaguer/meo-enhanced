@@ -67,13 +67,20 @@ try {
       host.ed.setSourceLineNumbers('relative');
       host.ed.view.dispatch({ selection: { anchor: host.ed.view.state.doc.line(current).from } });
     }, current); await settle();
-    const labels = await page.evaluate(() => ({
-      mermaid: Array.from(document.querySelectorAll('.meo-rendered-block-document-line-number')).map(element => element.textContent),
-      html: Array.from(document.querySelectorAll('.meo-md-html-details-line-number')).map(element => element.textContent)
-    }));
+    const labels = await page.evaluate(() => {
+      const gutter = Array.from(document.querySelectorAll<HTMLElement>('.cm-lineNumbers > .cm-gutterElement'))
+        .filter(element => element.getBoundingClientRect().height > 0);
+      return {
+        mermaid: Array.from(document.querySelectorAll('.meo-rendered-block-document-line-number')).map(element => element.textContent),
+        html: Array.from(document.querySelectorAll('.meo-md-html-details-line-number')).map(element => element.textContent),
+        source: Array.from(document.querySelectorAll<HTMLElement>('.meo-md-html-source-range')).map(line =>
+          gutter.find(element => Math.abs(element.getBoundingClientRect().top - line.getBoundingClientRect().top) < 1)?.textContent)
+      };
+    });
     const relative = (line: number) => String(line === current ? line : Math.abs(line - current));
     assert.deepEqual(labels.mermaid, [4, 5].map(relative), `Mermaid relative numbers after caret moves to ${current}`);
-    assert.deepEqual(labels.html, [9, 10].map(relative), `HTML relative numbers after caret moves to ${current}`);
+    assert.deepEqual(labels.html, current === 9 ? [] : [9, 10].map(relative), `HTML projected numbers after caret moves to ${current}`);
+    assert.deepEqual(labels.source, current === 9 ? [8, 9, 10, 11].map(relative) : [], `HTML source numbers after caret moves to ${current}`);
   }
   await page.evaluate(() => (window as any).ed.setSourceLineNumbers('on')); await settle();
   await page.evaluate(() => {

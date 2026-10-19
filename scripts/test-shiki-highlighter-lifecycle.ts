@@ -827,6 +827,21 @@ async function backgroundPreparationYieldsAndPromotes(): Promise<void> {
   const scope = globalThis as any;
   const previousIdle = scope.requestIdleCallback;
   const previousCancel = scope.cancelIdleCallback;
+  const previousTimeout = scope.setTimeout;
+  const previousClearTimeout = scope.clearTimeout;
+  // Reading pauses use a 50ms retry. Polling turns can finish before that on
+  // Linux, so advance this clock explicitly instead of assuming time elapsed.
+  const pauses = new Map<object, () => void>();
+  scope.setTimeout = (run: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+    if (delay !== 50) return previousTimeout(run, delay, ...args);
+    const handle = {};
+    pauses.set(handle, () => run(...args));
+    return handle;
+  };
+  scope.clearTimeout = (handle: unknown) => {
+    if (!pauses.delete(handle as object)) previousClearTimeout(handle);
+  };
+  const resumePauses = () => { for (const run of [...pauses.values()]) run(); };
   const idle = new Map<number, () => void>();
   let sequence = 0;
   scope.requestIdleCallback = (run: () => void) => {
@@ -841,12 +856,24 @@ async function backgroundPreparationYieldsAndPromotes(): Promise<void> {
   const releaseEditor = shiki.activateShikiCodeHighlighting('editor');
   const code = 'line\n'.repeat(512);
   let foregroundNeeded = true;
+  let reading = true;
   try {
+    const before = highlighters.length;
     planHighlighter({ onTokenize(highlighter) {
       if (highlighter.tokenizeCalls === 2) foregroundNeeded = false;
     } });
-    shiki.requestShikiTokens('typescript', code, 'source', () => true, 'background');
+    shiki.requestShikiTokens('typescript', code, 'source', () => true, 'background', () => reading);
+    await drain();
+    assert.equal(highlighters.length, before, 'Paused preparation must not initialize a grammar');
+    assert.equal(pauses.size, 1, 'Reading must retain a scheduled retry');
+    reading = false;
+    resumePauses();
     await waitFor(() => idle.size > 0, 'paused background preparation');
+    const prepared = highlighters[before];
+    reading = true;
+    for (const run of [...idle.values()]) run();
+    await drain();
+    assert.equal(prepared.tokenizeCalls, 1, 'Reading must pause the next batch without restarting the first');
     planHighlighter();
     shiki.requestShikiTokens('typescript', 'visible fence', 'editor');
     await waitFor(() => !!shiki.getShikiTokens('typescript', 'visible fence', 'editor'), 'visible work bypasses background');
@@ -854,17 +881,25 @@ async function backgroundPreparationYieldsAndPromotes(): Promise<void> {
     shiki.requestShikiTokens('typescript', code, 'source', () => foregroundNeeded);
     // Promotion wakes the held idle boundary. Cancelling the foreground caller
     // keeps useful background work, but releases the global foreground turn.
-    await waitFor(() => !foregroundNeeded && idle.size > 0, 'cancelled foreground resumes background priority');
+    await waitFor(() => !foregroundNeeded, 'cancelled foreground resumes background priority');
     shiki.requestShikiTokens('typescript', 'another visible fence', 'editor');
     await waitFor(() => !!shiki.getShikiTokens('typescript', 'another visible fence', 'editor'), 'demoted work yields');
+    reading = false;
     for (let attempt = 0; attempt < 20 && !shiki.getShikiTokens('typescript', code, 'source'); attempt++) {
+      resumePauses();
       for (const run of [...idle.values()]) run();
-      await drain();
+      // These fast turns must not need to advance the real 50ms reading clock.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await new Promise<void>(resolve => setImmediate(resolve));
     }
     assert.ok(shiki.getShikiTokens('typescript', code, 'source'), 'Demotion must finish without waiting on its own batch');
+    assert.equal(prepared.tokenizeCalls, 5, 'Promotion and reading pauses must retain every completed batch');
   } finally {
     releaseSource(); releaseEditor();
     shiki.setShikiTheme(null, 'source'); shiki.setShikiTheme(null, 'editor');
+    resumePauses();
+    scope.setTimeout = previousTimeout;
+    scope.clearTimeout = previousClearTimeout;
     scope.requestIdleCallback = previousIdle;
     scope.cancelIdleCallback = previousCancel;
   }

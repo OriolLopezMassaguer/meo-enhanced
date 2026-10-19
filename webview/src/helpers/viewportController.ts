@@ -165,6 +165,7 @@ interface NavigationRevealState {
 interface NavigationRevealOptions {
   readonly schedule?: 'immediate' | 'next-frame';
   readonly settle?: boolean;
+  readonly measuredLayout?: boolean;
 }
 
 interface RevealPositionOptions {
@@ -358,6 +359,7 @@ export class ViewportController {
   private interactionsAttached = false;
   private lastWheelAt = Number.NEGATIVE_INFINITY;
   private lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+  private lastNativeScrollAt = Number.NEGATIVE_INFINITY;
   private lastScrollDirection: -1 | 0 | 1 = 0;
   private interactionGeneration = 0;
   private navigationGeneration = 0;
@@ -408,6 +410,12 @@ export class ViewportController {
       const documentTop = this.readLayoutAnchorDocumentTop(anchor.position);
       if (documentTop !== null && Math.abs(documentTop - anchor.readingDocumentTop) <= POSITION_EPSILON
         && this.readingLayoutUnchanged(anchor)) {
+        // A smooth/inertial tail can outlive its final wheel event. Only real
+        // movement beyond the adopted position extends the gesture; our own
+        // geometry corrections have already adopted their resulting scrollTop.
+        if (Math.abs(this.view.scrollDOM.scrollTop - (anchor.readingScrollTop ?? this.view.scrollDOM.scrollTop)) > POSITION_EPSILON) {
+          this.lastNativeScrollAt = performance.now();
+        }
         this.adoptReadingLayout(anchor, documentTop);
         anchor.readingNativeAdopted = true;
         anchor.revision += 1;
@@ -427,6 +435,7 @@ export class ViewportController {
     if (this.activeLayoutAnchor?.readingDocumentTop !== undefined) this.activeLayoutAnchor = null;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.claimLinkedViewport('editor');
     this.navigationGeneration += 1;
   };
@@ -443,7 +452,10 @@ export class ViewportController {
     controllerByDom.set(view.dom, this);
     if (options.attachInteractions !== false) {
       view.scrollDOM.addEventListener('wheel', this.onWheel, { passive: true });
-      view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
+      // CodeMirror's non-capture scroll observer may synchronously measure and
+      // reconcile layout. Adopt native progress first so that reconciliation
+      // cannot compensate from the previous scroll event's reading position.
+      view.scrollDOM.addEventListener('scroll', this.onScroll, { capture: true, passive: true });
       view.scrollDOM.addEventListener('touchstart', this.onTouchStart, { passive: true });
       view.scrollDOM.addEventListener('touchmove', this.onTouchMove, { passive: true });
       view.scrollDOM.addEventListener('touchend', this.onTouchEnd, { passive: true });
@@ -489,6 +501,7 @@ export class ViewportController {
     this.anchorStabilizationGeneration = null;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.lastTouchY = null;
   }
 
@@ -529,6 +542,7 @@ export class ViewportController {
     this.activeScrollLockCorrection = null;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.lastTouchY = null;
   }
 
@@ -822,6 +836,35 @@ export class ViewportController {
     this.linkedProjectionGeneration += 1;
   }
 
+  /** Aligns only the follower once; independent scrolling and the Source selection remain unchanged. */
+  alignLinkedViewport(owner: ViewportAnchorOwner): boolean {
+    if (this.destroyed || this.linkedPreviewEnabled || !this.previewSurface) return false;
+    this.markInteraction(owner);
+    const linkedMap = this.measureLinkedViewportMap();
+    if (linkedMap && this.previewSurface.readScrollTop && this.previewSurface.writeScrollTop) {
+      if (owner === 'editor') {
+        this.previewSurface.writeScrollTop(linkedMap.sourceToPreview(this.view.scrollDOM.scrollTop));
+      } else {
+        this.writeScrollPosition({
+          top: linkedMap.previewToSource(this.previewSurface.readScrollTop()),
+          left: this.view.scrollDOM.scrollLeft
+        });
+      }
+      return true;
+    }
+    const generation = this.navigationGeneration;
+    const isCurrent = () => !this.destroyed && generation === this.navigationGeneration
+      && !this.linkedPreviewEnabled;
+    if (owner === 'editor') {
+      this.previewSurface.restoreTopVisiblePosition(this.getTopVisiblePosition(), isCurrent);
+    } else {
+      const position = this.previewSurface.captureTopVisiblePosition();
+      if (!position) return false;
+      this.restoreLinkedEditorPosition(position.line, position.editorLineOffset ?? position.lineOffset, isCurrent);
+    }
+    return true;
+  }
+
   /** Treats back-to-top as one explicit navigation across the linked surfaces. */
   navigateLinkedToTop(owner: ViewportAnchorOwner): boolean {
     if (
@@ -1030,10 +1073,9 @@ export class ViewportController {
     }, delay);
   }
 
-  private rebuildLinkedViewportMap(project: boolean): void {
-    if (this.destroyed || !this.linkedPreviewEnabled || !this.linkedViewportMapDirty) return;
+  private measureLinkedViewportMap(pinnedPoint?: LinkedViewportPoint): LinkedViewportMap | null {
     const geometry = this.previewSurface?.captureLinkedGeometry?.();
-    if (!geometry) return;
+    if (!geometry) return null;
     const sourceMaximum = Math.max(0, this.view.scrollDOM.scrollHeight - this.view.scrollDOM.clientHeight);
     const points: LinkedViewportPoint[] = [];
     for (const region of geometry.regions) {
@@ -1054,6 +1096,14 @@ export class ViewportController {
         { source: endBlock.bottom, preview: region.bottom }
       );
     }
+    return createLinkedViewportMap(points, {
+      sourceMaximum,
+      previewMaximum: Math.max(0, geometry.maximumScrollTop)
+    }, pinnedPoint);
+  }
+
+  private rebuildLinkedViewportMap(project: boolean): void {
+    if (this.destroyed || !this.linkedPreviewEnabled || !this.linkedViewportMapDirty) return;
     const currentPosition = this.previewSurface?.readScrollTop ? {
       source: this.view.scrollDOM.scrollTop,
       preview: this.previewSurface.readScrollTop()
@@ -1068,10 +1118,9 @@ export class ViewportController {
     const pinnedPoint = project && this.linkedViewportMap && driverPositionUnchanged
       ? currentPosition ?? undefined
       : undefined;
-    this.linkedViewportMap = createLinkedViewportMap(points, {
-      sourceMaximum,
-      previewMaximum: Math.max(0, geometry.maximumScrollTop)
-    }, pinnedPoint);
+    const linkedMap = this.measureLinkedViewportMap(pinnedPoint);
+    if (!linkedMap) return;
+    this.linkedViewportMap = linkedMap;
     this.linkedViewportMapDirty = false;
     if (project) this.projectLinkedViewport(this.linkedViewportDriver);
   }
@@ -1298,6 +1347,9 @@ export class ViewportController {
   }
 
   preserveDocumentAnchorWhileMutation(mutate: () => void, immediateLayout = false): void {
+    // This layout operation replaces the previous cell/toolbar retention intent.
+    // Leaving its observer active would write a second, obsolete scroll target.
+    this.cancelElementRetention();
     const anchor = this.captureDocumentAnchor();
     // A new font layout supersedes absolute scroll retention from a block-mode
     // transition; that older target would otherwise pull this anchor away.
@@ -1310,7 +1362,12 @@ export class ViewportController {
       const rect = element.getBoundingClientRect();
       return rect.top <= scrollerRect.top + 2 && rect.bottom > scrollerRect.top + 2;
     });
-    const tableRows = visibleTable ? Array.from(visibleTable.querySelectorAll<HTMLElement>('tr')) : [];
+    const tableStartLine = visibleTable?.dataset.meoRenderedBlockStartLine;
+    const tableRowsOf = (shell: HTMLElement | null | undefined) => Array.from(
+      shell?.querySelector<HTMLElement>('.meo-md-html-table:not(.meo-md-html-table-sticky-table)')
+        ?.querySelectorAll<HTMLElement>(':scope > thead > tr, :scope > tbody > tr') ?? []
+    );
+    const tableRows = tableRowsOf(visibleTable);
     const tableRowIndex = scrollerRect ? (() => {
       const rowAtTop = tableRows.findIndex((element) => {
         const rect = element.getBoundingClientRect();
@@ -1327,11 +1384,12 @@ export class ViewportController {
       ));
     })() : -1;
     const tableRow = tableRows[tableRowIndex];
-    const resolveTableRow = () => tableRow?.isConnected ? tableRow : (
-      this.view.contentDOM.querySelector<HTMLElement>(
-        `.meo-md-html-table-shell[data-meo-rendered-block-start-line="${visibleTable?.dataset.meoRenderedBlockStartLine}"]`
-      )?.querySelectorAll<HTMLElement>('tr')[tableRowIndex] ?? null
-    );
+    const resolveTableRow = () => tableRowsOf(
+      visibleTable?.isConnected && visibleTable.dataset.meoRenderedBlockStartLine === tableStartLine
+        ? visibleTable : this.view.contentDOM.querySelector<HTMLElement>(
+          `.meo-md-html-table-shell[data-meo-rendered-block-start-line="${tableStartLine}"]`
+        )
+    )[tableRowIndex] ?? null;
     const visibleBlock = tableRow ?? (scrollerRect && Array.from(
       this.view.contentDOM.querySelectorAll<HTMLElement>('.cm-line, [data-meo-rendered-block-start-line]')
     ).find((element) => {
@@ -1339,8 +1397,11 @@ export class ViewportController {
       return rect.bottom > scrollerRect.top + 2 && rect.top < scrollerRect.bottom;
     }));
     const blockTop = visibleBlock?.getBoundingClientRect().top;
+    const tableSourceLine = Number(tableRow?.dataset.sourceLineNumber);
+    const tableAnchorPosition = Number.isInteger(tableSourceLine) && tableSourceLine >= 1
+      && tableSourceLine <= this.view.state.doc.lines ? this.view.state.doc.line(tableSourceLine).from : null;
     const fontAnchorPosition = immediateLayout && scrollerRect
-      ? this.view.posAtCoords({ x: scrollerRect.left + 100, y: scrollerRect.top + 2 }) ?? anchor.position
+      ? tableAnchorPosition ?? this.view.posAtCoords({ x: scrollerRect.left + 100, y: scrollerRect.top + 2 }) ?? anchor.position
       : anchor.position;
     const foldedCodeNearTop = immediateLayout && scrollerRect && Array.from(
       this.view.contentDOM.querySelectorAll<HTMLElement>('.meo-md-long-code-placeholder')
@@ -1387,7 +1448,7 @@ export class ViewportController {
     mutate();
     // Keep the visible source position in CodeMirror's virtual viewport while
     // preceding tall blocks acquire their new font-dependent height.
-    if (immediateLayout && (this.getMode() === 'source' || foldedCodeNearTop || (!tableRow && anchorLineTop !== null)
+    if (immediateLayout && (tableRow || this.getMode() === 'source' || foldedCodeNearTop || (!tableRow && anchorLineTop !== null)
       || topRenderedBlock?.querySelector('.meo-mermaid-toolbar'))) queueMicrotask(() => {
       if (!this.destroyed && !this.isUserScrolling()) this.view.dispatch({
         effects: EditorView.scrollIntoView(fontAnchorPosition, { y: 'nearest' })
@@ -1784,7 +1845,7 @@ export class ViewportController {
     controllerByDom.delete(this.view.dom);
     if (this.interactionsAttached) {
       this.view.scrollDOM.removeEventListener('wheel', this.onWheel);
-      this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
+      this.view.scrollDOM.removeEventListener('scroll', this.onScroll, true);
       this.view.scrollDOM.removeEventListener('touchstart', this.onTouchStart);
       this.view.scrollDOM.removeEventListener('touchmove', this.onTouchMove);
       this.view.scrollDOM.removeEventListener('touchend', this.onTouchEnd);
@@ -1933,13 +1994,13 @@ export class ViewportController {
       state.phase = 'settling';
       scheduleNextMeasure(measure);
     };
-    const measure = (): void => {
+    const measure = (measuredLayout = false): void => {
       if (!isRevealCurrent() || attempts >= MAX_SETTLE_FRAMES) {
         finish();
         return;
       }
       attempts += 1;
-      this.view.requestMeasure({
+      const request = {
         read: () => {
           if (!isRevealCurrent()) return { kind: 'unavailable' } as const;
           if (state.phase === 'reserved') state.phase = 'measured';
@@ -1954,7 +2015,7 @@ export class ViewportController {
             return { kind: 'unavailable' } as const;
           }
         },
-        write: (initialMeasurement) => {
+        write: (initialMeasurement: NavigationRevealMeasurement) => {
           if (!isRevealCurrent() || initialMeasurement.kind === 'unavailable') {
             finish();
             return;
@@ -2041,11 +2102,15 @@ export class ViewportController {
             completeFrame(measure, changed);
           });
         }
-      });
+      };
+      // Editor measurement receipts already describe the finished DOM. A new
+      // RAF here would expose its height-map correction before retaining input.
+      if (measuredLayout) request.write(request.read());
+      else this.view.requestMeasure(request);
     };
 
     if (options.schedule === 'next-frame') scheduleNextMeasure(measure);
-    else measure();
+    else measure(options.measuredLayout);
   }
 
   private stabilizeScrollPosition(target: ScrollPosition): void {
@@ -2173,7 +2238,7 @@ export class ViewportController {
     if (
       event.target instanceof Element &&
       event.target.closest(
-        '.meo-mermaid-editing-block, .meo-latex-math-editing-block, .meo-mermaid-toolbar, .meo-latex-math-toolbar, .meo-md-html-block, .meo-md-html-source-control, .meo-md-html-table-context-trigger, .meo-md-html-table-context-menu, .meo-md-code-block-start, .meo-md-code-block-end'
+        '.meo-mermaid-editing-block, .meo-latex-math-editing-block, .meo-mermaid-toolbar, .meo-latex-math-toolbar, .meo-md-html-block, .meo-md-html-table-context-trigger, .meo-md-html-table-context-menu, .meo-md-code-block-start, .meo-md-code-block-end'
       )
     ) return;
     const pointerPosition = this.view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
@@ -2287,6 +2352,7 @@ export class ViewportController {
     this.explicitNavigationGeneration += 1;
     this.lastWheelAt = Number.NEGATIVE_INFINITY;
     this.lastTouchMoveAt = Number.NEGATIVE_INFINITY;
+    this.lastNativeScrollAt = Number.NEGATIVE_INFINITY;
     this.lastTouchY = null;
     const navigationGeneration = ++this.navigationGeneration;
     this.pendingNavigationTarget = null;
@@ -2315,7 +2381,8 @@ export class ViewportController {
   retainPositionTop(
     position: number,
     viewportTop: number,
-    isCurrent: () => boolean = () => true
+    isCurrent: () => boolean = () => true,
+    measuredLayout = false
   ): void {
     const targetPosition = Math.max(0, Math.min(position, this.view.state.doc.length));
     this.runNavigationReveal(() => {
@@ -2327,7 +2394,7 @@ export class ViewportController {
         kind: 'target',
         target: { top: this.view.scrollDOM.scrollTop + delta }
       };
-    }, { settle: true }, isCurrent);
+    }, { settle: true, measuredLayout }, isCurrent);
   }
 
   private revealPositionInternal(
@@ -3027,6 +3094,25 @@ export class ViewportController {
         (candidate.position < changedRange.from || candidate.position > changedRange.to) &&
         candidate.top >= scrollerRect.top && candidate.top < scrollerRect.bottom
       ));
+    if (candidates.length === 0) {
+      // A tall table or diagram can occupy the entire viewport. Its rendered
+      // geometry remains a reading witness even when no text line is mounted.
+      const seenPositions = new Set<number>();
+      for (const element of this.view.contentDOM.querySelectorAll<HTMLElement>(
+        '.meo-md-html-table-wrap tr[data-source-line-number], [data-meo-rendered-block-kind][data-meo-rendered-block-start-line]'
+      )) {
+        const position = this.readingBlockPosition(element);
+        if (position === null || seenPositions.has(position)
+          || (position >= changedRange.from && position <= changedRange.to)) continue;
+        // Mode shells and their nested previews can describe the same source
+        // position. Retention must read back the same outer geometry we capture.
+        seenPositions.add(position);
+        const rect = element.getBoundingClientRect();
+        if (rect.bottom > scrollerRect.top && rect.top < scrollerRect.bottom) {
+          candidates.push({ position, top: rect.top });
+        }
+      }
+    }
     if (candidates.length === 0) return null;
 
     const readingY = scrollerRect.top + scrollerRect.height * 0.25;
@@ -3089,7 +3175,10 @@ export class ViewportController {
             activeAnchor.stableFrames >= REQUIRED_STABLE_FRAMES ||
             activeAnchor.remainingFrames <= 0
           )) {
-            this.activeLayoutAnchor = null;
+            // Stop polling, but keep a proven reading anchor for deferred widget
+            // measurements. The next user intent retires it via markInteraction.
+            if (activeAnchor.readingNativeAdopted) activeAnchor.remainingFrames = 0;
+            else this.activeLayoutAnchor = null;
             return;
           }
           requestAnimationFrame(() => this.scheduleLayoutMeasure());
@@ -3115,11 +3204,21 @@ export class ViewportController {
     // Caret rectangles can move inside a stable line when fonts or tokens change.
     // Only the outer line box represents movement of the reading content.
     const line = Array.from(this.view.contentDOM.querySelectorAll<HTMLElement>(':scope > .cm-line'))
-      .find((element) => this.view.posAtDOM(element) === position);
+      .find((element) => this.view.posAtDOM(element) === position)
+      ?? Array.from(this.view.contentDOM.querySelectorAll<HTMLElement>(
+        '.meo-md-html-table-wrap tr[data-source-line-number], [data-meo-rendered-block-kind][data-meo-rendered-block-start-line]'
+      )).find((element) => this.readingBlockPosition(element) === position);
     return line
       ? line.getBoundingClientRect().top + this.view.scrollDOM.scrollTop
         - this.view.scrollDOM.getBoundingClientRect().top
       : null;
+  }
+
+  private readingBlockPosition(element: HTMLElement): number | null {
+    const line = Number(element.dataset?.sourceLineNumber ?? element.dataset?.meoRenderedBlockStartLine);
+    const doc = this.view.state?.doc;
+    return doc && Number.isSafeInteger(line) && line > 0 && line <= doc.lines
+      ? doc.line(line).from : null;
   }
 
   private resolveLayoutAnchorTarget(anchor: ActiveLayoutAnchor): {
@@ -3166,8 +3265,9 @@ export class ViewportController {
     return topChanged || leftChanged;
   }
 
-  private isUserScrolling(): boolean {
+  /** Includes native momentum so background rendering can wait beyond the last wheel event. */
+  isUserScrolling(): boolean {
     return this.scrollbarDragActive ||
-      performance.now() - Math.max(this.lastWheelAt, this.lastTouchMoveAt) <= WHEEL_GESTURE_IDLE_MS;
+      performance.now() - Math.max(this.lastWheelAt, this.lastTouchMoveAt, this.lastNativeScrollAt) <= WHEEL_GESTURE_IDLE_MS;
   }
 }

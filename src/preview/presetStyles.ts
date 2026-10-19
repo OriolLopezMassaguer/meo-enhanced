@@ -1,4 +1,5 @@
 import { buildPreviewStyles, type ExportStyleEnvironment } from '../export/exportStyles';
+import { normalizeEditorLineHeight } from '../foundation/editorLineHeight';
 import { getPreviewPreset, resolvePresetAppearance, type PreviewPresetId, type PreviewContentWidth, type PreviewPresetDefinition } from '../foundation/previewPresets';
 import { getGithubMarkdownStyles } from './presets/github-readme/styles.js';
 import { getReadingPresetStyles } from './presets/reading/styles.js';
@@ -26,8 +27,6 @@ export function buildPresetPreviewStyles(
     editorFontWeight: environment.editorFontWeight,
     liveFontWeight: environment.liveFontWeight,
     sourceFontWeight: environment.sourceFontWeight,
-    liveLineHeight: environment.liveLineHeight,
-    sourceLineHeight: environment.sourceLineHeight,
     previewSourceColoring: environment.previewSourceColoring,
     previewShowComments: environment.previewShowComments,
     previewThemeIsolation: true
@@ -55,7 +54,7 @@ html[data-meo-export-target='pdf'] .meo-export-doc { box-sizing: border-box; wid
 `;
   }
   if (definition.renderer === 'meo') {
-    if (preset === 'default') return `${buildPreviewStyles(environment, appearance)}\n${fontSizeStyles}`;
+    if (preset === 'default') return `${buildPreviewStyles(environment, appearance)}\n${fontSizeStyles}\n.meo-export-doc { --meo-line-height: ${normalizeEditorLineHeight(environment.liveLineHeight)}; }`;
     const effective = resolvePresetAppearance(definition, appearance, appearance);
     return `${buildPreviewStyles(baseEnvironment, effective)}\n${getReadingPresetStyles(preset, effective)}\n${fontOverride}\n${codeFontOverride}\n${fontSizeStyles}`;
   }

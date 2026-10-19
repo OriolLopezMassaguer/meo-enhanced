@@ -20,6 +20,7 @@ import {
   type MermaidDiagramPresentationConsumer
 } from '../editor/mermaidDiagramPresentation';
 import { createCopyCodeButton, createSelectAllCodeButton } from './codeBlockControls';
+import { createRenderedBlockImageButton } from './renderedBlockImage';
 import { getViewportController, visualLineContextMargin } from './viewportController';
 import { applyLiveBlockIndent, liveBlockIndentKey, parseBlockLinePrefix, type LiveBlockIndentValue } from './blockIndent';
 import { consumeEditorHistoryCommand } from './historyCommands';
@@ -45,6 +46,7 @@ import {
   type EditorInteractionContinuity
 } from '../editor/interactionContinuity';
 import { shikiDocumentHighlight } from './shikiDecorations';
+import type { SyntaxNode } from '@lezer/common';
 
 export type MermaidBlockMode = RenderedBlockMode;
 
@@ -103,9 +105,9 @@ const innerMermaidSearchField = StateField.define<DecorationSet>({
 });
 
 const mermaidOpeningLineRegex = /^[ \t]{0,3}(?:`{3,}|~{3,})\s*mermaid\b/i;
-// Registered anchors come from parsed fences and retain enclosing list indentation.
+// Registered anchors come from parsed fences and may share a list marker's line.
 // Keep that validation separate from classifying a standalone opening candidate.
-const mermaidAnchorLineRegex = /^[ \t]*(?:`{3,}|~{3,})\s*mermaid\b/i;
+const mermaidAnchorLineRegex = /^[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?(?:`{3,}|~{3,})\s*mermaid\b/i;
 
 export function isMermaidOpeningLine(lineText: string): boolean {
   return mermaidOpeningLineRegex.test(lineText);
@@ -221,6 +223,15 @@ export function getMermaidBlockViewport(state: EditorState, anchor: number): Mer
     viewports?.set(anchor, viewport);
   }
   return viewport;
+}
+
+/** Do not replace the native input target while its outer fence is unfinished. */
+export function isUnfinishedMermaidSourceActive(state: EditorState, node: SyntaxNode): boolean {
+  const opening = state.doc.lineAt(node.from);
+  const closing = node.lastChild;
+  if (closing?.name === 'CodeMark' && closing.from > opening.to) return false;
+  if (state.field(mermaidEditingStateField, false)?.modes.has(opening.from)) return false;
+  return state.selection.ranges.some(range => range.to > opening.to && range.from <= node.to);
 }
 
 export function getMermaidBlockMode(
@@ -471,8 +482,21 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
       });
     }, uiLanguage);
     const copyButton = createCopyCodeButton(() => toolbar[mermaidToolbarCodeContent] ?? '', uiLanguage);
+    const imageButton = createRenderedBlockImageButton(() => {
+      const anchor = resolveMermaidToolbarAnchor(view, toolbar, this.lineNumber);
+      if (anchor === null || toolbar.dataset.meoMermaidMode === 'source') return null;
+      const line = view.state.doc.lineAt(anchor).number;
+      const block = view.dom.querySelector<HTMLElement>(
+        `.meo-rendered-block-preview[data-meo-rendered-block-start-line="${line}"] .meo-mermaid-block, `
+        + `.meo-mermaid-editing-block[data-meo-mermaid-anchor="${anchor}"] .meo-mermaid-block`
+      );
+      if (!block || block.closest('[data-meo-mermaid-rendering="true"]') || block.querySelector('.meo-mermaid-error-badge')) return null;
+      return block.querySelector('.meo-mermaid-svg-wrapper > svg') ? block : null;
+    }, uiLanguage, toolbar.ownerDocument);
+    imageButton.classList.add('meo-code-block-pill');
 
-    toolbar.append(modeButton, selectAllButton, copyButton);
+    selectAllButton.hidden = this.mode === 'preview';
+    toolbar.append(selectAllButton, modeButton, imageButton, copyButton);
     if (!this.floating) cache.set(cacheKey, toolbar);
     if (cache.size > MERMAID_TOOLBAR_DOM_CACHE_LIMIT) {
       const oldestKey = cache.keys().next().value;
@@ -500,6 +524,8 @@ class MermaidToolbarWidget extends UiLanguageSensitiveWidget {
     toolbar.dataset.meoMermaidMode = this.mode;
     toolbar.dataset.meoUiLanguage = uiLanguage;
     toolbar[mermaidToolbarCodeContent] = this.codeContent;
+    const selectAllButton = toolbar.querySelector<HTMLElement>('.meo-select-all-code-btn');
+    if (selectAllButton) selectAllButton.hidden = this.mode === 'preview';
     updateMermaidModeButton(
       modeButton,
       this.mode,

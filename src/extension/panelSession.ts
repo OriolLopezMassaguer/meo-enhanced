@@ -1,3 +1,4 @@
+import { DEFAULT_EDITOR_LINE_HEIGHT } from '../foundation/editorLineHeight';
 import { runEditorService } from '../host/editorServices';
 import { onDidChangeWikiResources } from '../host/wikiResources';
 import { collectWikiReferences } from '../foundation/wikiReference';
@@ -22,8 +23,10 @@ import {
 } from '../application/diffBaselineSelection';
 import type { HostViewNavigationPort } from '../application/hostViewNavigationLifecycle';
 import type { ReadingPositionPort } from '../application/readingPositionMemory';
+import type { createDocumentSaveAsViewStateHandoff } from '../application/documentSaveAsViewState';
 import {
   EXTENSION_CONFIG_SECTION,
+  MARKDOWN_EDITOR_VIEW_TYPE,
   GIT_CHANGES_GUTTER_SETTING_KEY,
   GIT_DIFF_DETAILS_VISIBLE_SETTING_KEY,
   DIFF_BASELINE_MODE_SETTING_KEY,
@@ -90,6 +93,7 @@ import { createExportSnapshotTransport } from '../host/exportSnapshotTransport';
 import { respondToDocumentSessionRequest } from '../host/documentSessionRequestHandler';
 import { createVscodeDocumentReloadAdapter } from '../host/vscodeDocumentReloadAdapter';
 import { createVscodeDocumentCopyAdapter } from '../host/vscodeDocumentCopyAdapter';
+import { createVscodeDocumentSaveAsAdapter } from '../host/vscodeDocumentSaveAsAdapter';
 import { showSavedDocumentCopyFeedback } from '../host/vscodeDocumentCopyFeedback';
 import { createVscodeDocumentSaveLifecycleAdapter } from '../host/vscodeDocumentSaveLifecycleAdapter';
 import type { createImageStorageHost } from '../host/imageStorage';
@@ -142,6 +146,7 @@ type PanelSessionControllerParams = {
   diffBaselineOutput: DiffBaselineOutput<GitBaselinePayload>;
   viewNavigation: HostViewNavigationPort<vscode.TextEditor>;
   readingPosition: ReadingPositionPort;
+  saveAsViewStateHandoff?: ReturnType<typeof createDocumentSaveAsViewStateHandoff>;
   saveDocument: () => Promise<boolean>;
   onExportDocument: (session: PanelSession, options: ExportOptions) => Promise<void>;
   getCustomPreviewPresets?: () => readonly import('../foundation/previewPresets').PreviewPresetDefinition[];
@@ -181,6 +186,8 @@ type PanelSessionControllerParams = {
   setEditorAppearance: (appearance: EditorAppearance) => Promise<void>;
   getUiColors?: () => UiColors;
   setUiColors?: (colors: UiColors) => Promise<UiColors>;
+  getEditorLineHeight?: () => number;
+  setEditorLineHeight?: (value: number) => Promise<void>;
   getEditorFontSizePreference: () => EditorFontSizePreference;
   setEditorFontSizePreference: (preference: EditorFontSizePreference) => Promise<void>;
   setOutlineVisible: (visible: boolean) => Promise<void>;
@@ -249,6 +256,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
   } = params;
 
   const documentKey = document.uri.toString();
+  const saveAsViewState = params.saveAsViewStateHandoff?.take(documentKey, document.getText()) ?? null;
   const persistedMode = context.globalState.get(EDITOR_MODE_STATE_KEY);
   const persistedEditorMode: EditorMode | null = isEditorMode(persistedMode) ? persistedMode : null;
   let applyQueue: Promise<void> = Promise.resolve();
@@ -362,6 +370,14 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     postMessage: postToWebview,
     showFailure: (message) => { void vscode.window.showWarningMessage(message); }
   });
+  const documentSaveAsAdapter = createVscodeDocumentSaveAsAdapter(document, {
+    getUiLanguage,
+    markdownEditorViewType: MARKDOWN_EDITOR_VIEW_TYPE,
+    isTargetEditorActive: () => !disposed && panel.active,
+    runPreparedSave: save => documentSaveLifecycle.runPreparedSave(save),
+    stageViewState: (target, text, state) => params.saveAsViewStateHandoff?.stage(target.toString(), text, state) ?? (() => undefined),
+    onFailure: message => { void vscode.window.showErrorMessage(message); }
+  });
   let requestDiffBaselineRefresh = (_options: GitBaselineRefreshOptions): void => undefined;
   const diffBaselineSelection = createDiffBaselineSelection<GitBaselinePayload>({
     initialMode: getDiffBaselineMode(),
@@ -444,7 +460,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     const editorFontSizePreference = getEditorFontSizePreference();
     // Preview compares render responses with CodeMirror's LF-normalized text.
     const initialText = normalizeDocumentText(document.getText());
-    const initialMode = selectInitialEditorMode({
+    const initialMode = saveAsViewState?.mode ?? selectInitialEditorMode({
       text: initialText,
       persistedMode: persistedEditorMode,
       optimizationEnabled: getLargeDocumentOptimizationEnabled()
@@ -489,6 +505,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       editorAppearance: getEditorAppearance(),
       uiColors: params.getUiColors?.() ?? { light: {}, dark: {} },
       editorFontSizeMode: editorFontSizePreference.mode,
+      editorLineHeight: params.getEditorLineHeight?.() ?? DEFAULT_EDITOR_LINE_HEIGHT,
       editorFontSize: editorFontSizePreference.value,
       gitChangesGutter: getGitChangesGutterEnabled(context),
       gitDiffLineHighlights: getGitDiffLineHighlightsEnabled(),
@@ -506,6 +523,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       criticMarkupDates: getCriticMarkupDates(),
       restoreReadingPositionOnOpen,
       readingPositionRestore,
+      ...(saveAsViewState ? { saveAsViewState } : {}),
       findOptions: getFindOptions(),
       outlinePosition: getOutlinePosition(),
       outlineVisible: getOutlineVisible(context),
@@ -592,7 +610,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
           if (externalFileStatus !== 'current') {
             publishExternalFileStatus(externalFileStatus, true);
           }
-          await viewNavigation.ready();
+          await viewNavigation.ready({ preserveInitialView: saveAsViewState !== null });
         }
       } finally {
         initDelivery = null;
@@ -850,6 +868,14 @@ export function createPanelSessionController(params: PanelSessionControllerParam
       case 'setEditorAppearance':
         await setEditorAppearance(raw.appearance);
         return;
+      case 'setEditorLineHeight':
+        try {
+          await params.setEditorLineHeight?.(raw.value);
+        } catch (error) {
+          await postToWebview({ type: 'editorLineHeightChanged', value: params.getEditorLineHeight?.() ?? DEFAULT_EDITOR_LINE_HEIGHT });
+          void vscode.window.showErrorMessage((getUiLanguage() === 'zh-CN' ? '行间距保存失败：' : 'Unable to save line spacing: ') + (error instanceof Error ? error.message : String(error)));
+        }
+        return;
       case 'setEditorFontSize':
         await setEditorFontSizePreference({ mode: raw.mode, value: raw.value });
         return;
@@ -865,9 +891,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         return;
       case 'openLink': {
         if (await viewNavigation.revealDocumentLink(raw.href)) return;
-        await openLink(raw.href, documentUri, {
-          localEditor: raw.source === 'preview' ? 'default' : 'associated'
-        });
+        await openLink(raw.href, documentUri);
         return;
       }
       case 'openImageExternally':
@@ -1059,6 +1083,11 @@ export function createPanelSessionController(params: PanelSessionControllerParam
         await postToWebview(response);
         return;
       }
+      case 'saveDocumentAs': {
+        const response = await documentSaveAsAdapter.handle(raw);
+        await postToWebview(response);
+        return;
+      }
       case 'saveImageFromClipboard': {
         const response = await handleSaveImageFromClipboard(raw, documentUri);
         await postToWebview(response);
@@ -1201,6 +1230,7 @@ export function createPanelSessionController(params: PanelSessionControllerParam
     savedRevisionLifecycle.dispose();
     documentSaveLifecycle.dispose();
     documentCopyAdapter.dispose();
+    documentSaveAsAdapter.dispose();
 
     runBackground(enqueue(async () => {
       try {

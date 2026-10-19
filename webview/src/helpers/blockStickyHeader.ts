@@ -52,6 +52,17 @@ function blockHeaderAt(view: EditorView, position: number): BlockHeader | null {
   return block;
 }
 
+function mountedLine(view: EditorView, node: Node): HTMLElement | null {
+  const line = (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.cm-line');
+  return line?.closest('.cm-content') === view.contentDOM ? line : null;
+}
+
+function mountedSourceLine(view: EditorView, position: number): HTMLElement | null {
+  const line = mountedLine(view, view.domAtPos(position).node);
+  return line && view.state.doc.lineAt(view.posAtDOM(line, 0)).from === view.state.doc.lineAt(position).from
+    ? line : null;
+}
+
 function readBlockHeader(view: EditorView, position: number): BlockHeader | null {
   const state = view.state;
   const line = state.doc.lineAt(position);
@@ -153,23 +164,39 @@ class BlockStickyHeader {
     if (view.dom.ownerDocument.querySelector('.meo-mermaid-fullscreen-scrim, .meo-latex-math-fullscreen-scrim')) return 'fullscreen';
     const scroller = view.scrollDOM.getBoundingClientRect();
     if (scroller.height < HEADER_HEIGHT * 2) return null;
-    const topLine = view.lineBlockAtHeight(Math.max(0, (scroller.top - view.documentTop + 1) / view.scaleY));
-    const block = blockHeaderAt(view, topLine.from);
+    const content = view.contentDOM.getBoundingClientRect();
+    // A virtual gap can change the height map before its scroll compensation
+    // settles. Read through the floating bar to the painted main-editor line;
+    // nested editors and unmounted regions retain the height-map fallback.
+    const probeX = Math.max(scroller.left + 1, Math.min(scroller.right - 1, (content.left + content.right) / 2));
+    const paintedLine = view.dom.ownerDocument.elementsFromPoint(probeX, scroller.top + 1)
+      .map(element => mountedLine(view, element)).find(line => line !== null);
+    const position = paintedLine ? view.posAtDOM(paintedLine, 0)
+      : view.lineBlockAtHeight(Math.max(0, (scroller.top - view.documentTop + 1) / view.scaleY)).from;
+    const block = blockHeaderAt(view, position);
     if (!block) return null;
     const shell = Array.from(view.contentDOM.querySelectorAll<HTMLElement>(shellSelector)).find((candidate) => (
       Number(candidate.dataset.meoRenderedBlockStartLine) === view.state.doc.lineAt(block.from).number ||
       candidate.dataset.meoMermaidAnchor === String(block.from) || candidate.dataset.meoLatexMathAnchor === String(block.from)
     ));
-    const top = shell?.getBoundingClientRect().top ?? view.documentTop + view.lineBlockAt(block.from).top * view.scaleY;
-    const bottom = shell?.getBoundingClientRect().bottom ?? view.documentTop + view.lineBlockAt(block.to).bottom * view.scaleY;
+    const opening = block.kind === 'code' ? mountedSourceLine(view, block.from) : null;
+    const ending = block.kind === 'code' ? mountedSourceLine(view, block.to) : null;
+    const foldedTail = block.kind === 'code'
+      ? Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.meo-md-long-code-placeholder'))
+        .find(element => {
+          const position = view.posAtDOM(element, 0);
+          return position >= block.from && position <= block.to;
+        }) : null;
+    const top = shell?.getBoundingClientRect().top ?? opening?.getBoundingClientRect().top
+      ?? view.documentTop + view.lineBlockAt(block.from).top * view.scaleY;
+    const bottom = shell?.getBoundingClientRect().bottom ?? foldedTail?.getBoundingClientRect().bottom
+      ?? ending?.getBoundingClientRect().bottom ?? view.documentTop + view.lineBlockAt(block.to).bottom * view.scaleY;
     if (bottom - top < HEADER_HEIGHT * 3 || top >= scroller.top - 1 || bottom < scroller.top + HEADER_HEIGHT) return null;
-    const content = view.contentDOM.getBoundingClientRect();
-    const line = view.domAtPos(Math.max(block.from, Math.min(topLine.from, block.to))).node;
-    let lineElement = (line instanceof Element ? line : line.parentElement)?.closest<HTMLElement>('.cm-line');
+    const line = view.domAtPos(Math.max(block.from, Math.min(position, block.to))).node;
+    let lineElement = paintedLine ?? mountedLine(view, line);
     // Code tail widgets have no .cm-line; keep the last source row's bounds and indentation.
-    if (!lineElement && block.kind === 'code' && topLine.from > block.from) {
-      const previous = view.domAtPos(topLine.from - 1).node;
-      lineElement = (previous instanceof Element ? previous : previous.parentElement)?.closest<HTMLElement>('.cm-line');
+    if (!lineElement && block.kind === 'code' && position > block.from) {
+      lineElement = mountedLine(view, view.domAtPos(position - 1).node);
     }
     const lineRect = lineElement?.getBoundingClientRect();
     const gutterRight = view.scrollDOM.querySelector(':scope > .cm-gutters')?.getBoundingClientRect().right ?? scroller.left;

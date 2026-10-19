@@ -179,11 +179,14 @@ export type UiStrings = Readonly<{
   missingLocalLink: string;
   expandDetails: string;
   collapseDetails: string;
-  showHtmlSource: string;
   jumpToFootnote: (number: number) => string;
   jumpToFootnoteReference: (number: number) => string;
   indentedCodeBlockLabel: string;
   copyCode: string;
+  copyImage: string;
+  copyingImage: string;
+  copiedImage: string;
+  copyImageFailed: string;
   copied: string;
   copy: string;
   selectAllCode: string;
@@ -225,8 +228,33 @@ export type UiStrings = Readonly<{
   closeColorControls: string;
   cancelColorAdjustment: string;
   applyColorAdjustment: string;
-  showHtmlPreview: string;
   unsupportedHtmlSource: string;
+  htmlFilteredContent: (items: string[]) => string;
+  htmlUnsupportedTag: (name: string) => string;
+  htmlUnsupportedAttribute: (name: string) => string;
+  htmlUnsupportedStyle: (name: string) => string;
+  htmlInvalidValue: (name: string) => string;
+  htmlBlockedUrl: (name: string) => string;
+  formatHtml: string;
+  formatMath: string;
+  formattingMath: string;
+  formattedMath: string;
+  mathFormatUnchanged: string;
+  mathFormattedProtected: string;
+  mathFormatBoundary: string;
+  mathFormatUnsafe: string;
+  mathFormatUnsupported: string;
+  mathFormatInvalid: string;
+  mathFormatUnavailable: string;
+  formattingHtml: string;
+  formattedHtml: string;
+  htmlFormatUnchanged: string;
+  htmlFormattedProtected: string;
+  htmlFormatBoundary: string;
+  htmlFormatUnsafe: string;
+  htmlFormatInvalid: string;
+  htmlFormatChanged: string;
+  htmlFormatUnavailable: string;
   acceptCurrent: string;
   acceptIncoming: string;
   acceptBoth: string;
@@ -238,6 +266,9 @@ export type UiStrings = Readonly<{
   tableInsert: string;
   tableMove: string;
   tableDelete: string;
+  deleteTable: string;
+  sortTableAscending: string;
+  sortTableDescending: string;
   tableBack: string;
   tableCollapse: string;
   tableMoreActions: string;
@@ -286,9 +317,19 @@ export type UiStrings = Readonly<{
   table: string;
   line: string;
   goToLine: string;
-  editInSource: string;
+  alignSourceToPreview: string;
+  alignPreviewToSource: string;
   save: string;
   saveDocument: string;
+  saveAs: string;
+  saveAsFailed: string;
+  retrySaveAs: string;
+  saveAsResultUnknown: string;
+  saveAsResultUnknownMessage: string;
+  historyFailed: string;
+  historyFailedMessage: string;
+  undo: string;
+  redo: string;
   reloadDiskVersion: string;
   reloadDiskVersionDoubleClick: string;
   constrainContentWidth: string;
@@ -398,7 +439,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFontPlaceholder: 'Use default font',
     previewFontUnavailable: 'System font list unavailable; keeping current choices',
     previewGenerating: 'Generating preview…',
-    previewFailed: 'Preview generation failed', previewTools: 'Preview tools', exportDocument: 'Export as...',
+    previewFailed: 'Preview generation failed', previewTools: 'Preview tools', exportDocument: 'Export as…',
     exportHtml: 'Export as HTML', exportPdf: 'Export as PDF', exportDocx: 'Export as Word', exportAsHtml: 'Export as HTML',
     exportAsPdf: 'Export as PDF', exportAsDocx: 'Export as Word document', exportHtmlWithContents: 'Export as HTML with Contents',
     exportPdfWithContents: 'Export as PDF with Contents', exportDocxWithContents: 'Export as Word with Contents', findAndReplace: 'Find and replace', more: 'Settings',
@@ -429,7 +470,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     backToTop: 'Back to top',
     editorToolbar: 'Editor toolbar', formatting: 'Formatting', markdownMode: 'Markdown mode',
     live: 'Live', source: 'Source', split: 'Split', preview: 'Preview',
-    sidePreview: 'Split preview', sidePreviewMore: 'Preview options', exitSidePreview: 'Exit split',
+    sidePreview: 'Side preview', sidePreviewMore: 'Preview options', exitSidePreview: 'Exit side preview',
     showSidePreview: 'Show side preview', hideSidePreview: 'Hide side preview',
     disableSynchronizedScrolling: 'Disable scroll sync',
     enableSynchronizedScrolling: 'Enable scroll sync',
@@ -440,11 +481,11 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpWithinDocument: 'Jump within document', openLink: 'Open link',
     linkDestination: (href: string) => 'Go to: ' + href,
     missingWikiLink: 'Wiki link target not found locally', missingLocalLink: 'Local file link target not found',
-    expandDetails: 'Expand details', collapseDetails: 'Collapse details', showHtmlSource: 'Show HTML source',
+    expandDetails: 'Expand details', collapseDetails: 'Collapse details',
     jumpToFootnote: (number: number) => `Jump to footnote ${number}`,
     jumpToFootnoteReference: (number: number) => `Jump to footnote reference ${number}`,
     indentedCodeBlockLabel: 'Indented code block',
-    copyCode: 'Copy', copied: 'copied', copy: 'copy', selectAllCode: 'Select all code', all: 'all',
+    copyCode: 'Copy source', copyImage: 'Copy as image', copyingImage: 'Copying image…', copiedImage: 'Image copied', copyImageFailed: 'Could not copy image. Try again.', copied: 'copied', copy: 'copy', selectAllCode: 'Select all code', all: 'all',
     codeLines: (count: number) => `${count} lines`,
     showMoreCode: (count: number) => `Show ${count} more lines of code`,
     showMoreLines: (count: number) => `Show ${count} more lines`, showLessCode: 'Show less code', showLess: 'Show less',
@@ -456,9 +497,9 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     formulaEditor: (line: number) => `Formula editor at line ${line}`,
     editFormulaSplit: 'Switch to split view', showFormulaSource: 'Switch to source',
     showFormulaPreview: 'Switch to preview',
-    loading: 'Loading...', zoomIn: 'Zoom in', zoomOut: 'Zoom out', resetZoom: 'Reset zoom',
+    loading: 'Loading…', zoomIn: 'Zoom in', zoomOut: 'Zoom out', resetZoom: 'Reset zoom',
     morePreviewControls: 'More preview controls',
-    fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen',
+    fullscreen: 'View fullscreen', exitFullscreen: 'Exit fullscreen',
     mermaidError: (message: string) => `Mermaid error: ${message}`,
     openWithSystemApp: 'Open with system app', fullscreenImage: 'Fullscreen image', refreshImage: 'Refresh image',
     colorLabel: (value: string) => `Color ${value}`,
@@ -467,14 +508,37 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     hexColorValue: 'HEX color value', hue: 'Hue', saturation: 'Saturation',
     brightness: 'Brightness', opacity: 'Opacity', closeColorControls: 'Close color controls',
     cancelColorAdjustment: 'Cancel', applyColorAdjustment: 'Apply',
-    showHtmlPreview: 'Show HTML preview',
     unsupportedHtmlSource: 'Invalid or unsupported HTML; source retained',
+    htmlFilteredContent: (items: string[]) => `Not used in the preview; source retained:\n${items.join('\n')}`,
+    htmlUnsupportedTag: (name: string) => `Unsupported tag: ${name}`,
+    htmlUnsupportedAttribute: (name: string) => `Unsupported attribute: ${name}`,
+    htmlUnsupportedStyle: (name: string) => `Unsupported style: ${name}`,
+    htmlInvalidValue: (name: string) => `Invalid or unsupported value: ${name}`,
+    htmlBlockedUrl: (name: string) => `Blocked link or image address: ${name}`,
+    formatHtml: 'Format this HTML fragment',
+    formatMath: 'Format this formula', formattingMath: 'Formatting formula…', formattedMath: 'Formula formatted',
+    mathFormatUnchanged: 'No layout changes needed',
+    mathFormattedProtected: 'Formula formatted; text, comments and definitions retained',
+    mathFormatBoundary: 'Cannot determine formula layout boundaries; source retained',
+    mathFormatUnsafe: 'Layout changes would affect formula rendering; source retained',
+    mathFormatUnsupported: 'This formula cannot be rendered; source retained',
+    mathFormatInvalid: 'Formula syntax is incomplete or invalid; source retained',
+    mathFormatUnavailable: 'Place the caret or selection inside one formula block',
+    formattingHtml: 'Formatting HTML…', formattedHtml: 'HTML formatted',
+    htmlFormatUnchanged: 'No layout changes needed',
+    htmlFormattedProtected: 'HTML formatted; preformatted content and inline spacing retained',
+    htmlFormatBoundary: 'Cannot determine protected HTML boundaries; source retained',
+    htmlFormatUnsafe: 'Formatting would change HTML content or meaningful spacing; source retained',
+    htmlFormatInvalid: 'HTML is incomplete or invalid; source retained',
+    htmlFormatChanged: 'Editing position or content changed; format again to retry',
+    htmlFormatUnavailable: 'Place the caret or selection inside one HTML fragment',
     acceptCurrent: 'Accept Current', acceptIncoming: 'Accept Incoming', acceptBoth: 'Accept Both',
     currentVersion: (label: string) => `Current: ${label},`,
     incomingVersion: (label: string) => `Incoming: ${label}`,
     alertLabel: (type: string) => type,
     tableActions: 'Table actions', returnToTableHeader: 'Click to return to table header',
     tableInsert: 'Insert', tableMove: 'Move', tableDelete: 'Delete', tableBack: 'Back',
+    deleteTable: 'Delete table', sortTableAscending: 'Sort ascending', sortTableDescending: 'Sort descending',
     tableCollapse: 'Collapse table actions', tableMoreActions: 'Next page',
     tablePreviousActions: 'Previous page',
     tableAlign: 'Align',
@@ -495,7 +559,13 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     showOutlineLeft: 'Show outline on left', showOutlineRight: 'Show outline on right',
     codeBlock: 'Code block', quote: 'Blockquote', horizontalRule: 'Horizontal rule',
     link: 'Link', wikiLink: 'Wiki link', image: 'Image', table: 'Insert table', line: 'Lines',
-    goToLine: 'Go to line', editInSource: 'Click to reveal in source', save: 'Save', saveDocument: 'Save document',
+    goToLine: 'Go to line', alignSourceToPreview: 'Align source to preview view', alignPreviewToSource: 'Align preview to source view', save: 'Save', saveDocument: 'Save document',
+    saveAs: 'Save as…', saveAsFailed: 'Save As failed', undo: 'Undo', redo: 'Redo',
+    retrySaveAs: 'Retry save as…',
+    saveAsResultUnknown: 'Save As result not confirmed',
+    saveAsResultUnknownMessage: 'Saving may still be in progress. Check the Save As dialog and destination file before trying again.',
+    historyFailed: 'Undo/Redo could not finish',
+    historyFailedMessage: 'Check the current document before continuing. You can save a copy to keep its current contents.',
     reloadDiskVersion: 'Reload (discard unsaved changes)', reloadDiskVersionDoubleClick: 'Confirm reload (discard unsaved changes)',
     constrainContentWidth: 'Constrain Content Width', constrainWidth: 'Limit content width',
     disableConstrainedWidth: 'Disable Constrained Width',
@@ -610,7 +680,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     previewFontPlaceholder: '使用默认字体',
     previewFontUnavailable: '无法读取系统字体列表，保留当前候选',
     previewGenerating: '正在生成预览…',
-    previewFailed: '预览生成失败', previewTools: '预览工具', exportDocument: '导出为...', exportHtml: '导出为 HTML',
+    previewFailed: '预览生成失败', previewTools: '预览工具', exportDocument: '导出为…', exportHtml: '导出为 HTML',
     exportPdf: '导出为 PDF', exportDocx: '导出为 Word', exportAsHtml: '导出为 HTML', exportAsPdf: '导出为 PDF',
     exportAsDocx: '导出为 Word 文档', exportHtmlWithContents: '导出为 HTML（含目录）', exportPdfWithContents: '导出为 PDF（含目录）',
     exportDocxWithContents: '导出为 Word（含目录）',
@@ -642,7 +712,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     backToTop: '回到顶部',
     editorToolbar: '编辑器工具栏', formatting: '格式', markdownMode: 'Markdown 模式',
     live: '实时', source: '源码', split: '分栏', preview: '预览',
-    sidePreview: '分栏预览', sidePreviewMore: '预览选项', exitSidePreview: '退出分栏',
+    sidePreview: '侧边预览', sidePreviewMore: '预览选项', exitSidePreview: '退出侧边预览',
     showSidePreview: '显示侧边预览', hideSidePreview: '关闭侧边预览',
     disableSynchronizedScrolling: '关闭同步滚动',
     enableSynchronizedScrolling: '启用同步滚动',
@@ -653,11 +723,11 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     jumpWithinDocument: '在文档内跳转', openLink: '打开链接',
     linkDestination: (href: string) => '跳转到：' + href,
     missingWikiLink: '本地未找到 Wiki 链接目标', missingLocalLink: '未找到本地文件链接目标',
-    expandDetails: '展开详细信息', collapseDetails: '折叠详细信息', showHtmlSource: '显示 HTML 源码',
+    expandDetails: '展开详细信息', collapseDetails: '折叠详细信息',
     jumpToFootnote: (number: number) => `跳转到脚注 ${number}`,
     jumpToFootnoteReference: (number: number) => `跳转到脚注引用 ${number}`,
     indentedCodeBlockLabel: '缩进代码块',
-    copyCode: '复制', copied: '已复制', copy: '复制', selectAllCode: '全选代码', all: '全选',
+    copyCode: '复制源码', copyImage: '复制为图片', copyingImage: '正在复制图片…', copiedImage: '已复制图片', copyImageFailed: '无法复制图片，请重试。', copied: '已复制', copy: '复制', selectAllCode: '全选代码', all: '全选',
     codeLines: (count: number) => `${count} 行`,
     showMoreCode: (count: number) => `显示其余 ${count} 行代码`,
     showMoreLines: (count: number) => `显示其余 ${count} 行`, showLessCode: '收起代码', showLess: '收起',
@@ -671,7 +741,7 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     showFormulaPreview: '切换为预览',
     loading: '正在加载…', zoomIn: '放大', zoomOut: '缩小', resetZoom: '重置缩放',
     morePreviewControls: '更多预览操作',
-    fullscreen: '全屏', exitFullscreen: '退出全屏',
+    fullscreen: '全屏查看', exitFullscreen: '退出全屏',
     mermaidError: (message: string) => `Mermaid 错误：${message}`,
     openWithSystemApp: '使用系统应用打开', fullscreenImage: '全屏查看图片', refreshImage: '刷新图片',
     colorLabel: (value: string) => `颜色 ${value}`,
@@ -680,14 +750,37 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     hexColorValue: 'HEX 色值', hue: '色相', saturation: '饱和度',
     brightness: '明度', opacity: '透明度', closeColorControls: '关闭颜色调整器',
     cancelColorAdjustment: '取消', applyColorAdjustment: '应用',
-    showHtmlPreview: '显示 HTML 预览',
     unsupportedHtmlSource: 'HTML 标记无效或不受支持，已保留源码',
+    htmlFilteredContent: (items: string[]) => `预览未采用以下内容，源码已保留：\n${items.join('\n')}`,
+    htmlUnsupportedTag: (name: string) => `不支持的标签：${name}`,
+    htmlUnsupportedAttribute: (name: string) => `不支持的属性：${name}`,
+    htmlUnsupportedStyle: (name: string) => `不支持的样式：${name}`,
+    htmlInvalidValue: (name: string) => `值无效或不受支持：${name}`,
+    htmlBlockedUrl: (name: string) => `已拦截的链接或图片地址：${name}`,
+    formatHtml: '格式化当前 HTML 片段',
+    formatMath: '格式化当前公式', formattingMath: '正在格式化公式…', formattedMath: '公式已格式化',
+    mathFormatUnchanged: '无需调整布局',
+    mathFormattedProtected: '公式已格式化，文字、注释和宏定义已保留',
+    mathFormatBoundary: '无法确定公式的布局边界，已保留原文',
+    mathFormatUnsafe: '布局调整会改变公式渲染结果，已保留原文',
+    mathFormatUnsupported: '此公式暂时无法渲染，已保留原文',
+    mathFormatInvalid: '公式语法未完成或无效，已保留原文',
+    mathFormatUnavailable: '请将光标或选区放在一个块状公式内',
+    formattingHtml: '正在格式化 HTML…', formattedHtml: 'HTML 已格式化',
+    htmlFormatUnchanged: '无需调整布局',
+    htmlFormattedProtected: 'HTML 已格式化，预格式内容与行内空白已保留',
+    htmlFormatBoundary: '无法确定 HTML 的保护边界，已保留原文',
+    htmlFormatUnsafe: '格式化会改变 HTML 内容或有意义的空白，已保留原文',
+    htmlFormatInvalid: 'HTML 未完成或语法无效，已保留原文',
+    htmlFormatChanged: '编辑位置或内容已变化，请重新格式化',
+    htmlFormatUnavailable: '请将光标或选区放在一个 HTML 片段内',
     acceptCurrent: '接受当前更改', acceptIncoming: '接受传入更改', acceptBoth: '接受两者',
     currentVersion: (label: string) => `当前：${label}，`,
     incomingVersion: (label: string) => `传入：${label}`,
     alertLabel: (type: string) => ({ NOTE: '备注', TIP: '提示', IMPORTANT: '重要', WARNING: '警告', CAUTION: '注意' }[type] ?? type),
     tableActions: '表格操作', returnToTableHeader: '点击回到表头',
     tableInsert: '插入', tableMove: '移动', tableDelete: '删除', tableBack: '返回',
+    deleteTable: '删除表格', sortTableAscending: '升序排列', sortTableDescending: '降序排列',
     tableCollapse: '收起表格操作', tableMoreActions: '下一页',
     tablePreviousActions: '上一页',
     tableAlign: '对齐',
@@ -707,7 +800,13 @@ const CATALOG: Readonly<Record<UiLanguage, UiStrings>> = Object.freeze({
     numberedList: '有序列表', task: '任务列表', showOutlineLeft: '在左侧显示目录',
     showOutlineRight: '在右侧显示目录', codeBlock: '代码块', quote: '引用',
     horizontalRule: '分隔线', link: '链接', wikiLink: 'Wiki 链接', image: '图片', table: '插入表格',
-    line: '行号', goToLine: '跳转到行', editInSource: '点击定位源码', save: '保存', saveDocument: '保存文档',
+    line: '行号', goToLine: '跳转到行', alignSourceToPreview: '将源码对齐到预览视图', alignPreviewToSource: '将预览对齐到源码视图', save: '保存', saveDocument: '保存文档',
+    saveAs: '另存为…', saveAsFailed: '另存为失败', undo: '撤销', redo: '重做',
+    retrySaveAs: '重试另存为…',
+    saveAsResultUnknown: '尚未确认另存为结果',
+    saveAsResultUnknownMessage: '保存可能仍在进行。请先检查另存为对话框和目标文件，确认后再重试。',
+    historyFailed: '撤销或重做未能完成',
+    historyFailedMessage: '请先检查当前文档内容，再继续编辑。你可以另存副本保留当前内容。',
     reloadDiskVersion: '重新加载（放弃未保存内容）', reloadDiskVersionDoubleClick: '确认重新加载（放弃未保存内容）',
     constrainContentWidth: '限制内容宽度', constrainWidth: '限制宽度',
     disableConstrainedWidth: '取消内容宽度限制',

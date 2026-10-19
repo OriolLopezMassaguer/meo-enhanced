@@ -83,6 +83,7 @@ function targetedCommands(
     case 'history':
       return [
         script('scripts/test-preview-shortcuts-production.ts'),
+        script('scripts/test-math-completion-production.ts'),
         script('scripts/test-input-assistance-production.ts'),
         script('scripts/test-html-comment-input-production.ts'),
         script('scripts/test-editing-features-production.ts'),
@@ -130,6 +131,9 @@ function targetedCommands(
         script('scripts/test-history-rendered-block-interaction.ts'),
         script('scripts/test-mermaid-diagram-presentation-runtime.ts'),
         script('scripts/test-mermaid-editing.ts'),
+        script('scripts/test-preview-rendered-actions.ts'),
+        script('scripts/test-live-rendered-image-copy.ts'),
+        script('scripts/test-rendered-block-action-state.ts'),
         script('scripts/test-live-embedded-input-viewport.ts'),
         script('scripts/test-virtual-block-scroll-stability.ts')
       ];
@@ -165,6 +169,7 @@ function targetedCommands(
         script('scripts/test-appearance-webview-adapter.ts'),
         script('scripts/test-appearance-settings.ts'),
         script('scripts/test-vscode-theme-transition.ts'),
+        script('scripts/test-math-syntax-production.ts'),
         script('scripts/test-highlight.ts'),
         script('scripts/test-preview-code-highlight-layout.ts')
       ];
@@ -184,6 +189,7 @@ function targetedCommands(
         script('scripts/test-preview-navigation-continuity.ts'),
         script('scripts/test-preview-preset-position.ts'),
         script('scripts/test-native-scroll-progress-production.ts'),
+        script('scripts/test-rendered-block-scroll-layout.ts'),
         script('scripts/test-long-document-scroll.ts'),
         packageScript('test:reading-position'),
         script('scripts/test-font-size-viewport.ts'),
@@ -296,6 +302,7 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-shiki-empty-line-recovery.ts'),
           script('scripts/test-source-syntax-stability.ts'),
           script('scripts/test-source-syntax-first-paint.ts'),
+          script('scripts/test-math-syntax-production.ts'),
           script('scripts/test-preview-presets.ts'),
           script('scripts/test-export-links.ts'),
           script('scripts/test-export-links-browser.ts'),
@@ -305,6 +312,8 @@ export function createTestWorkflowPlan(request: TestWorkflowRequest): TestWorkfl
           script('scripts/test-preview-preset-position.ts'),
           script('scripts/test-editor-shortcuts.ts'),
           script('scripts/test-editing-preferences.ts'),
+          script('scripts/test-math-completion.ts'),
+          script('scripts/test-math-completion-production.ts'),
           script('scripts/test-editor-services.ts'),
           script('scripts/test-link-candidates.ts'),
           script('scripts/test-input-assistance-production.ts'),

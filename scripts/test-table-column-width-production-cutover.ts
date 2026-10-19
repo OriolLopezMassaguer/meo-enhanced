@@ -1769,43 +1769,65 @@ async function main(): Promise<void> {
       editor.setMode('source');
       editor.setMode('live');
     });
+    let replacementMinimumProjection: { primaryWidths: number[]; stickyWidths: number[] };
     try {
-      await page.waitForFunction((selector) => {
+      const projection = await page.waitForFunction((selector) => {
         const table = document.querySelector<HTMLTableElement>(selector);
         const cells = Array.from(table?.querySelectorAll<HTMLElement>('thead th') ?? []);
-        if (!table || cells.length !== 3) return false;
+        const sticky = table?.closest('.meo-md-html-table-shell')
+          ?.querySelector<HTMLTableElement>('.meo-md-html-table-sticky-table');
+        const stickyColumns = Array.from(sticky?.querySelectorAll<HTMLTableColElement>('colgroup > col') ?? []);
+        // Mode restoration may hide Sticky. Check its projection here; the
+        // following scroll checks the actual visible header geometry.
+        if (!table || cells.length !== 3 || sticky?.querySelectorAll('thead th').length !== 3
+          || stickyColumns.length !== 3) return false;
         const numeric = (value: string) => Number.parseFloat(value) || 0;
-        return cells.every((cell) => {
+        const primaryWidths = cells.map(cell => cell.getBoundingClientRect().width);
+        const stickyWidths = stickyColumns.map(column => Number.parseFloat(column.style.width));
+        const settled = cells.every((cell, index) => {
           const cellStyle = getComputedStyle(cell);
           const preview = cell.querySelector<HTMLElement>('.meo-md-html-table-cell-preview');
           const previewStyle = preview ? getComputedStyle(preview) : cellStyle;
-          return cell.getBoundingClientRect().width >= numeric(previewStyle.fontSize)
+          const width = primaryWidths[index];
+          return Math.abs(width - stickyWidths[index]) < 1
+            && width >= numeric(previewStyle.fontSize)
             + numeric(previewStyle.paddingLeft)
             + numeric(previewStyle.paddingRight)
             + numeric(cellStyle.borderLeftWidth)
             + numeric(cellStyle.borderRightWidth) - 1;
         });
+        return settled ? { primaryWidths, stickyWidths } : false;
       }, { timeout: 5000 }, `${tableSelector}:first-of-type`);
+      // Read the accepted geometry atomically; the next frame may hide Sticky.
+      replacementMinimumProjection = await projection.jsonValue();
+      await projection.dispose();
     } catch (error) {
       const facts = await page.$eval(`${tableSelector}:first-of-type`, (table: HTMLTableElement) => {
         const numeric = (value: string) => Number.parseFloat(value) || 0;
-        return Array.from(table.querySelectorAll<HTMLElement>('thead th')).map((cell) => {
-          const cellStyle = getComputedStyle(cell);
-          const previewStyle = getComputedStyle(cell.querySelector<HTMLElement>('.meo-md-html-table-cell-preview')!);
-          return {
-            width: cell.getBoundingClientRect().width,
-            minimum: numeric(previewStyle.fontSize) + numeric(previewStyle.paddingLeft)
-              + numeric(previewStyle.paddingRight) + numeric(cellStyle.borderLeftWidth)
-              + numeric(cellStyle.borderRightWidth)
-          };
-        });
+        const sticky = table.closest('.meo-md-html-table-shell')!.querySelector<HTMLElement>('.meo-md-html-table-sticky-table')!;
+        const chrome = sticky.closest<HTMLElement>('.meo-md-html-table-sticky-chrome')!;
+        return {
+          stickyDisplay: getComputedStyle(chrome).display,
+          stickyClass: chrome.className,
+          stickyColumns: Array.from(sticky.querySelectorAll<HTMLTableColElement>('colgroup > col')).map(col => col.style.width),
+          stickyWidths: Array.from(sticky.querySelectorAll<HTMLElement>('thead th')).map(cell => cell.getBoundingClientRect().width),
+          cells: Array.from(table.querySelectorAll<HTMLElement>('thead th')).map((cell) => {
+            const cellStyle = getComputedStyle(cell);
+            const previewStyle = getComputedStyle(cell.querySelector<HTMLElement>('.meo-md-html-table-cell-preview')!);
+            return {
+              width: cell.getBoundingClientRect().width,
+              minimum: numeric(previewStyle.fontSize) + numeric(previewStyle.paddingLeft)
+                + numeric(previewStyle.paddingRight) + numeric(cellStyle.borderLeftWidth)
+                + numeric(cellStyle.borderRightWidth)
+            };
+          })
+        };
       });
       throw new Error(
         `Replacement minimum projection did not settle: ${JSON.stringify(facts)}`,
         { cause: error }
       );
     }
-    const replacementMinimumProjection = await tablePresentationWidths(page, `${tableSelector}:first-of-type`);
     assert.deepEqual(
       replacementMinimumProjection.stickyWidths.map(Math.round),
       replacementMinimumProjection.primaryWidths.map(Math.round),

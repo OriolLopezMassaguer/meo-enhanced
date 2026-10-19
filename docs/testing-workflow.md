@@ -25,6 +25,62 @@ Windows is smoke checked against the installed font collection. Mac/Linux adapte
 need native platform verification before release; unavailable queries use fallback fonts.
 
 The user-facing inventory is in [testing-feature-coverage.md](testing-feature-coverage.md).
+
+`scripts/test-link-candidates-production.ts` initializes the standalone fixture's
+host font variables and measures native textarea text through Chromium's debugging
+protocol. Its real mouse-click checks cover both single-line and wrapped paths in
+monospace and serif fonts, retaining caret, completion-resume and insertion assertions.
+Native character bounds establish the target's visual line; a shared table-row
+height or a separate div mirror cannot establish the native text layout.
+
+`scripts/test-pdf-page-background.ts` runs in the browser gate and uses the production
+PDF renderer for every built-in preset and a custom dual-theme preset. It compares
+the final PDF's full-paper background drawing on every page against the rendered
+document color, including non-white light backgrounds, dark backgrounds, custom
+zero/variable margins and a partly filled last page. DOM color checks or a PDF file
+header alone cannot catch a contrasting frame in the printed page margins.
+`scripts/test-html-content.ts` covers shared HTML tag/style filtering in default
+HTML/PDF/DOCX output, adjacent and nested fragments, CommonMark boundaries, image
+dimensions, and Live source-above-result editing. Its browser checks preserve
+native text selection, disclosure/link actions, undo and mode continuity,
+tag/attribute completion, closing tags, literal paste and IME input. They
+verify pasted HTML opens source without reformatting or moving the native caret,
+including trailing blank lines, hidden fragments, sibling blocks and history.
+Source/Live transitions continue to respect the caret; inline HTML and code keep
+their own input paths. `bun scripts/test-html-content.ts --pointer-only` runs only
+the HTML layout/gutter alignment with hidden trailing nodes and nested containers,
+HTML/math final-row clicks, native source dragging and actual Ctrl+C/Ctrl+V round trips,
+the nonselectable format action and source presentation through pointer release, including
+entering a native table cell whose widget bypasses CodeMirror's pointer handlers. The checks also
+cover forward/reverse HTML/math cross-block drags, keyboard selection extension,
+source-only copying, exact cut/undo/redo and native HTML reading selection.
+`bun scripts/test-html-content.ts --selection-only` isolates those selection checks.
+Editing previews must not add a second copy of rendered text to the native source
+selection. Native VS Code clipboard acceptance has a separate disposable-profile
+launcher: `./scripts/test-vscode-html-copy.ps1 -CodePath <Code.exe>`. Build the
+current extension and Webview first; it checks mouse selection, Ctrl+C, the workbench copy command,
+Ctrl+V and whole-document copying through the system clipboard, restores previous
+clipboard text, and records results under `.local/probes/html-copy-*/`. The isolated
+launcher uses CDP rather than the host mouse/keyboard and writes only temporary
+fixture documents. This does not verify the user's existing profile or keybindings.
+The HTML browser checks also
+verify that empty/hidden fragments remain discoverable as muted source without
+adding an empty preview. Screenshots under `.local/html-fragment-acceptance/`
+cover Chinese/English, light/dark and narrow layouts. Existing gutter, mode,
+focus and layout contracts use main-document selection to enter HTML source.
+The same contract verifies explicit HTML formatting and its single undo/redo,
+Live/Source keyboard entry with reassigned and cleared bindings, unified tooltip
+shortcut labels, localized filtered-content details, preserved
+whitespace, invalid input and late-result protection. Its trusted-wheel scenario
+places rendered HTML above the viewport and checks every frame of HTML and math
+expansion, preventing unrelated reading-anchor restoration from shifting earlier content.
+Word HTML acceptance uses `scripts/test-docx-export-runtime.ts` for inline text,
+figure captions and explicit pre-wrap line breaks, and
+`scripts/test-docx-export-browser.ts` for hidden attributes, CSS visibility,
+transparent/zero-size text, closed details and visible child overrides. Inspect
+the final Word document in Word as well: its HTML converter retains editable
+text but approximates browser typography, repeated spaces, ruby and custom list
+numbering. Deliberately unclosed tags can still affect following HTML content.
 The Mermaid/formula inner-source matrix and findings are in
 [testing-rendered-block-source.md](testing-rendered-block-source.md). Run
 `bun run test:rendered-source` for its dedicated input, boundary and appearance
@@ -55,6 +111,15 @@ The tall-Mermaid viewport contract checks each trusted pixel-wheel event's targe
 delta and scroll response, then waits for stable anchor/gap/scroll geometry before
 applying its unchanged displacement limit. Failure reports retain event and frame
 traces so dispatch timing cannot be mistaken for settled native scrolling.
+`scripts/test-rendered-block-scroll-layout.ts` bounds Chromium layout counts when
+a 60-row table mounts and scrolls, loads the real Mermaid runtime, and checks
+reading retention when either block fills the viewport without a text line.
+It rejects redundant source-metadata mutations and geometry reads from detached
+or disposing tables, while retaining focused-cell caret measurement.
+Its controlled height-map receipt isolates delayed CodeMirror anchoring from
+actual DOM movement. It also verifies that background Mermaid warming waits for
+native scrolling to settle, resumes afterward, and respects cancellation; visible
+render calls remain immediate. Full-document scroll tests load the same runtime.
 The viewport-controller unit matrix interleaves background document presentation,
 native wheel adoption and virtual-gap contraction in both directions. Document
 presentation yields its fixed-target projection to the active native reading owner;
@@ -95,9 +160,25 @@ the long-run authorization policy below.
 | Light UI | Copy, existing icon replacements, or local visual style changes meet the boundary below | Build plus a scoped smoke pass | `bun run test:ui-light` |
 | Quick | A behavior or other implementation change is ready for a general regression check | Last measured baseline about 18 minutes; host dependent | `bun run test:quick` |
 | Targeted | A change affects one high-risk area, or a quick check identifies that area | About 1–5 minutes | `bun run test:targeted -- <area>` |
-| Release | A milestone or release candidate needs the complete gate | Last measured baseline about 60 minutes, excluding native acceptance and endurance | `bun run test:release -- --confirm-long-run` |
+| Release | A release candidate or separately authorized cross-cutting risk needs the complete gate | Last measured baseline about 60 minutes, excluding native acceptance and endurance | `bun run test:release -- --confirm-long-run` |
 | Large document | A shorter production-like document stress pass is specifically needed | About 1–3 minutes | `bun run test:large-document -- <document> --confirm-long-run` |
 | Endurance | Full-document edit, undo/redo, cursor, and viewport stress is specifically needed | About 20–35 minutes per run | `bun run test:endurance -- <document> --confirm-long-run` |
+
+## Validation for commits and merges
+
+Select validation by behavioral scope and risk. An ordinary feature/fix commit
+or merge into `main` uses the normal quick/targeted checks and applicable type,
+build, privacy and staged architecture/Protocol checks. Reuse evidence that
+still covers the same candidate; a fast-forward merge does not require another
+run. Conflict resolution or integration changes require checking the affected
+scope. Ordinary completion needs no waiver from the full long-running suite.
+
+Full long-running validation primarily supports release acceptance. Outside
+release work, recommend it only when specific cross-cutting, Protocol,
+persistence/migration or accumulated interaction risks expose gaps in the
+existing checks. State those gaps, scope and duration and obtain current-task
+authorization. A commit, merge, completed feature or milestone alone does not
+promote validation to the release tier; release coverage remains unchanged.
 
 ## Light UI changes
 
@@ -134,8 +215,8 @@ The agent owns the decision to recommend a long run; the user does not need to
 remember the tiers or commands. Recommend the appropriate run proactively when
 the work reaches one of these boundaries:
 
-- **Release:** a milestone or release candidate is becoming fixed, or broad
-  cross-cutting changes need release confidence.
+- **Release:** a release candidate needs acceptance, or specific broad
+  cross-cutting risks exceed the coverage of normal quick/targeted checks.
 - **Large document:** a shorter production benchmark, sampled strict UAT, and
   live-scroll integrity pass are enough to assess document-scale risk.
 - **Endurance:** undo/redo, cursor, viewport, tables, or rendered-block editing
@@ -146,12 +227,63 @@ the work reaches one of these boundaries:
 Every recommendation must state the test type, why it is warranted, its scope,
 and its expected duration. Release, endurance, full browser matrices, repeated
 stress runs, full-document sweeps, and VM validation wait for explicit user authorization
-in the current task. A generic request to fix, build, or test is
-not authorization. The confirmation flag records an intentional invocation;
+in the current task. A generic request to fix, build, test, commit, or merge
+is not authorization. The confirmation flag records an intentional invocation;
 it is not a substitute for asking. `--dry-run` is always safe and prints the
 exact commands without running them.
 
 ## Daily repair loop
+
+Browser fixtures must establish the state their assertions inspect. Reset an
+inherited selection and fit a finite fixture before querying its complete reading
+DOM; offscreen nodes may be virtualized. After a pointer release, wait for the
+resulting presentation before reading its activity markers. For text-boundary
+clicks, use integer coordinates inside the first half of the visible glyph rather
+than a fractional edge that can round into hidden syntax. Inject command failures
+into document-changing transactions so unrelated UI effects cannot consume them.
+When positioning a popup after typing, use a native wheel gesture and verify the
+actual anchor position before testing its edge layout. Assigning `scrollTop`
+alone does not signal a new user scroll and can compete with input retention.
+
+`scripts/test-document-save-as-view-state.ts` checks one-shot view handoff before
+native replacement resolves and when the default editor needs a later MEO open.
+The first init retains mode, semantic reading position and selection with opening
+memory enabled or disabled. Initial native selection must not override it.
+`scripts/test-save-as-view-state-browser.ts` captures the production Save As
+snapshot and verifies both the first visible frame and settled viewport in Live
+and Source, including table geometry above the reading position.
+
+`scripts/test-viewport-controller.ts` covers native smooth progress past its final
+wheel event and deferred height-map updates after scrolling becomes idle. A proven
+reading anchor becomes dormant rather than polling indefinitely; new input retires
+it. `scripts/test-fixed-chrome-dom-geometry.ts` checks that repeated fixed-toolbar
+measurements do not mutate widget DOM, while live transforms and replaced parents
+still produce fresh coordinate mappings.
+
+`scripts/test-document-save-as.ts` checks strict request/response codecs, draft
+preparation, active-MEO native Save As, cancellation, failures, duplicate
+requests and replacement of the old panel before completion. Same-file native/MEO
+tabs in one group or split groups must keep the dialog on MEO and leave the native
+source tab intact. Dispatch guards reject inactive panels, changed documents or
+editor types, including focus changes during save preparation. The native command
+returns no URI, so only the initiating group's resulting tab with a manual native
+save receipt confirms the destination; unrelated saves, source auto-save during
+the dialog and unconfirmed tab changes must not claim success. It distinguishes a
+saved file from failure to reopen its Markdown target in MEO.
+Native open recovery returns a successful save result and offers retry/default-editor
+actions without writing again, even after the source panel closes. An undefined
+native result stays quiet and does not assert cancellation. Live-Webview errors
+have one owner; closed-panel failures retain native feedback.
+`scripts/test-document-toolbar.ts` exercises the production toolbar order,
+Live/Source undo/redo, pending native table cells, Save As snapshots and retries,
+Preview restrictions, user shortcut hints and light/dark Chinese/English layouts.
+Narrow layouts use the existing overflow menu. Host API contracts and browser
+clicks are separate evidence; native dialogs and final installed-VSIX replacement
+still require native acceptance.
+The toolbar browser fixture also injects Save As failures/timeouts and native
+history failures. It checks latest-draft retry, quiet incomplete results,
+no automatic repeat writes/replays, actionable copy recovery for toolbar/keyboard,
+and captures bilingual light/dark screenshots of the production notice UI.
 
 `scripts/test-list-toolbar-browser.ts` checks all three toolbar list actions in Live
 and Source with monospaced/proportional fonts: empty and nonempty caret placement,
@@ -183,6 +315,12 @@ palette must paint syntax immediately; edits prepare only the latest revision.
 It also checks preparation behind a hidden Preview cover and cancellation.
 The Shiki lifecycle contracts verify bounded shared caches, unchanged palette
 reuse, real palette invalidation, stale-work cancellation and final disposal.
+The background-demotion unit check explicitly advances reading-pause timers and
+idle callbacks, including fast polling turns. A fixed count of zero-delay timer
+callbacks does not prove that a real 50ms pause expired on every operating system.
+Background Source preparation pauses between batches during native reading and
+retains completed work. Explicit Source transitions promote the same job, keep
+the current surface covered until prepared, and reuse the cache on return.
 These checks are small, deterministic regressions rather than long benchmarks.
 
 `scripts/test-shiki-empty-line-recovery.ts` checks the shared Source, Live and
@@ -262,6 +400,15 @@ their pointer, hover hint and click routing in every built-in preset. MEO Previe
 and HTML/PDF exports explicitly allow local file links in every preset; executable
 URL schemes remain filtered. The direct GitHub compatibility renderer retains its
 strict defaults. Raw HTML destinations must normalize before early URL filtering.
+Host contracts assert the final editor choice: resolved Markdown targets use MEO
+in every view, including Wiki, extension fallback, mixed-case extensions, remote
+URIs and fragments; other files retain their associations. Same-document fragments
+reveal without reopening. Browser contracts click Markdown, reference, Wiki and
+HTML links through production Live/Source and Preview paths, including ordinary
+and Ctrl clicks where supported. Source HTML coverage includes relative hrefs,
+multiline tags, unquoted attributes and entities, with code/comments and unsafe
+schemes excluded. Browser message delivery and Host command routing are distinct
+evidence; final installed-VSIX behavior still requires native acceptance.
 
 `scripts/test-export-links.ts` and `scripts/test-export-links-browser.ts` run in
 quick, targeted appearance and release gates. They cover all built-in presets and
@@ -281,6 +428,13 @@ the browser export check also generates final Word and PDF files. Eight-category
 pie charts are checked in both themes, Word drawing bounds against actual page
 margins, and PDF heading/description/diagram pagination. Build first.
 This focused pack typically takes less than a minute.
+
+`bun scripts/test-fenced-code-boundaries.ts` checks Source/Live coloring and real
+Mermaid source typing at unfinished fences, including quote/list exits, nested
+quotes, ordered lists, deleting a closer, authoring an unfinished diagram, and exact document undo/redo. It also
+captures light/dark screenshots. `test:rendered-source` includes this contract.
+The quick Shiki recovery contract checks longer same-type closing fences and
+rejects short or mismatched closers, including unfinished embedded syntax.
 
 1. Reproduce the reported behavior with the smallest relevant contract.
 2. While implementing, rerun only that contract.
@@ -395,8 +549,21 @@ menu avoidance. It also verifies clipped outline and completion text outside the
 list on the right/left, row alignment, explicit direction precedence and fallback
 when neither side fits. It runs in the targeted appearance and release browser gates.
 The production tooltip check also reveals a clipped heading beside the real outline.
-Production source locator and floating table header checks also verify the two
-pointer-positioned navigation hints and their existing click behavior.
+Production split-view alignment and floating table header checks verify ordinary
+button-anchored alignment hints and pointer-positioned table hints respectively.
+`scripts/test-source-position-marker.ts` retains the existing editing-position
+marker coverage and checks the fixed divider pair while synchronized scrolling is off:
+a shared 26×48px capsule with shortened arrows and touching circular hit targets,
+stable centering independent of caret and hover,
+semantic viewport alignment in both directions, unchanged origin viewport, Source
+selection/text/focus and horizontal position, independent subsequent scrolling,
+repeated activation, document boundaries, keyboard activation and anchored hints.
+Stale Preview content disables alignment until the current render is ready;
+automatic sync resumes from the last explicit origin. Automatic sync and full
+Preview hide the pair. The previous moving locator and hover-block overlay are absent.
+`scripts/test-viewport-controller.ts` also checks one-shot semantic mapping with
+unequal content heights, fresh geometry, origin ownership, selection preservation
+and no background work or continuous projection while sync remains off.
 
 `scripts/test-tooltip-hover-sequence.ts` checks the 500ms continuation window
 with native button and Preview frame crossings in both themes, including hover
@@ -405,6 +572,45 @@ pointer hints start or renew the window, and covers expiry, empty
 targets, clicks, explicit dismissal, blur, removal, owner disposal, keyboard focus
 and stateful updates. It runs in the targeted appearance and release browser
 gates alongside the compositor timing and production control checks.
+
+## Math source highlighting
+
+`bun scripts/test-math-syntax-production.ts` checks math syntax through the production
+Source and Live editor in both themes: inline and display delimiters, all four math
+fence aliases, quoted/list containers, unfinished formulas, escaped/currency/code
+boundaries, comments, lazy language loads, multiline token batches, independent
+Source customizations and typing/undo/redo. It saves real-theme screenshots under
+`.local/test-artifacts/math-syntax/`. This contract belongs to the quick, targeted
+appearance and release browser gates. Source first-paint coverage also includes
+inline math so preparation and mode roundtrips retain its syntax colors.
+Currency checks compare every numeric run with the prose foreground, including
+Chinese text and a later escaped dollar on the same line. Closed numeric formulas
+and explicit unfinished math must retain their highlighting.
+Unclosed `$$` source stops at headings, code fences and quote/list container exits
+in both Source and Live, with or without blank separators. Recovery preserves
+native Markdown colors, typing/history, empty lines and long formulas; math code
+fences retain their normal Markdown extent. Completion cannot reuse a TeX closer
+past the recovered boundary. The contract also captures the unfinished-block result.
+
+## Math autocomplete
+
+`bun run test:math-completion` checks formula command contexts, replacement and
+template compatibility with the installed KaTeX, then exercises the production
+Live/Source editor. It covers incomplete delimiters and all four math fence
+aliases, nested tab stops, existing arguments and environment closers, literal
+and comment exclusions, IME composition, undo/redo, mode changes, read-only
+state, disabled preferences, bilingual light/dark menus and a narrow viewport.
+The deterministic contract and browser contract run in the quick gate and
+release suites; the browser contract also belongs to the targeted history pack.
+Settings persistence and the shared menu placement are covered by the existing
+editing-preferences and settings-window contracts.
+
+The browser contract also checks every catalog entry in both UI languages and
+light/dark themes: fixed insertion templates, valid KaTeX examples, equal row
+heights and preview containment. Existing arguments/closers do not change the
+menu template. `bun scripts/test-math-completion-production.ts --capture-catalog`
+saves actual production menu row screenshots for the full catalog, plus a
+manifest, under `.local/test-artifacts/math-completion/catalog/`.
 
 ## HTML comment input
 
@@ -1086,9 +1292,13 @@ When font-size or viewport behavior changes, supplement the release gate with
 --confirm-long-run` on a representative rich document. The runner checks every
 sampled position in Live, Source, split Source/Preview, and Preview through five
 size increases and decreases. Record the fixture hash and anomaly count. Near
-the document end, an enlarged layout can reach the maximum scroll position;
-those frames are reported as bottom-constrained instead of being counted as
-top-anchor jumps. Any remaining displacement over 12 px is a failure.
+the document end, either increasing or decreasing font size can exhaust the
+available scroll range. Count a frame as bottom-constrained only when preserving
+the same source anchor would require scrolling beyond the measured maximum and
+the actual scroll is already at that boundary. Report those frames separately;
+any remaining displacement over 12 px is a failure. Track table rows by their
+captured source identity, excluding duplicated sticky-header rows, since a
+previous DOM node can be reused for a different table.
 
 After focused fixes and review have converged, run the complete release gate before endurance. Keep browser performance and
 native endurance runs serial to avoid resource contention. Diagnose failures with

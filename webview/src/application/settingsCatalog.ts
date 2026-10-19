@@ -3,6 +3,8 @@ import type { UiLanguage } from '../../../src/foundation/uiLanguage';
 export type SettingsTab = 'general' | 'appearance' | 'typing' | 'presets' | 'shortcuts';
 
 export const appearanceCatalog = [
+  { id: 'fontSize', title: ['字号大小', 'Font size'], description: ['自动跟随 VS Code 字号，或设置自定义大小。修改后立即保存。', 'Follow the VS Code font size or choose a custom size. Changes save immediately.'], keywords: ['字号 字体大小 文字大小 放大 缩小 缩放 自动字号 自定义字号 排版', 'font size text size zoom scale larger smaller auto custom typography'], advanced: false },
+  { id: 'lineHeight', title: ['行间距', 'Line spacing'], description: ['默认 1.5 倍，每次调整 0.1。用于 Live、Source 和默认预览；独立预设保留自身排版。', 'Default: 1.5×, in steps of 0.1. Applies to Live, Source and Default preview; independent presets retain their typography.'], keywords: ['行距 行间距 行高 疏密 紧凑 宽松 排版 倍数', 'line height line-height spacing leading density compact loose typography multiplier'], advanced: false },
   { id: 'mode', title: ['模式', 'Mode'], description: ['自动跟随 VS Code 主题，切换后立即保存。', 'Auto follows the VS Code theme. Mode changes save immediately.'], keywords: ['主题 深色 暗色 夜间 浅色 亮色 自动 跟随 外观', 'theme dark night light auto appearance'], advanced: false },
   { id: 'surface', title: ['界面背景', 'UI background'], description: ['菜单栏、面板与弹出菜单的背景来源。', 'Base surface for toolbars, panels and menus.'], keywords: ['背景 底色 面板 菜单', 'background surface panel menu'], advanced: false },
   { id: 'documentBackground', title: ['文档背景', 'Document background'], description: ['Live、Source、目录及默认预览的背景颜色。', 'Background for Live, Source, outline and default preview.'], keywords: ['正文 文档 背景 底色 画布', 'document content background canvas live source'], advanced: false },
@@ -22,7 +24,7 @@ export const settingsText = (language: UiLanguage, chinese: string, english: str
 export const typingSections = ['symbols', 'structure', 'paste', 'candidates'] as const;
 export type TypingSection = typeof typingSections[number];
 export const sectionTitles = {
-  appearanceMode: ['界面模式', 'Interface mode'], appearanceColors: ['基础颜色', 'Basic colors'], appearanceAdvanced: ['高级颜色', 'Advanced colors'],
+  appearanceMode: ['界面模式', 'Interface mode'], appearanceTypography: ['文档排版', 'Document typography'], appearanceColors: ['基础颜色', 'Basic colors'], appearanceAdvanced: ['高级颜色', 'Advanced colors'],
   display: ['文档显示', 'Document display'], opening: ['打开文档时', 'Opening documents'], interface: ['界面设置', 'Interface'],
   presetList: ['预设列表', 'Preset list'], presetFiles: ['导入与制作', 'Import and authoring'],
   symbols: ['符号与选区', 'Symbols and selections'], structure: ['列表与结构', 'Lists and structure'], paste: ['粘贴', 'Pasting'], candidates: ['输入候选', 'Suggestions'],
@@ -42,7 +44,8 @@ export const typingCatalog: readonly { key: keyof InputAssistance; section: Typi
   { key: 'documentSuggestions', section: 'candidates', title: ['文档、路径和标题候选', 'Document, path and heading suggestions'], description: ['输入链接或双链时显示候选，选择后插入。', 'Show suggestions while writing a link or wiki link. Choose one to insert it.'] },
   { key: 'slash', section: 'candidates', title: ['斜杠命令', 'Slash commands'], description: ['在正文输入 / 搜索命令；/table3x4 插入 3 数据行 × 4 列的表格。', 'Type / in prose to search commands. /table3x4 inserts 3 data rows × 4 columns.'] },
   { key: 'emoji', section: 'candidates', title: ['表情名称候选', 'Emoji name suggestions'], description: ['输入 :名称 并选择候选后插入表情；未选择时保留原文。', 'Type :name and choose a suggestion to insert an emoji. Unselected text stays literal.'] },
-  { key: 'slashPreferAbove', section: 'candidates', title: ['候选菜单优先在上方显示', 'Prefer suggestion menus above'], description: ['斜杠、路径和表情菜单优先显示在输入行上方，推荐输入法用户开启。', 'Prefer slash, path and emoji menus above the input line. Recommended for IME users.'] }
+  { key: 'math', section: 'candidates', title: ['公式自动补全', 'Math autocomplete'], description: ['在公式内输入反斜杠和命令名称显示候选，选择后用 Tab 填写参数。', 'Type a backslash and command name in math to show suggestions. Use Tab to fill template arguments.'] },
+  { key: 'slashPreferAbove', section: 'candidates', title: ['候选菜单优先在上方显示', 'Prefer suggestion menus above'], description: ['斜杠、路径、表情和公式菜单优先显示在输入行上方，推荐输入法用户开启。', 'Prefer slash, path, emoji and math menus above the input line. Recommended for IME users.'] }
 ];
 export const tablePasteContexts = [
   { title: ['正文', 'Prose'], description: ['开启时将 Excel 等复制的单元格转换为表格，关闭时保留文本。', 'When enabled, convert cells copied from Excel and other spreadsheets to a table. Otherwise, keep the text.'] },
@@ -50,6 +53,7 @@ export const tablePasteContexts = [
   { title: ['代码', 'Code'], description: ['代码块和行内代码保留文本，不做格式转换。', 'Code blocks and inline code keep the text without format conversion.'] }
 ] as const;
 export const shortcutDescriptions: Partial<Record<EditorCommandId, readonly [string, string]>> = {
+  formatHtml: ['整理当前 HTML 片段或块状公式的缩进与换行；仅在块源码内生效。', 'Arrange indentation and line breaks in the current HTML fragment or formula block; available inside its source.'],
   copy: ['表格多格选区按行列复制，可粘贴到 Excel 等电子表格。', 'Copy selected table cells as rows and columns for pasting into spreadsheets such as Excel.'],
   plain: ['跳过富格式转换；合法 Markdown 仍按当前模式显示。', 'Bypass rich format conversion. Valid Markdown still displays according to the current mode.'],
   tableNav: ['在表格内切换单元格；正文中按缩进规则处理。', 'Move between cells in a table. In prose, follow the indentation rules.'],
@@ -64,8 +68,8 @@ export function modeOptions(key: 'pairMode' | 'skipMode' | 'deleteMode', languag
   return (['smart', 'always', 'off'] as const).map((value, index) => ({ value, label: settingsText(language, labels[index][0], labels[index][1]) }));
 }
 export const shortcutSections: Readonly<Record<string, readonly EditorCommandId[]>> = {
-  document: ['save', 'undo', 'redo', 'find', 'replace', 'all', 'copy', 'cut', 'paste', 'plain'],
-  format: ['bold', 'italic', 'inlineCode', 'strike', 'highlight', 'underline', 'kbd', 'link', 'wikiLink', 'image', 'inlineMath', 'blockMath'],
+  document: ['save', 'saveAs', 'undo', 'redo', 'find', 'replace', 'all', 'copy', 'cut', 'paste', 'plain'],
+  format: ['bold', 'italic', 'inlineCode', 'strike', 'highlight', 'underline', 'kbd', 'link', 'wikiLink', 'image', 'inlineMath', 'blockMath', 'formatHtml'],
   blocks: ['heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'headingUp', 'headingDown', 'bullet', 'ordered', 'taskList', 'taskDone', 'quote', 'codeBlock', 'rule', 'indent'],
   table: ['insertTable', 'tableNav', 'cellBreak', 'rowAbove', 'rowBelow', 'rowDelete', 'columnBefore', 'columnAfter', 'columnDelete', 'moveRowUp', 'moveRowDown', 'moveColumnLeft', 'moveColumnRight', 'alignLeft', 'alignCenter', 'alignRight', 'copyMarkdown', 'copyCsv', 'convert'],
   selection: ['selection', 'home', 'expandSelection', 'shrinkSelection', 'nextOccurrence', 'skipOccurrence', 'addCursor', 'splitCursors'],
@@ -73,7 +77,8 @@ export const shortcutSections: Readonly<Record<string, readonly EditorCommandId[
   navigation: ['mode', 'preview', 'enter', 'tab', 'escape', 'delete']
 };
 export const commandTitles: Record<EditorCommandId, readonly [string, string]> = {
-  save: ['保存', 'Save'], undo: ['撤销', 'Undo'], redo: ['重做', 'Redo'], find: ['查找', 'Find'], replace: ['替换', 'Replace'], all: ['全选', 'Select all'], copy: ['复制', 'Copy'], cut: ['剪切', 'Cut'], paste: ['粘贴', 'Paste'], plain: ['粘贴为纯文本', 'Paste as plain text'],
+  formatHtml: ['格式化当前块', 'Format current block'],
+  save: ['保存', 'Save'], saveAs: ['另存为…', 'Save as…'], undo: ['撤销', 'Undo'], redo: ['重做', 'Redo'], find: ['查找', 'Find'], replace: ['替换', 'Replace'], all: ['全选', 'Select all'], copy: ['复制', 'Copy'], cut: ['剪切', 'Cut'], paste: ['粘贴', 'Paste'], plain: ['粘贴为纯文本', 'Paste as plain text'],
   bold: ['粗体', 'Bold'], italic: ['斜体', 'Italic'], inlineCode: ['行内代码', 'Inline code'], strike: ['删除线', 'Strikethrough'], highlight: ['高亮', 'Highlight'], underline: ['下划线', 'Underline'], kbd: ['按键样式', 'Keyboard style'], link: ['链接', 'Link'], wikiLink: ['双链', 'Wiki link'], image: ['图片', 'Image'], inlineMath: ['行内公式', 'Inline math'], blockMath: ['块公式', 'Math block'],
   heading1: ['一级标题', 'Heading 1'], heading2: ['二级标题', 'Heading 2'], heading3: ['三级标题', 'Heading 3'], heading4: ['四级标题', 'Heading 4'], heading5: ['五级标题', 'Heading 5'], heading6: ['六级标题', 'Heading 6'], headingUp: ['提升标题级别', 'Promote heading'], headingDown: ['降低标题级别', 'Demote heading'], bullet: ['无序列表', 'Bullet list'], ordered: ['有序列表', 'Numbered list'], taskList: ['任务列表', 'Task list'], taskDone: ['切换任务完成状态', 'Toggle task completion'], quote: ['引用', 'Blockquote'], codeBlock: ['代码块', 'Code block'], rule: ['分割线', 'Horizontal rule'], indent: ['缩进与取消缩进', 'Indent and outdent'],
   insertTable: ['插入表格', 'Insert table'], tableNav: ['单元格导航', 'Cell navigation'], cellBreak: ['单元格内换行', 'Line break in a cell'], rowAbove: ['上方插入行', 'Insert row above'], rowBelow: ['下方插入行', 'Insert row below'], rowDelete: ['删除行', 'Delete row'], columnBefore: ['左侧插入列', 'Insert column before'], columnAfter: ['右侧插入列', 'Insert column after'], columnDelete: ['删除列', 'Delete column'], moveRowUp: ['上移行', 'Move row up'], moveRowDown: ['下移行', 'Move row down'], moveColumnLeft: ['左移列', 'Move column left'], moveColumnRight: ['右移列', 'Move column right'], alignLeft: ['左对齐', 'Align left'], alignCenter: ['居中对齐', 'Align center'], alignRight: ['右对齐', 'Align right'], copyMarkdown: ['复制为 Markdown 表格', 'Copy as Markdown table'], copyCsv: ['复制为 CSV', 'Copy as CSV'], convert: ['转换选中表格文本', 'Convert selected table text'],
@@ -96,7 +101,6 @@ export const generalSearchKeywords = {
   restorePosition: ['恢复位置 记住位置 继续阅读 阅读进度 上次位置', 'restore remember position resume reading progress last location'],
   largeDocument: ['大文件 长文档 启动速度 打开速度 性能 源码优先', 'large file long document startup performance speed source first'],
   language: ['语言 中文 英文 英语 简体 翻译 本地化 自动', 'language Chinese English translation localization locale automatic'],
-  fontSize: ['字号 字体大小 文字大小 放大 缩小 缩放 自动字号 自定义字号', 'font size text size zoom scale larger smaller auto custom']
 } as const satisfies Record<string, SearchKeywords>;
 export const typingSearchKeywords: Readonly<Record<keyof InputAssistance, SearchKeywords>> = {
   selectionToolbar: ['浮动工具栏 选中工具条 格式工具栏 选区菜单', 'floating toolbar selection menu formatting popover'],
@@ -110,7 +114,8 @@ export const typingSearchKeywords: Readonly<Record<keyof InputAssistance, Search
   pasteHtml: ['网页粘贴 富文本 保留格式 样式转换 HTML Markdown', 'paste rich text formatting HTML webpage Markdown conversion'],
   documentSuggestions: ['自动完成 文件候选 路径补全 标题补全 双向链接 双链 维基链接 锚点', 'autocomplete file path heading completion wiki link backlink anchor suggestions'],
   slash: ['斜线 斜杠 快速插入 命令菜单 命令面板 /table', 'slash quick insert command menu command palette /table'],
-  slashPreferAbove: ['候选菜单 斜杠 路径 文档 标题 表情 上方 向上 输入法 候选窗 排列 顺序', 'suggestion menus slash path document heading emoji above upward IME input method candidate order placement'],
+  slashPreferAbove: ['候选菜单 斜杠 路径 文档 标题 表情 公式 上方 向上 输入法 候选窗 排列 顺序', 'suggestion menus slash path document heading emoji math above upward IME input method candidate order placement'],
+  math: ['公式 自动补全 数学 LaTeX TeX KaTeX 分式 根式 希腊字母 参数 模板', 'math autocomplete completion formula latex tex katex fraction square root greek snippet template arguments'],
   emoji: ['表情符号 颜文字 小黄脸 图标 笑脸 冒号', 'emoji emoticon smiley face colon shortcode suggestions']
 };
 export const imageLocationSearchKeywords: SearchKeywords = [
@@ -118,7 +123,9 @@ export const imageLocationSearchKeywords: SearchKeywords = [
   'Image save location Beside document (default) Beside document, by name Custom path (advanced) Folder name Image folder or path rule Choose folder… storage pasted screenshot save folder directory custom advanced path relative absolute beside document file name extension variables assets images'
 ];
 export const shortcutSearchKeywords: Readonly<Record<EditorCommandId, SearchKeywords>> = {
+  formatHtml: ['整理代码 排版 缩进 换行 HTML片段 块状公式 数学 LaTeX 源码 美化', 'format HTML fragment formula math LaTeX source code pretty print indentation line breaks'],
   save: ['存盘 写入文件', 'persist write file disk'],
+  saveAs: ['另存 换名保存 新路径保存 保存到', 'save as save under new name new path save to'],
   undo: ['撤回 回退 上一步', 'revert rollback previous edit'],
   redo: ['恢复撤销 下一步', 'repeat undone edit restore'],
   find: ['搜索 检索 查找文字', 'search locate text'],

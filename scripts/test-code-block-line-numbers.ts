@@ -666,7 +666,7 @@ async function main() {
     if (selectedCode.toolbarOpacity === null || selectedCode.toolbarOpacity < 0.99) {
       throw new Error(`Code block actions disappeared after selection: ${JSON.stringify(selectedCode)}`);
     }
-    if (JSON.stringify(selectedCode.controls) !== JSON.stringify(['Select all code', 'Copy'])) {
+    if (JSON.stringify(selectedCode.controls) !== JSON.stringify(['Select all code', 'Copy source'])) {
       throw new Error(`Unexpected code block action order: ${JSON.stringify(selectedCode.controls)}`);
     }
 

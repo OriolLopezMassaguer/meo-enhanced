@@ -1,4 +1,5 @@
 import { defaultInputAssistance } from '../src/foundation/editingPreferences';
+import { DEFAULT_EDITOR_LINE_HEIGHT } from '../src/foundation/editorLineHeight';
 import assert from 'node:assert/strict';
 import { decodeInitMessage, decodeReadyMessage } from '../src/protocol/readyInit';
 import { decodeDocumentSyncCommand, decodeDocumentSyncMessage } from '../src/protocol/documentSync';
@@ -49,6 +50,7 @@ const completeInit = {
   editorAppearance: 'dark' as const,
   editorFontSizeMode: 'auto' as const,
   editorFontSize: 14,
+  editorLineHeight: DEFAULT_EDITOR_LINE_HEIGHT,
   gitChangesGutter: true,
   gitDiffLineHighlights: true,
   gitDiffDetailsVisible: false,
@@ -79,6 +81,8 @@ assert.equal(decodeReadyMessage(null), null);
 assert.deepEqual(decodeReadyMessage({ type: 'ready', version: 1 }), { type: 'ready' });
 
 assert.deepEqual(decodeInitMessage({ ...completeInit, editingPreferences: undefined, editingPreferencesRevision: undefined }), completeInit, 'older init messages receive the default preferences and revision');
+assert.equal(decodeInitMessage({ ...completeInit, editorLineHeight: undefined })?.editorLineHeight,
+  DEFAULT_EDITOR_LINE_HEIGHT, 'older init messages receive the default line height');
 assert.deepEqual(decodeInitMessage({ ...completeInit, customPreviewPresets: undefined, previewPresetDiagnostics: undefined }), { ...completeInit, customPreviewPresets: undefined }, 'older init messages omit the custom catalog and receive empty diagnostics');
 assert.equal(decodeInitMessage({ ...completeInit, editingPreferencesRevision: -1 }), null);
 assert.equal(decodeInitMessage({ ...completeInit, editingPreferences: { input: {}, shortcuts: {} } }), null);

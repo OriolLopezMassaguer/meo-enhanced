@@ -653,8 +653,8 @@ for (const source of sources) {
   }
 }
 
-// Product deletion guard: table sorting must stay absent from every production-facing entry.
-// Ordinary Array.sort calls, ordered-list behavior and Provenance source-row mappings are retained capabilities.
+// Sorting uses the retained Table Command boundary's two immediate directions.
+// The former persistent sort state/settings and Preview sorting UI remain retired.
 const tableSortingScope = projectFilesForCapabilityGuard().filter((path) => (
   path === 'package.json' ||
   /^README(?:\.[^/]+)?\.md$/i.test(path) ||
@@ -663,18 +663,12 @@ const tableSortingScope = projectFilesForCapabilityGuard().filter((path) => (
 ));
 const removedTableSortingTokens = [
   /preview[-_. ]?sort/i,
+  /\bpreview\b.{0,32}\b(?:sort|order|reorder)(?:ing|ed)?\b.{0,32}\b(?:table|columns?|rows?)\b/i,
+  /\bpreview\b.{0,32}\b(?:table|columns?|rows?)\b.{0,32}\b(?:sort|order|reorder)(?:ing|ed)?\b/i,
   /apply[-_. ]?sort/i,
-  /TableSort[A-Za-z0-9_]*/,
-  /sort(?:Button|Column|State|Direction|ByColumn|edRowOrder)/,
-  /meo-[A-Za-z0-9_-]*sort[A-Za-z0-9_-]*/i,
-  /\b(?:table|columns?|rows?)[-_. ]+(?:sort|order|reorder)(?:ing|ed)?\b/i,
-  /\b(?:sort|order|reorder)(?:ing|ed)?[-_. ]+(?:table|columns?|rows?)\b/i,
-  /\b(?:table|column|row)(?:Sort|Order|Reorder)[A-Za-z0-9_]*/,
-  /\b(?:sort|order|reorder)(?:Table|Column|Row)[A-Za-z0-9_]*/,
-  /\b(?:table|columns?|rows?)\b.{0,48}\b(?:sort|order|reorder)(?:ing|ed)?\b/i,
-  /\b(?:sort|order|reorder)(?:ing|ed)?\b.{0,48}\b(?:table|columns?|rows?)\b/i,
-  /\b(?:table|column|row)[A-Za-z0-9_.-]{0,48}(?:Order|Ordering)[A-Za-z0-9_]*/,
-  /\b[A-Za-z0-9_.-]*(?:Order|Ordering)[A-Za-z0-9_.-]{0,48}(?:Table|Column|Row)[A-Za-z0-9_]*/
+  /TableSort(?:State|Direction)[A-Za-z0-9_]*/,
+  /sort(?:State|Direction|ByColumn|edRowOrder)/,
+  /\bmeo(?:Enhanced)?\.[A-Za-z0-9_.-]*(?:sort|ordering|order)/i
 ];
 for (const path of tableSortingScope) {
   const lines = readTrackedProjectFile(path).split(/\r?\n/);
@@ -686,7 +680,7 @@ for (const path of tableSortingScope) {
     if (
       removedTableSortingTokens.some((pattern) => pattern.test(line))
     ) {
-      failures.push(`ARCH013 已删除的表格排序能力重新出现: ${path}:${index + 1}`);
+      failures.push(`ARCH013 旧的表格排序状态、设置或预览排序入口重新出现: ${path}:${index + 1}`);
     }
   }
 }

@@ -81,7 +81,7 @@ export const createSegmentedControl = <Value extends string>(options: SegmentedC
           button.setAttribute('aria-pressed', active ? 'true' : 'false');
         }
       }
-      if (!previousBounds || !nextIndicator || !element.isConnected || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      if (!previousBounds || !nextIndicator || !element.isConnected) return;
       const nextBounds = nextIndicator.getBoundingClientRect();
       if (previousBounds.width === 0 || nextBounds.width === 0 || typeof nextIndicator.animate !== 'function') return;
       // Keep the pill's dimensions and corner radius unchanged throughout the slide.

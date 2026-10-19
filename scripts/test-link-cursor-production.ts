@@ -18,6 +18,7 @@ const fixtures = [
   { label: 'raw URL', source: 'https://example.com/raw', href: 'https://example.com/raw' },
   { label: 'inline HTML', source: 'Inline <a href="https://example.com/inline">inline HTML</a>.', href: 'https://example.com/inline' },
   { label: 'block HTML', source: '<div><a href="https://example.com/block">block HTML</a></div>', href: 'https://example.com/block' },
+  { label: 'relative HTML', source: 'Inline <a href="./guide.md">relative HTML</a>.', href: './guide.md' },
   { label: 'table', source: '| label |\n| --- |\n| [table](https://example.com/table) |', href: 'https://example.com/table' }
 ];
 
@@ -168,6 +169,43 @@ try {
   assert.equal(await cursor(page, sourcePoint), 'pointer', 'Source link modifier hover');
   await page.keyboard.up('Control');
   assert.equal(await cursor(page, sourcePoint), 'text', 'Source link modifier release');
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(theme => { document.body.className = `vscode-${theme}`; }, theme);
+    for (const fixture of [
+      { source: '[label](./guide.md)', hit: 'label', href: './guide.md' },
+      { source: '[label][ref]\n\n[ref]: ./guide.md', hit: 'label', href: './guide.md' },
+      { source: '[[guide|label]]', hit: 'label', href: 'meo-wiki:guide' },
+      { source: 'Inline <a href="./guide.md">label</a>.', hit: 'label', href: './guide.md' },
+      { source: 'Inline <a href="./guide.md">label</a>.', hit: './guide.md', href: './guide.md' },
+      { source: '<div><a href="../guide.md#target"><strong>label</strong></a></div>', hit: 'label', href: '../guide.md#target' },
+      { source: '<a\n href="./guide.md">label</a>', hit: 'label', href: './guide.md' },
+      { source: '<a href=./guide.md>label</a>', hit: 'label', href: './guide.md' },
+      { source: '<a href="./a&amp;b.md">label</a>', hit: 'label', href: './a&b.md' },
+      { source: '# <a href="./guide.md">label</a>', hit: 'label', href: './guide.md' },
+      { source: '| link |\n| --- |\n| <a href="./guide.md">label</a> |', hit: 'label', href: './guide.md' },
+      { source: '`<a href="./guide.md">label</a>`', hit: 'label', href: '' },
+      { source: '<!-- <a href="./guide.md">label</a> -->', hit: 'label', href: '' },
+      { source: '<a href="javascript:alert(1)">label</a>', hit: 'label', href: '' },
+      { source: '<a href="./guide.md">label</a> unrelated', hit: 'unrelated', href: '' },
+      { source: '<a href="./guide.md"><code>label</code></a>', hit: 'label', href: '' }
+    ]) {
+      await mount(page, fixture.source);
+      await page.evaluate(() => (window as any).__linkEditor.setMode('source'));
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const point = await page.evaluate(fixture => {
+        const rect = (window as any).__linkEditor.view.coordsAtPos(7 + fixture.source.indexOf(fixture.hit) + 2);
+        return { x: rect.left + 1, y: (rect.top + rect.bottom) / 2 };
+      }, fixture);
+      await page.mouse.move(point.x, point.y);
+      assert.equal(await cursor(page, point), 'text');
+      await page.keyboard.down('Control');
+      assert.equal(await cursor(page, point), fixture.href ? 'pointer' : 'text', `${theme}: ${fixture.source}`);
+      await page.mouse.click(point.x, point.y);
+      await page.keyboard.up('Control');
+      assert.deepEqual(await page.evaluate(() => (window as any).__openedLinks), fixture.href ? [fixture.href] : [],
+        `Source Ctrl click: ${fixture.source}`);
+    }
+  }
   await mount(page, '<div><a href="https://example.com/button">button link</a></div>');
   const openButton = await page.$('.meo-md-link-open-btn');
   assert.ok(openButton, 'Rendered HTML must retain its open button');

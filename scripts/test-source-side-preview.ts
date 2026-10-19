@@ -219,14 +219,14 @@ try {
   assert.equal(layout.editorVisible, true);
   assert.equal(layout.previewVisible, true);
   assert.equal(layout.pressed, 'true');
-  assert.equal(layout.label, 'Exit split');
+  assert.equal(layout.label, '');
   assert.equal(
     layout.syncPressed,
     'true',
     'A newly opened document session must ignore stale persisted scroll-sync state'
   );
   assert.equal(layout.syncVisible, true);
-  assert.equal(layout.splitIcon, 'square-split-horizontal');
+  assert.equal(layout.splitIcon, 'open-preview');
   assert.equal(layout.syncIcon, 'link');
   assert.deepEqual(layout.scrollTopIcons, ['arrow-up-to-line', 'arrow-up-to-line']);
   assert.equal(layout.syncIconSize, 14);
@@ -1576,8 +1576,9 @@ try {
     `Source-to-Preview must not move after its first visible frame: ${JSON.stringify(sourceToFullPreviewFrames)}`
   );
   assert.ok(
-    Math.abs(finalFullPreviewFrame.offset as number) <= 20,
-    `Source-to-Preview must project the complex anchor after full-width layout: ${JSON.stringify(sourceToFullPreviewFrames)}`
+    lastSplitFrame.offset !== null
+      && Math.abs((finalFullPreviewFrame.offset as number) - lastSplitFrame.offset) <= 20,
+    `Source-to-Preview must retain the existing complex reading position after full-width layout: ${JSON.stringify(sourceToFullPreviewFrames)}`
   );
   const finalReadingAnchorOffset = await page.evaluate(anchor => {
     const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
@@ -1887,7 +1888,7 @@ try {
     split: false,
     previewHidden: true,
     editorHidden: false,
-    label: 'Split preview',
+    label: '',
     syncVisible: false
   });
   await page.click('.source-preview-button');

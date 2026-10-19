@@ -288,6 +288,9 @@ try {
   });
   await regressionPage.evaluate(async (line) => {
     for (let attempt = 0; attempt < 3; attempt++) {
+      // A newer navigation must supersede a still-settling font layout. A raw
+      // scrollTop assignment does not reserve that navigation intent.
+      (window as any).__fontTestPreserveLayout(() => {});
       (window as any).__fontTestScrollToLine(line);
       for (let frame = 0; frame < 8; frame++) await new Promise(requestAnimationFrame);
     }

@@ -3,7 +3,7 @@ import { closeTestBrowser, launchTestBrowser } from './browser-test-helpers';
 import exportRuntime from '../src/export/runtime';
 
 const build = await Bun.build({
-  entrypoints: ['scripts/test-preview-reading-surface-production-entry.ts'],
+  entrypoints: ['scripts/test-settings-window-production-entry.ts'],
   target: 'browser',
   format: 'iife'
 });
@@ -11,11 +11,13 @@ if (!build.success) throw new Error(build.logs.map(String).join('\n'));
 
 const browser = await launchTestBrowser();
 let primaryError: unknown;
+let previewRenderGate: Promise<void> | null = null;
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1100, height: 720 });
   await page.exposeFunction('__renderSourcePositionPreview', async (message: any) => {
     if (message.type !== 'requestPreviewRender') return null;
+    await previewRenderGate;
     return {
       type: 'previewRenderResult',
       requestId: message.requestId,
@@ -44,9 +46,14 @@ try {
     '- An indented list item must use the same Preview locator gutter.',
     '- Reverse locator middle item.',
     '- Reverse locator lower item.',
+    '```text\n' + Array.from({ length: 60 }, (_, index) => `Locator code line ${index}`).join('\n') + '\n```',
     ...Array.from({ length: 90 }, (_, index) => (
       `## Section ${index + 1}\n\nParagraph ${index + 1} with enough text to create a distant Preview position.`
-    ))
+    )),
+    '## Nested locator fixture',
+    '- [ ] > A task followed by a quote marker.\n- > - [ ] Nested task for bottom-edge navigation.',
+    'Following paragraph keeps the nested task independently scrollable.',
+    '<!-- Hidden source-only navigation target -->'
   ].join('\n\n');
   await page.evaluate(text => {
     window.dispatchEvent(new MessageEvent('message', { data: {
@@ -360,202 +367,187 @@ try {
     document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop
   )) - independentTop) <= 1, 'Independent panes must not auto-locate');
 
-  const frameRect = await page.$eval('.preview-frame', element => {
+  const alignment = '.meo-preview-viewport-alignment';
+  const toPreview = '[data-meo-align-viewport="preview"]';
+  const toSource = '[data-meo-align-viewport="source"]';
+  const settle = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const snapshot = () => page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    const frame = document.querySelector<HTMLIFrameElement>('.preview-frame')!;
+    return {
+      sourceTop: view.scrollDOM.scrollTop, sourceLeft: view.scrollDOM.scrollLeft,
+      previewTop: frame.contentDocument!.scrollingElement!.scrollTop,
+      selection: view.state.selection.toJSON(), text: view.state.doc.toString(),
+      focus: document.activeElement === view.contentDOM ? 'source' : document.activeElement === frame ? 'preview' : 'other'
+    };
+  });
+  const geometry = () => page.$eval(alignment, element => {
     const rect = element.getBoundingClientRect();
-    return { left: rect.left, top: rect.top };
+    const frame = document.querySelector('.preview-frame')!.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+      dividerX: frame.left - 1, frameY: frame.top + frame.height / 2, width: rect.width, height: rect.height };
   });
-  await page.evaluate(() => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    const middle = Array.from(frameDocument.querySelectorAll<HTMLElement>('li[data-source-line]'))
-      .find(element => element.textContent?.trim() === 'Reverse locator middle item.')!;
-    middle.style.marginBottom = '28px';
-    const lower = Array.from(frameDocument.querySelectorAll<HTMLElement>('li[data-source-line]'))
-      .find(element => element.textContent?.trim() === 'Reverse locator lower item.')!;
-    lower.scrollIntoView({ block: 'center' });
-  });
-  await new Promise(resolve => setTimeout(resolve, 80));
-  const listGapTarget = await page.evaluate(() => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    const items = Array.from(frameDocument.querySelectorAll<HTMLElement>('li[data-source-line]'));
-    const middle = items.find(element => element.textContent?.trim() === 'Reverse locator middle item.')!;
-    const lower = items.find(element => element.textContent?.trim() === 'Reverse locator lower item.')!;
-    const middleRect = middle.getBoundingClientRect();
-    const lowerRect = lower.getBoundingClientRect();
-    const gap = lowerRect.top - middleRect.bottom;
-    const x = lowerRect.left + Math.min(32, lowerRect.width / 2);
-    const y = lowerRect.top - Math.min(4, gap / 4);
-    const rawMappedTarget = frameDocument.elementFromPoint(x, y)?.closest<HTMLElement>('[data-source-line]');
-    return {
-      expectedLine: Number(lower.dataset.sourceLine),
-      rawMappedLine: Number(rawMappedTarget?.dataset.sourceLine),
-      gap,
-      x,
-      y
-    };
-  });
-  assert.ok(listGapTarget.gap >= 20, JSON.stringify(listGapTarget));
-  assert.notEqual(listGapTarget.rawMappedLine, listGapTarget.expectedLine, JSON.stringify(listGapTarget));
-  await page.mouse.move(4, 4);
-  await page.mouse.move(frameRect.left + listGapTarget.x, frameRect.top + listGapTarget.y);
-  await page.waitForFunction((line) => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    return Number(frameDocument.querySelector<HTMLElement>('.meo-preview-source-navigation.is-visible')
-      ?.dataset.meoSourceNavigationLine) === line;
-  }, {}, listGapTarget.expectedLine);
+  const buttons = await page.$$eval(alignment + ' button', buttons => buttons.map(button => ({
+    width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height,
+    iconWidth: button.querySelector('svg')!.getBoundingClientRect().width,
+    hint: (button as HTMLElement).dataset.tooltip, label: button.getAttribute('aria-label'),
+    disabled: (button as HTMLButtonElement).disabled
+  })));
+  assert.deepEqual(buttons.map(button => [button.width, button.height, button.iconWidth, button.disabled]), [[23, 23, 22, false], [23, 23, 22, false]]);
+  assert.deepEqual(buttons.map(button => button.hint), ['Align preview to source view', 'Align source to preview view']);
+  assert.ok(buttons.every(button => button.hint === button.label));
+  const fixed = await geometry();
+  assert.ok(Math.abs(fixed.x - fixed.dividerX) <= 0.5 && Math.abs(fixed.y - fixed.frameY) <= 0.5, JSON.stringify(fixed));
+  assert.equal(fixed.width, 26);
+  assert.equal(fixed.height, 48);
+  const circularTargets = await page.$$eval(alignment + ' button', buttons => buttons.map(button => {
+    const rect = button.getBoundingClientRect();
+    const hit = (x: number, y: number) => document.elementFromPoint(x, y)?.closest('button') === button;
+    return { width: rect.width, height: rect.height, center: hit(rect.left + rect.width / 2, rect.top + rect.height / 2),
+      corner: hit(rect.left + 1, rect.top + 1), leftEdge: hit(rect.left + 1, rect.top + rect.height / 2) };
+  }));
+  assert.ok(circularTargets.every(target => target.width === target.height && target.center && target.leftEdge && !target.corner), 'alignment hit targets must be circles rather than rectangular halves');
+  assert.equal(await page.$('.meo-preview-source-navigation'), null, 'the moving locator is removed');
 
-  const reverseTarget = await page.evaluate(() => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    const target = Array.from(frameDocument.querySelectorAll<HTMLElement>('h2[data-source-line]'))
-      .find(element => element.textContent?.trim() === 'Section 70')!;
-    target.scrollIntoView({ block: 'center' });
-    const targetRect = target.getBoundingClientRect();
-    const readingRoot = frameDocument.querySelector<HTMLElement>('main.meo-export-doc')!;
-    const rootRect = readingRoot.getBoundingClientRect();
-    const rootStyle = frameDocument.defaultView!.getComputedStyle(readingRoot);
-    return {
-      line: Number(target.dataset.sourceLine),
-      contentLeft: rootRect.left + Number.parseFloat(rootStyle.paddingLeft),
-      targetTop: targetRect.top,
-      targetHeight: targetRect.height,
-      previewTop: frameDocument.scrollingElement!.scrollTop
-    };
-  });
-  await page.mouse.move(4, 4);
-  await page.mouse.move(
-    frameRect.left + reverseTarget.contentLeft - 14,
-    frameRect.top + reverseTarget.targetTop + Math.min(10, reverseTarget.targetHeight / 2)
-  );
-  await page.waitForFunction(() => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    return frameDocument.querySelector('.meo-preview-source-navigation.is-visible') !== null;
-  });
-  const reverseAction = await page.evaluate(() => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    const navigation = frameDocument.querySelector<HTMLElement>('.meo-preview-source-navigation')!;
-    const navigationRect = navigation.getBoundingClientRect();
-    const readingRoot = frameDocument.querySelector<HTMLElement>('main.meo-export-doc')!;
-    const rootRect = readingRoot.getBoundingClientRect();
-    const rootStyle = frameDocument.defaultView!.getComputedStyle(readingRoot);
-    const accentProbe = frameDocument.createElement('span');
-    accentProbe.style.color = 'var(--meo-link)';
-    frameDocument.body.appendChild(accentProbe);
-    const accentColor = frameDocument.defaultView!.getComputedStyle(accentProbe).color;
-    accentProbe.remove();
-    return {
-      line: Number(navigation.dataset.meoSourceNavigationLine),
-      left: navigationRect.left,
-      right: navigationRect.right,
-      top: navigationRect.top,
-      height: navigationRect.height,
-      contentLeft: rootRect.left + Number.parseFloat(rootStyle.paddingLeft),
-      color: frameDocument.defaultView!.getComputedStyle(navigation).color,
-      accentColor,
-      usesPenLineIcon: navigation.querySelector('svg')?.classList.contains('lucide-pen-line'),
-      markerCursorDisplay: frameDocument.defaultView!.getComputedStyle(
-        frameDocument.querySelector<HTMLElement>('.meo-preview-source-position-cursor')!
-      ).display
-    };
-  });
-  assert.equal(reverseAction.line, reverseTarget.line, JSON.stringify({ reverseAction, reverseTarget }));
-  assert.ok(Math.abs(reverseAction.left - (reverseTarget.contentLeft - 28)) <= 0.5, JSON.stringify(reverseAction));
-  assert.ok(Math.abs(reverseAction.right - reverseTarget.contentLeft) <= 0.5, JSON.stringify(reverseAction));
-  assert.equal(reverseAction.color, reverseAction.accentColor);
-  assert.equal(reverseAction.usesPenLineIcon, true);
-  assert.equal(reverseAction.markerCursorDisplay, 'none');
-  const frameHandle = await page.$('.preview-frame');
-  const previewFrame = (await frameHandle!.contentFrame())!;
-  const hintPoint = await previewFrame.$eval('.meo-preview-source-navigation', element => {
-    const rect = element.getBoundingClientRect(); return { x: rect.left + 14, y: rect.top + Math.min(10, rect.height / 2) };
-  });
-  const frameOrigin = await frameHandle!.boundingBox();
-  await page.mouse.move(frameOrigin!.x + hintPoint.x, frameOrigin!.y + hintPoint.y);
-  try {
-    await page.waitForFunction(() => !!document.querySelector<HTMLIFrameElement>('.preview-frame')?.contentDocument?.querySelector('.meo-tooltip.is-visible'), { timeout: 5000 });
-  } catch (error) {
-    throw new Error('Source locator hint did not appear: ' + JSON.stringify(await page.evaluate(() => {
-      const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-      const button = doc.querySelector<HTMLElement>('.meo-preview-source-navigation')!;
-      const hint = doc.querySelector<HTMLElement>('.meo-tooltip');
-      return {
-        hidden: button.hidden, tooltip: button.dataset.tooltip, label: button.getAttribute('aria-label'),
-        described: button.getAttribute('aria-describedby'), button: button.getBoundingClientRect().toJSON(),
-        hintClass: hint?.className, hint: hint?.getBoundingClientRect().toJSON(),
-        viewport: [doc.defaultView!.innerWidth, doc.defaultView!.innerHeight],
-        styles: doc.querySelectorAll('[data-meo-tooltip-style]').length
-      };
-    })), { cause: error });
-  }
-  const sourceHint = await page.evaluate(hintPoint => {
+  // The Source caret deliberately stays far away from its visible reading position.
+  const expectedPreviewTop = await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
     const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    const button = doc.querySelector<HTMLElement>('.meo-preview-source-navigation')!;
-    const hint = doc.getElementById(button.getAttribute('aria-describedby')!)!;
-    const rect = hint.getBoundingClientRect();
-    return {
-      text: hint.querySelector('.meo-tooltip-label')!.textContent,
-      label: button.getAttribute('aria-label'),
-      key: hint.querySelector('kbd:not([hidden])')?.textContent ?? null,
-      title: button.getAttribute('title'),
-      pointerPositioned: Math.abs(rect.left - (hintPoint.x + 12)) <= 1 && Math.abs(rect.top - (hintPoint.y + 8)) <= 1,
-      inside: rect.left >= 8 && rect.right <= doc.defaultView!.innerWidth - 8
-    };
-  }, hintPoint);
-  assert.deepEqual(sourceHint, {
-    text: 'Click to reveal in source', label: 'Click to reveal in source', key: null, title: null, pointerPositioned: true, inside: true
-  }, 'the source locator uses the concise shared hint beside the pointer');
-  if (process.env.MEO_TOOLTIP_SCREENSHOT_DIR) {
-    await page.screenshot({ path: process.env.MEO_TOOLTIP_SCREENSHOT_DIR + '/source-navigation.png' });
+    const target = [...doc.querySelectorAll<HTMLElement>('h2[data-source-line]')].find(element => element.textContent === 'Section 45')!;
+    view.dispatch({ selection: { anchor: view.state.doc.line(5).from, head: view.state.doc.line(5).to } });
+    view.focus();
+    view.scrollDOM.scrollTop = view.lineBlockAt(view.state.doc.line(Number(target.dataset.sourceLine)).from).top;
+    return target.getBoundingClientRect().top + doc.scrollingElement!.scrollTop;
+  });
+  await settle();
+  // The first distant scroll measures wrapped Source lines; place the fixture
+  // at the now-measured heading before checking an exact semantic destination.
+  await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+    const target = [...doc.querySelectorAll<HTMLElement>('h2[data-source-line]')].find(element => element.textContent === 'Section 45')!;
+    view.scrollDOM.scrollTop = view.lineBlockAt(view.state.doc.line(Number(target.dataset.sourceLine)).from).top;
+  });
+  await settle();
+  const sourceBefore = await snapshot();
+  await page.click(toPreview);
+  await settle();
+  const sourceAfter = await snapshot();
+  assert.deepEqual({ ...sourceAfter, previewTop: sourceBefore.previewTop }, sourceBefore, 'right arrow changes only Preview, retaining Source focus/selection/viewport/text');
+  assert.ok(Math.abs(sourceAfter.previewTop - expectedPreviewTop) <= 3, JSON.stringify({ actual: sourceAfter.previewTop, expectedPreviewTop }));
+  assert.equal(await page.$eval('.source-preview-scroll-sync-button', element => element.getAttribute('aria-pressed')), 'false');
+  await page.click(toPreview);
+  await settle();
+  assert.deepEqual(await snapshot(), sourceAfter, 'repeated alignment is stable');
+  await page.mouse.move(10, 10);
+  assert.deepEqual(await geometry(), fixed, 'caret, hover and scroll do not move or hide the controls');
+  assert.equal(await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.querySelector('.meo-preview-source-navigation-highlight')), null);
+
+  const expectedSourceTop = await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    const doc = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
+    const scroll = doc.scrollingElement!;
+    const target = [...doc.querySelectorAll<HTMLElement>('h2[data-source-line]')].find(element => element.textContent === 'Section 15')!;
+    scroll.scrollTop += target.getBoundingClientRect().top;
+    doc.body.focus({ preventScroll: true });
+    return view.lineBlockAt(view.state.doc.line(Number(target.dataset.sourceLine)).from).top;
+  });
+  await settle();
+  const previewBefore = await snapshot();
+  await page.click(toSource);
+  await settle();
+  const previewAfter = await snapshot();
+  assert.deepEqual({ ...previewAfter, sourceTop: previewBefore.sourceTop }, previewBefore, 'left arrow changes only Source vertical scroll, retaining Preview focus and Source selection');
+  assert.ok(Math.abs(previewAfter.sourceTop - expectedSourceTop) <= 3, JSON.stringify({ previewAfter, expectedSourceTop }));
+  assert.ok(Math.abs(previewAfter.sourceTop - previewBefore.sourceTop) > 500, 'left arrow must move the distant Source viewport');
+
+  // Subsequent scrolls stay independent; the one-shot action cannot enable linkage.
+  await page.evaluate(() => {
+    document.querySelector<HTMLElement>('.cm-scroller')!.scrollTop += 100;
+  });
+  await settle();
+  assert.equal((await snapshot()).previewTop, previewAfter.previewTop);
+  const independentSource = (await snapshot()).sourceTop;
+  await page.evaluate(() => { document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!.scrollTop += 140; });
+  await settle();
+  assert.equal((await snapshot()).sourceTop, independentSource);
+  await page.focus(toSource);
+  const keyboardBefore = await snapshot();
+  await page.keyboard.press('Enter');
+  await settle();
+  const keyboardAfter = await snapshot();
+  assert.equal(keyboardAfter.text, keyboardBefore.text);
+  assert.deepEqual(keyboardAfter.selection, keyboardBefore.selection);
+  assert.equal(keyboardAfter.previewTop, keyboardBefore.previewTop);
+  assert.equal(await page.$eval(toSource, button => button === document.activeElement), true, 'keyboard activation retains its button focus');
+
+  // Each direction also handles the document boundaries without moving its origin.
+  for (const boundary of [0, 1]) {
+    await page.evaluate(boundary => {
+      const scroller = document.querySelector<HTMLElement>('.cm-scroller')!;
+      scroller.scrollTop = boundary * (scroller.scrollHeight - scroller.clientHeight);
+    }, boundary);
+    await settle();
+    await page.click(toPreview);
+    await settle();
+    const remainingPreview = await page.evaluate(boundary => {
+      const scroll = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!;
+      return Math.abs(scroll.scrollTop - boundary * (scroll.scrollHeight - scroll.clientHeight));
+    }, boundary);
+    assert.ok(remainingPreview <= 2, 'Source boundary aligns Preview boundary: ' + remainingPreview);
+    await page.evaluate(boundary => {
+      const scroll = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.scrollingElement!;
+      scroll.scrollTop = (1 - boundary) * (scroll.scrollHeight - scroll.clientHeight);
+    }, boundary);
+    await settle();
+    await page.click(toSource);
+    await settle();
+    const remainingSource = await page.$eval('.cm-scroller', (element, boundary) => {
+      return Math.abs(element.scrollTop - (1 - boundary) * (element.scrollHeight - element.clientHeight));
+    }, boundary);
+    assert.ok(remainingSource <= 2, 'Preview boundary aligns Source boundary: ' + remainingSource);
   }
+  await page.hover(toPreview);
+  await page.waitForFunction(() => document.querySelector('.meo-tooltip.is-visible')?.textContent?.includes('Align preview to source view'));
+  const hintPosition = await page.$eval('.meo-tooltip.is-visible', element => element.getBoundingClientRect().toJSON());
+  const buttonRect = await page.$eval(toPreview, element => element.getBoundingClientRect().toJSON());
+  await page.mouse.move(buttonRect.left + 6, buttonRect.top + 6);
+  await settle();
+  const movedHint = await page.$eval('.meo-tooltip.is-visible', element => element.getBoundingClientRect().toJSON());
+  assert.ok(Math.abs(movedHint.x - hintPosition.x) <= 0.5 && Math.abs(movedHint.y - hintPosition.y) <= 0.5, 'tooltips stay anchored to the button');
 
-  await page.mouse.click(
-    frameRect.left + reverseAction.left + 4,
-    frameRect.top + reverseAction.top + Math.min(10, reverseAction.height / 2)
-  );
-  await page.waitForFunction((line) => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    return Number(frameDocument.querySelector<HTMLElement>('.meo-preview-source-position-marker')
-      ?.dataset.meoSourcePositionLine) === line;
-  }, {}, reverseTarget.line);
-  await new Promise(resolve => setTimeout(resolve, 120));
-  const reverseResult = await page.evaluate(() => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    return {
-      previewTop: frameDocument.scrollingElement!.scrollTop,
-      navigationHidden: frameDocument.querySelector<HTMLElement>('.meo-preview-source-navigation')?.hidden,
-      activeSourceText: document.querySelector<HTMLElement>('.cm-activeLine')?.textContent ?? ''
-    };
+  let releasePreviewRender!: () => void;
+  previewRenderGate = new Promise(resolve => { releasePreviewRender = resolve; });
+  await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\nFresh render check' } });
   });
-  assert.ok(Math.abs(reverseResult.previewTop - reverseTarget.previewTop) <= 2, JSON.stringify(reverseResult));
-  assert.equal(reverseResult.navigationHidden, true);
-  assert.match(reverseResult.activeSourceText, /Section 70/);
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLButtonElement>('.meo-preview-viewport-align-button')].every(button => button.disabled));
+  const staleViews = await snapshot();
+  await page.$eval(toPreview, element => (element as HTMLButtonElement).click());
+  await settle();
+  assert.deepEqual(await snapshot(), staleViews, 'an outdated Preview cannot move either view');
+  releasePreviewRender();
+  previewRenderGate = null;
+  await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('.meo-preview-viewport-align-button')!.disabled
+    && document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!.body.textContent?.includes('Fresh render check'));
 
-  const directGutterTarget = await page.evaluate(() => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    const target = Array.from(frameDocument.querySelectorAll<HTMLElement>('h2[data-source-line]'))
-      .find(element => element.textContent?.trim() === 'Section 71')!;
-    target.scrollIntoView({ block: 'center' });
-    const targetRect = target.getBoundingClientRect();
-    const readingRoot = frameDocument.querySelector<HTMLElement>('main.meo-export-doc')!;
-    const rootRect = readingRoot.getBoundingClientRect();
-    const rootStyle = frameDocument.defaultView!.getComputedStyle(readingRoot);
-    return {
-      line: Number(target.dataset.sourceLine),
-      x: rootRect.left + Number.parseFloat(rootStyle.paddingLeft) - 14,
-      y: targetRect.top + Math.min(10, targetRect.height / 2)
-    };
-  });
-  await page.mouse.move(4, 4);
-  await page.mouse.move(frameRect.left + directGutterTarget.x, frameRect.top + directGutterTarget.y);
-  await page.mouse.click(frameRect.left + directGutterTarget.x, frameRect.top + directGutterTarget.y);
-  await page.waitForFunction((line) => {
-    const frameDocument = document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!;
-    return Number(frameDocument.querySelector<HTMLElement>('.meo-preview-source-position-marker')
-      ?.dataset.meoSourcePositionLine) === line;
-  }, {}, directGutterTarget.line);
-
+  // Resuming automatic sync follows the last manual action's origin (Preview).
+  await page.click(toSource);
+  await settle();
+  const resumeOrigin = await snapshot();
+  await page.evaluate(() => { document.querySelector<HTMLElement>('.cm-scroller')!.scrollTop -= 100; });
+  await settle();
+  await page.click('.source-preview-scroll-sync-button');
+  await settle();
+  assert.equal(await page.$eval(alignment, element => (element as HTMLElement).hidden), true, 'automatic sync hides both manual actions');
+  const resumed = await snapshot();
+  assert.ok(Math.abs(resumed.sourceTop - resumeOrigin.sourceTop) <= 2 && resumed.previewTop === resumeOrigin.previewTop, 'resuming sync retains the last manual origin');
+  await page.click('.source-preview-scroll-sync-button');
+  assert.equal(await page.$eval(alignment, element => (element as HTMLElement).hidden), false);
   await page.click('button[data-mode="preview"]');
   await page.waitForFunction(() => document.querySelector<HTMLElement>('#app')?.dataset.mode === 'preview');
-  assert.equal(await page.evaluate(() => document.querySelector<HTMLIFrameElement>('.preview-frame')!.contentDocument!
-    .querySelector<HTMLElement>('.meo-preview-source-position-marker')?.hidden), true);
+  assert.equal(await page.$eval(alignment, element => (element as HTMLElement).hidden), true, 'full Preview has no divider actions');
 } catch (error) {
   primaryError = error;
 } finally {

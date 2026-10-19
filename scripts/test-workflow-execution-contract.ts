@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import fs, { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spyOn } from 'bun:test';
 import { join } from 'node:path';
 import { digest, executeWorkflow, expandTestCommand, prepareWorkflow, readResumeReport, saveReport,
   type TaskResult, type WorkflowReport } from './test-workflow-execution';
@@ -33,6 +34,35 @@ try {
   const createReport = (): WorkflowReport => ({ schemaVersion: 1, pid: process.pid, title: 'fixture',
     fingerprint: 'input', planHash: digest(JSON.stringify(stages)), status: 'running',
     startedAt: new Date().toISOString(), tasks: [], stages: [] });
+  const nativeRename = fs.renameSync;
+  for (const code of ['EPERM', 'EBUSY']) {
+    const directory = join(root, `sharing-lock-${code}`);
+    let attempts = 0;
+    const rename = spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (++attempts <= 2) throw Object.assign(new Error('temporary sharing lock'), { code });
+      nativeRename(from, to);
+    });
+    try {
+      const report = createReport();
+      saveReport(directory, report);
+      assert.equal(attempts, 3, 'temporary sharing locks must not abort the workflow');
+      assert.deepEqual(JSON.parse(readFileSync(join(directory, 'report.json'), 'utf8')), report);
+    } finally { rename.mockRestore(); }
+  }
+  const lockedDirectory = join(root, 'locked-report');
+  const originalReport = createReport();
+  saveReport(lockedDirectory, originalReport);
+  for (const code of ['EPERM', 'ENOENT']) {
+    let attempts = 0;
+    const locked = Object.assign(new Error('replacement failed'), { code });
+    const rename = spyOn(fs, 'renameSync').mockImplementation(() => { attempts++; throw locked; });
+    try {
+      assert.throws(() => saveReport(lockedDirectory, { ...originalReport, title: 'new report' }), error => error === locked);
+      assert.equal(attempts, code === 'EPERM' ? 10 : 1, 'permanent locks are bounded and other errors fail immediately');
+      assert.deepEqual(JSON.parse(readFileSync(join(lockedDirectory, 'report.json'), 'utf8')), originalReport,
+        'a failed replacement must preserve the previous complete report');
+    } finally { rename.mockRestore(); }
+  }
   const events: string[] = [];
   const failure = createReport();
   let active = 0;

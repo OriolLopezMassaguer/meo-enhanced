@@ -16,6 +16,9 @@ import {
   type EditorFontSizeMode
 } from '../foundation/editorFontSize';
 import { decodeReadingPosition, type ReadingPositionDto } from './readingPosition';
+import { DEFAULT_EDITOR_LINE_HEIGHT, normalizeEditorLineHeight } from '../foundation/editorLineHeight';
+import { decodeDocumentViewState } from './documentSaveAs';
+import type { DocumentViewState } from '../foundation/documentViewState';
 import { defaultInputAssistance, isEditingPreferences, type EditingPreferences } from '../foundation/editingPreferences';
 import { decodeUiColors, type UiColors } from '../foundation/uiColors';
 import { decodeCustomPreviewPresets } from '../foundation/customPreviewPreset';
@@ -64,6 +67,7 @@ export type InitMessage = {
   readonly uiColors: UiColors;
   readonly editorFontSizeMode: EditorFontSizeMode;
   readonly editorFontSize: number;
+  readonly editorLineHeight?: number;
   readonly gitChangesGutter: boolean;
   readonly gitDiffLineHighlights: boolean;
   readonly gitDiffDetailsVisible: boolean;
@@ -80,6 +84,7 @@ export type InitMessage = {
   readonly criticMarkupDates: boolean;
   readonly restoreReadingPositionOnOpen: boolean;
   readonly readingPositionRestore: ReadingPositionDto | null;
+  readonly saveAsViewState?: DocumentViewState;
   readonly findOptions: { readonly wholeWord: boolean; readonly caseSensitive: boolean };
   readonly outlinePosition: 'left' | 'right';
   readonly outlineVisible: boolean;
@@ -104,6 +109,10 @@ export function decodeReadyMessage(value: unknown): ReadyMessage | null {
 }
 
 export function decodeInitMessage(value: unknown): InitMessage | null {
+  if (isRecord(value) && value.editorLineHeight !== undefined
+    && (typeof value.editorLineHeight !== 'number' || !Number.isFinite(value.editorLineHeight)
+      || normalizeEditorLineHeight(value.editorLineHeight) !== value.editorLineHeight)) return null;
+  if (isRecord(value) && value.saveAsViewState !== undefined && !decodeDocumentViewState(value.saveAsViewState)) return null;
   if (isRecord(value) && value.previewPreset !== undefined && !isPreviewPresetId(value.previewPreset)) return null;
   if (isRecord(value) && value.previewPresetPreferences !== undefined && decodePreviewPresetPreferences(value.previewPresetPreferences) === null) return null;
   if (isRecord(value) && value.customPreviewPresets !== undefined && decodeCustomPreviewPresets(value.customPreviewPresets) === null) return null;
@@ -254,6 +263,7 @@ export function decodeInitMessage(value: unknown): InitMessage | null {
     liveStrongColoring,
     editorFontSizeMode,
     editorFontSize,
+    editorLineHeight: value.editorLineHeight === undefined ? DEFAULT_EDITOR_LINE_HEIGHT : value.editorLineHeight as number,
     largeDocumentOptimizationEnabled,
     tableStickyHeaderEnabled,
     boldHeadingsEnabled,

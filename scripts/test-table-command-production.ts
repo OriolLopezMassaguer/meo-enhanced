@@ -76,11 +76,11 @@ async function main() {
           queueMicrotask(check);
         });
       };
-      const pointer = (button: HTMLButtonElement) => button.dispatchEvent(new PointerEvent('pointerdown', {
-        button: 0,
-        bubbles: true,
-        cancelable: true
-      }));
+      const pointer = (button: HTMLButtonElement) => {
+        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        button.dispatchEvent(new PointerEvent('pointerup', { button: 0, bubbles: true, cancelable: true }));
+        return button.dispatchEvent(new MouseEvent('click', { button: 0, bubbles: true, cancelable: true }));
+      };
       const editor = harness.createEditor({
         parent: app,
         text: [
@@ -310,7 +310,9 @@ async function main() {
       const retryDispatch = retryView.dispatch.bind(retryView);
       let retryDispatchFailed = false;
       (retryView as any).dispatch = (...transactions: any[]) => {
-        if (!retryDispatchFailed) {
+        // Pointer presentation also dispatches UI-only effects. Inject into
+        // the command's document change, not an unrelated capture handler.
+        if (!retryDispatchFailed && transactions.some(transaction => transaction.docChanged ?? Boolean(transaction.changes))) {
           retryDispatchFailed = true;
           throw new Error('expected production dispatch failure');
         }
@@ -347,7 +349,7 @@ async function main() {
       const blurDispatch = blurView.dispatch.bind(blurView);
       let blurDispatchFailed = false;
       (blurView as any).dispatch = (...transactions: any[]) => {
-        if (!blurDispatchFailed) {
+        if (!blurDispatchFailed && transactions.some(transaction => transaction.docChanged ?? Boolean(transaction.changes))) {
           blurDispatchFailed = true;
           throw new Error('expected production dispatch failure before blur');
         }
@@ -378,7 +380,7 @@ async function main() {
       const saveDispatch = saveView.dispatch.bind(saveView);
       let saveDispatchFailed = false;
       (saveView as any).dispatch = (...transactions: any[]) => {
-        if (!saveDispatchFailed) {
+        if (!saveDispatchFailed && transactions.some(transaction => transaction.docChanged ?? Boolean(transaction.changes))) {
           saveDispatchFailed = true;
           throw new Error('expected production dispatch failure before save');
         }
@@ -424,6 +426,9 @@ async function main() {
         afterFullRangeColumnDelete,
         afterQueuedDoubleDelete,
         dispatchFailureText,
+        retryDispatchFailed,
+        blurDispatchFailed,
+        saveDispatchFailed,
         afterFailedDispatch,
         retainedAfterFailedDispatch,
         afterDispatchRetry,
@@ -460,11 +465,11 @@ async function main() {
       `Columns with available space must keep the 90px preferred minimum: ${JSON.stringify(result.contextLayout.preferredColumnWidths)}`
     );
     assert.equal(result.contextLayout.visibleText, '');
-    assert.equal(result.contextLayout.separatorCount, 3);
+    assert.equal(result.contextLayout.separatorCount, 4);
     assert.equal(result.contextLayout.activePage, 'structure');
     assert.deepEqual(result.contextLayout.commandOrder, [
       'insert-row-above', 'insert-row-below', 'delete-row',
-      'insert-column-left', 'insert-column-right', 'delete-column'
+      'insert-column-left', 'insert-column-right', 'delete-column', 'delete-table'
     ]);
     assert.equal(result.menuOpenAfterAtomicInsert, true, 'Context menu must remain open after a table command restores focus');
     assert.match(result.afterAtomicInsert, /edited/);
@@ -480,15 +485,18 @@ async function main() {
       'Insert column left',
       'Insert column right',
       'Delete column',
+      'Delete table',
       'Move row up',
       'Move row down',
       'Move column left',
       'Move column right',
       'Align selected column left',
       'Align selected column center',
-      'Align selected column right'
+      'Align selected column right',
+      'Sort ascending',
+      'Sort descending'
     ], 'the contextual menu must expose every structure, movement and alignment command exactly once');
-    assert.equal(result.sortingCapabilityCount, 0, 'Table sorting must not have any contextual capability');
+    assert.equal(result.sortingCapabilityCount, 2, 'Table sorting exposes only the two immediate direction commands');
     assert.match(result.afterRapidMultiTable, /\| C\s+\| D\s+\|\n\| ---:\s+\| ---\s+\|/);
     assert.equal(result.contextTriggerCount, 2);
     assert.equal(result.contextMenuCount, 2);
@@ -510,6 +518,8 @@ async function main() {
     assert.equal(result.afterFullRangeRowDelete, result.rowGuardText, 'deleting every body row must be a strict no-op');
     assert.equal(result.afterFullRangeColumnDelete, result.columnGuardText, 'deleting every column must be a strict no-op');
     assert.match(result.afterQueuedDoubleDelete, /\| two\s+\|/, 'queued deletion must not remove the last body row');
+    assert.ok(result.retryDispatchFailed && result.blurDispatchFailed && result.saveDispatchFailed,
+      'every injected failure must reach a document-changing dispatch');
     assert.equal(result.afterFailedDispatch, result.dispatchFailureText, 'failed structure dispatch must not change Markdown');
     assert.equal(result.retainedAfterFailedDispatch, 'retry kept', 'failed structure dispatch must retain the visible pending edit');
     assert.match(result.afterDispatchRetry, /\| retry kept\s+\|\n\|\s+\|/, 'retry must atomically apply the retained edit and command');
@@ -605,6 +615,16 @@ async function main() {
         name: 'align right', title: 'Align selected column right', edit: { row: 1, col: 0 }, target: { row: 1, col: 0 },
         expected: ['| A | B |', '| ---: | --- |', '| one! | two |', '| three | four |'].join('\n'),
         focus: { row: 1, col: 0 }
+      },
+      {
+        name: 'sort ascending', title: 'Sort ascending', edit: { row: 1, col: 0 }, target: { row: 1, col: 1 },
+        expected: ['| A | B |', '| --- | --- |', '| three | four |', '| one! | two |'].join('\n'),
+        focus: { row: 2, col: 1 }
+      },
+      {
+        name: 'sort descending', title: 'Sort descending', edit: { row: 1, col: 0 }, target: { row: 1, col: 0 },
+        expected: ['| A | B |', '| --- | --- |', '| three | four |', '| one! | two |'].join('\n'),
+        focus: { row: 2, col: 0 }
       }
     ];
 
@@ -661,7 +681,7 @@ async function main() {
       await page.evaluate((title) => {
         const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-md-html-table-context-btn'))
           .find((candidate) => candidate.dataset.tooltip === title)!;
-        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        button.click();
       }, matrixCase.title);
       await page.waitForFunction((expected) => (
         (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === expected
@@ -741,7 +761,7 @@ async function main() {
       const before = editor.getHistoryDepth();
       const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-md-html-table-context-btn'))
         .find(button => button.dataset.tooltip === 'Align selected column center')!;
-      button.dispatchEvent(new PointerEvent('pointerdown', {button: 0, bubbles: true, cancelable: true}));
+      button.click();
       return {before, after: editor.getHistoryDepth(), text: editor.getText()};
     });
     assert.deepEqual(pendingCommand.before, {undo: 0, redo: 0});
@@ -757,7 +777,7 @@ async function main() {
       '| a2 | b2 | c2 |',
       '| a3 | b3 | c3 |'
     ].join('\n');
-    const resetRangeEditor = async () => {
+    const resetRangeEditor = async (text = rangeOriginal) => {
       await page.evaluate((text) => {
         const candidate = window as typeof window & { __tableCommandMatrixEditor?: any };
         candidate.__tableCommandMatrixEditor?.destroy();
@@ -765,7 +785,7 @@ async function main() {
         candidate.__tableCommandMatrixEditor = (window as any).TableStabilityHarness.createEditor({
           parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {}
         });
-      }, rangeOriginal);
+      }, text);
       await page.waitForSelector('.meo-md-html-table-shell tbody textarea');
     };
     const dragRange = async (from: string, to: string) => {
@@ -784,7 +804,7 @@ async function main() {
       await page.evaluate((label) => {
         const button = Array.from(document.querySelectorAll<HTMLButtonElement>('.meo-md-html-table-context-btn'))
           .find((candidate) => candidate.dataset.tooltip === label)!;
-        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
+        button.click();
       }, title);
     };
 
@@ -814,6 +834,111 @@ async function main() {
     await invokeRangeCommand('Align selected column right');
     const alignedColumns = ['| A | B | C |', '| ---: | ---: | --- |', '| a1 | b1 | c1 |', '| a2 | b2 | c2 |', '| a3 | b3 | c3 |'].join('\n');
     await page.waitForFunction((expected) => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === expected, {}, alignedColumns);
+
+    const sortRows = [
+      '| 项目10 | 10 | `code` |',
+      '| 项目2 | **2** | second |',
+      '| 项目1 | [2](https://example.com) | third |',
+      '| 项目20 |  | empty |'
+    ];
+    const sortHeader = '| Name | Count | Notes |\n| --- | ---: | --- |\n';
+    const sortOriginal = sortHeader + sortRows.join('\n');
+    for (const test of [
+      { column: 1, row: 1, direction: 'ascending', order: [1, 2, 0, 3], focusRow: 3 },
+      { column: 1, row: 1, direction: 'descending', order: [0, 1, 2, 3], focusRow: 1 },
+      { column: 0, row: 1, direction: 'ascending', order: [2, 1, 0, 3], focusRow: 3 },
+      { column: 1, row: 0, direction: 'ascending', order: [1, 2, 0, 3], focusRow: 0 }
+    ]) {
+      await resetRangeEditor(sortOriginal);
+      await page.$eval(`textarea[data-table-row="${test.row}"][data-table-col="${test.column}"]`, input => (input as HTMLTextAreaElement).focus());
+      await invokeRangeCommand(test.direction === 'ascending' ? 'Sort ascending' : 'Sort descending');
+      const expected = sortHeader + test.order.map(index => sortRows[index]).join('\n');
+      await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, expected);
+      await page.waitForFunction(({ row, col }) => {
+        const active = document.activeElement as HTMLTextAreaElement;
+        return active?.dataset.tableRow === String(row) && active.dataset.tableCol === String(col);
+      }, {}, { row: test.focusRow, col: test.column });
+      if (expected !== sortOriginal) {
+        assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.undo()), true);
+        await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, sortOriginal);
+        assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.redo()), true);
+        await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, expected);
+      }
+    }
+
+    await resetRangeEditor(sortOriginal);
+    await dragRange('tbody tr:nth-child(1) td:nth-child(2) .meo-md-html-table-cell-preview', 'tbody tr:nth-child(2) td:nth-child(3) .meo-md-html-table-cell-preview');
+    await invokeRangeCommand('Sort ascending');
+    await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, sortHeader + [1, 2, 0, 3].map(index => sortRows[index]).join('\n'));
+    assert.equal(await page.$$eval('.meo-md-html-table-cell-selected', cells => cells.length), 0, 'sorting ends the old rectangle');
+
+    await resetRangeEditor(sortOriginal);
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLTextAreaElement>('textarea[data-table-row="1"][data-table-col="1"]')!;
+      input.focus();
+      input.value = '1';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '1' }));
+      document.querySelector<HTMLButtonElement>('button[data-command="sort-ascending"]')!.click();
+    });
+    const pendingSortExpected = sortOriginal.replace('| 项目10 | 10 |', '| 项目10 | 1 |');
+    await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, pendingSortExpected);
+    assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.undo()), true);
+    await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, sortOriginal);
+
+    const deleteOriginal = 'before\n\n' + sortOriginal + '\n\nafter\n\n| Other |\n| --- |\n| untouched |';
+    const deleted = 'before\n\n\n\nafter\n\n| Other |\n| --- |\n| untouched |';
+    await resetRangeEditor(deleteOriginal);
+    await page.$eval('tbody textarea', input => (input as HTMLTextAreaElement).focus());
+    await page.click('.meo-md-html-table-context-trigger');
+    const deleteButton = '.meo-md-html-table-shell button[data-command="delete-table"]';
+    const deleteStart = await page.$eval(deleteButton, button => ({ width: button.getBoundingClientRect().width, color: getComputedStyle(button).color }));
+    await page.click(deleteButton);
+    assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.view.state.doc.toString()), deleteOriginal);
+    assert.equal(await page.$eval(deleteButton, button => button.textContent), 'Delete table');
+    assert.equal(await page.$eval(deleteButton, button => button.classList.contains('is-delete-armed')), true);
+    const middleWidth = await page.$eval(deleteButton, async button => {
+      await new Promise(resolve => setTimeout(resolve, 60));
+      return button.getBoundingClientRect().width;
+    });
+    assert.ok(middleWidth > deleteStart.width, 'the confirmation expands with a width transition');
+    await page.waitForFunction(selector => !document.querySelector(selector)!.classList.contains('is-delete-armed'), { timeout: 4500 }, deleteButton);
+    assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.view.state.doc.toString()), deleteOriginal, 'timeout only cancels confirmation');
+    await page.click(deleteButton);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.$eval(deleteButton, button => button.classList.contains('is-delete-armed')), false);
+    await page.click(deleteButton);
+    await page.waitForFunction(selector => {
+      const button = document.querySelector(selector)!;
+      return Math.abs(button.getBoundingClientRect().width - Number.parseFloat(getComputedStyle(button).getPropertyValue('--meo-table-delete-confirm-width'))) < 0.5;
+    }, {}, deleteButton);
+    await page.hover('.meo-md-html-table-context-next');
+    const nextLeftBeforePress = await page.$eval('.meo-md-html-table-context-next', button => button.getBoundingClientRect().left);
+    await page.mouse.down();
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 150)));
+    const nextLeftWhilePressed = await page.$eval('.meo-md-html-table-context-next', button => button.getBoundingClientRect().left);
+    await page.mouse.up();
+    assert.ok(Math.abs(nextLeftWhilePressed - nextLeftBeforePress) <= 0.5,
+      `next must remain under the pointer until release: ${nextLeftBeforePress} -> ${nextLeftWhilePressed}`);
+    assert.equal(await page.$eval('.meo-md-html-table-context-menu', menu => (menu as HTMLElement).dataset.activePage), 'arrangement',
+      'pressing next while delete confirmation is expanded must page on the same click');
+    await page.click('.meo-md-html-table-context-previous');
+    assert.equal(await page.$eval(deleteButton, button => button.classList.contains('is-delete-armed')), false, 'paging cancels confirmation');
+    await page.click(deleteButton);
+    await page.click(deleteButton);
+    await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, deleted);
+    assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.view.hasFocus), true, 'deletion returns focus to the editor');
+    assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.undo()), true);
+    await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, deleteOriginal);
+    assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.redo()), true);
+    await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, deleted);
+    await resetRangeEditor(sortOriginal);
+    await page.$eval('tbody textarea', input => (input as HTMLTextAreaElement).focus());
+    await page.click('.meo-md-html-table-context-trigger');
+    await page.click(deleteButton);
+    await page.click(deleteButton);
+    await page.waitForFunction(() => (window as any).__tableCommandMatrixEditor.view.state.doc.length === 0);
+    assert.equal(await page.evaluate(() => (window as any).__tableCommandMatrixEditor.undo()), true);
+    await page.waitForFunction(text => (window as any).__tableCommandMatrixEditor.view.state.doc.toString() === text, {}, sortOriginal);
   } finally {
     await browser.close();
   }

@@ -32,6 +32,7 @@ function checkPendingInputLayoutOwnership(): void {
     for (const reflowed of [false, true]) {
       let caretTop = 350;
       let lineHeight = 24;
+      let pendingHeightMapShift = false;
       const dom = Object.assign(new EventTarget(), { ownerDocument: new EventTarget() });
       const scroller = Object.assign(new EventTarget(), {
         scrollTop: 1_000,
@@ -42,7 +43,14 @@ function checkPendingInputLayoutOwnership(): void {
         state: { selection: { main: { head: 100, empty: true } },
           doc: { length: 1_000, lineAt: () => ({ number: 10 }) } },
         coordsAtPos: () => ({ top: caretTop, bottom: caretTop + 24 }),
-        lineBlockAt: () => ({ height: lineHeight }),
+        lineBlockAt: () => {
+          if (pendingHeightMapShift) {
+            pendingHeightMapShift = false;
+            caretTop = 700;
+            scroller.scrollTop = 800;
+          }
+          return { height: lineHeight };
+        },
         requestMeasure: ({ read, write }: any) => write(read())
       };
       let retains = 0;
@@ -77,9 +85,33 @@ function checkPendingInputLayoutOwnership(): void {
         continuity.observe({
           transactions: [{ docChanged: true, isUserEvent: () => true }], selectionSet: true
         } as any);
+        continuity.observe({ transactions: [{ docChanged: false, effects: [{ is: () => true }] }], selectionSet: false } as any);
+        // Two post-refresh geometry receipts can arrive before any queued RAF.
+        // They must not consume the input's two stable animation frames.
+        for (let receipt = 0; receipt < 2; receipt++) {
+          continuity.observe({ transactions: [{ docChanged: false, effects: [] }], selectionSet: false, geometryChanged: true } as any);
+        }
+        // CodeMirror can correct virtual heights during its current measure
+        // pass, while the input owner already has a later RAF scheduled.
+        caretTop = 700;
+        scroller.scrollTop = 800;
+        continuity.observe({ transactions: [], selectionSet: false, viewportChanged: true } as any);
+        if (caretTop !== 350 || retains !== 2) {
+          throw new Error('Post-refresh receipts ended input retention before a frame advanced');
+        }
+        // A height-map query can flush a queued CodeMirror measurement. Its
+        // final caret must be read afterwards, not paired with an older rect.
+        pendingHeightMapShift = true;
+        continuity.observe({ transactions: [], selectionSet: false, geometryChanged: true } as any);
+        if (caretTop !== 350 || retains !== 3) throw new Error('Input measurement mixed two height-map layouts');
+        view.state.selection.main.head += 10;
+        continuity.observe({ transactions: [], selectionSet: true } as any);
+        caretTop = 700;
+        continuity.observe({ transactions: [], selectionSet: false, geometryChanged: true } as any);
+        if (caretTop !== 700 || retains !== 3) throw new Error('New navigation must retire the main input anchor');
       }
       continuity.dispose();
-      if (reflowed ? retains !== 0 || reveals !== 0 : retains !== 1 || reveals !== 0 || caretTop !== 350) {
+      if (reflowed ? retains !== 0 || reveals !== 0 : retains !== 3 || reveals !== 0 || caretTop !== 700) {
         throw new Error(`Pending input layout ownership failed: ${JSON.stringify({ reflowed, retains, reveals, caretTop })}`);
       }
     }
@@ -447,7 +479,7 @@ async function main(): Promise<void> {
       '  <del>HTML 第 51 行式目标</del>',
       '</p>',
       ...matrixSuffix
-    ].join('\n'), '<del>HTML 第 51 行式目标</del>', '.meo-md-html-source-toggle');
+    ].join('\n'), '<del>HTML 第 51 行式目标</del>');
 
     const numericBurstText = [
       ...Array.from({ length: 799 }, (_, index) => `数字前正文 ${index + 1}`),
@@ -718,7 +750,6 @@ async function main(): Promise<void> {
     const tableCaret = measured.result.value as {
       visible: boolean; active: boolean; selectionStart: number; selectionEnd: number; valueLength: number;
     };
-    await caretClient.detach();
     if (!tableCaret.visible || !tableCaret.active || tableCaret.selectionStart !== tableCaret.selectionEnd
       || tableCaret.selectionEnd !== tableCaret.valueLength) {
       throw new Error(`Numeric table input left its active line outside the viewport: ${JSON.stringify(tableCaret)}`);
@@ -765,15 +796,41 @@ async function main(): Promise<void> {
         lineHeight: editor.view.defaultLineHeight
       };
     });
+    const { nodeId: stickyInputId } = await caretClient.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: '.meo-md-html-table-shell tbody tr:nth-child(12) td:nth-child(2) textarea'
+    });
+    const stickyInput = await caretClient.send('DOM.describeNode', { nodeId: stickyInputId, depth: -1, pierce: true });
+    const stickyText = descendants(stickyInput.node).filter(node => node.nodeType === 3);
+    if (stickyText.length !== 1) throw new Error('Expected one native sticky-header textarea text node');
+    const { object: stickyObject } = await caretClient.send('DOM.resolveNode', { backendNodeId: stickyText[0].backendNodeId });
+    const stickyMeasured = await caretClient.send('Runtime.callFunctionOn', {
+      objectId: stickyObject.objectId, returnByValue: true,
+      functionDeclaration: function(this: Text) {
+        const input = (this.getRootNode() as ShadowRoot).host as HTMLTextAreaElement;
+        if (this.data !== input.value) throw new Error('Sticky-header textarea text no longer matches its input');
+        const range = this.ownerDocument.createRange();
+        range.setStart(this, input.selectionEnd);
+        range.collapse(true);
+        const caret = range.getBoundingClientRect();
+        return { top: caret.top, height: caret.height, focused: document.activeElement === input };
+      }.toString()
+    });
+    await caretClient.detach();
+    if (stickyMeasured.exceptionDetails || !stickyMeasured.result.value) throw new Error('Native sticky-header caret measurement failed');
+    const stickyCaret = stickyMeasured.result.value as { top: number; height: number; focused: boolean };
     if (
       stickyBefore.stickyBottom === null || stickyAfter.stickyBottom === null ||
       stickyBefore.inputTop >= stickyBefore.stickyBottom ||
-      stickyAfter.inputTop < stickyAfter.stickyBottom + stickyAfter.lineHeight - 2 ||
+      // Reveal operates on the caret, which is inset from the textarea's border.
+      !stickyCaret.focused || stickyCaret.height <= 0 ||
+      stickyCaret.top < stickyAfter.stickyBottom + stickyAfter.lineHeight - 2 ||
       stickyAfter.scrollTop < stickyBefore.scrollTop - stickyAfter.lineHeight * 3
     ) {
       throw new Error(`Table input hidden by the sticky header was not minimally revealed: ${JSON.stringify({
         stickyBefore,
-        stickyAfter
+        stickyAfter,
+        stickyCaret
       })}`);
     }
 

@@ -1,4 +1,5 @@
 import { blockStickyHeaderExtension } from './helpers/blockStickyHeader';
+import { livePointerSelectionActiveField } from './editor/livePointerSelection';
 import { countColumn, RangeSetBuilder, StateEffect, StateField, EditorState, type ChangeDesc, type Range, type RangeSet, type Extension, type EditorSelection, type Transaction } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxHighlighting } from '@codemirror/language';
@@ -12,7 +13,7 @@ import {
   type DecorationSet
 } from '@codemirror/view';
 import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
-import { createElement, AlertCircle, Code2, Delete } from 'lucide';
+import { createElement, AlertCircle, Delete } from 'lucide';
 import {
   resolveCodeLanguage,
   isFenceMarker,
@@ -32,7 +33,7 @@ import { criticContentClass, criticContentRanges, criticMarkDecoration, criticTa
 import { criticReviewField } from './helpers/criticMarkupReview';
 import { inlineMarkdownExtensions } from './helpers/inlineMarkdownParser';
 import { collectKbdTagRangesFromText, hasKbdTagMarker } from './helpers/kbd';
-import { currentSyntaxTree, getFencedCodeInfo, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
+import { currentSyntaxTree, getFencedCodeInfo, headingContentRange, headingLevelFromName, resolvedSyntaxTree, syntaxTreeChanged } from './helpers/markdownSyntax';
 import { detailsBlockLiveExtensions, getDetailsBlocks, toggleDetailsBlock } from './helpers/detailsBlocks';
 import {
   addListMarkerDecoration,
@@ -105,7 +106,6 @@ import { mountProjectedLineNumbers } from './editor/projectedLineNumbers';
 import { createDisplayMathActions, displayMathResultField, getPreviousDisplayMathResult, isDisplayMathEditing } from './helpers/displayMathEditing';
 import {
   addHtmlContentDecorations,
-  enterHtmlSource,
   getHtmlEditingRange,
   htmlContentExtensions
 } from './helpers/htmlContent';
@@ -369,29 +369,9 @@ type DecorationCollector = Array<Range<Decoration>>;
 type SourceRange = { from: number; to: number };
 type ActiveImageGroup = { line: ReturnType<EditorState['doc']['line']>; items: ImageGroupItem[] };
 
-type LivePointerSelectionState = {
-  active: boolean;
-  preservedLine: number | null;
-};
-
-export const setLivePointerSelectionActiveEffect = StateEffect.define<LivePointerSelectionState>();
 export const setLiveDocumentIdleEffect = StateEffect.define<boolean>();
 export const preserveLiveDecorationsForSearchEffect = StateEffect.define<true>();
 export const refreshLiveDecorationsAfterSearchEffect = StateEffect.define<true>();
-
-const livePointerSelectionActiveField = StateField.define<LivePointerSelectionState>({
-  create() {
-    return { active: false, preservedLine: null };
-  },
-  update(value, transaction) {
-    for (const effect of transaction.effects) {
-      if (effect.is(setLivePointerSelectionActiveEffect)) {
-        return effect.value;
-      }
-    }
-    return value;
-  }
-});
 
 const liveDocumentIdleField = StateField.define<boolean>({
   create() {
@@ -801,6 +781,7 @@ function addThematicBreakDecorations(
 function addForcedThematicBreakDecorations(
   builder: DecorationCollector,
   state: EditorState,
+  tree: Tree,
   activeLines: Set<number>,
   frontmatter: FrontmatterInfo | null,
   codeBlockLines: Set<number> | null = null
@@ -814,6 +795,10 @@ function addForcedThematicBreakDecorations(
     ) {
       continue;
     }
+    // A dash-only line can belong to a heading; its parsed block owns the syntax.
+    let node = tree.resolveInner(line.to, -1);
+    while (node.parent && node.name !== 'HorizontalRule' && !node.name.startsWith('SetextHeading')) node = node.parent;
+    if (node.name === 'HorizontalRule' || node.name.startsWith('SetextHeading')) continue;
     addThematicBreakDecorations(builder, state, line.from, line.to, activeLines);
   }
 }
@@ -1314,42 +1299,6 @@ function addMarkdownLinkDecorations(builder: DecorationCollector, state: EditorS
   }
 }
 
-class DetailsSourceToggleWidget extends UiLanguageSensitiveWidget {
-  constructor(readonly from: number, readonly to: number) {
-    super();
-  }
-
-  eq(other: WidgetType): boolean {
-    return other instanceof DetailsSourceToggleWidget &&
-      this.hasSameUiLanguageEpoch(other) &&
-      other.from === this.from && other.to === this.to;
-  }
-
-  toDOM(view: EditorView): HTMLElement {
-    const strings = getUiStrings(view.state.facet(uiLanguageFacet));
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'meo-md-html-mode-btn meo-md-html-source-toggle meo-md-details-source-toggle';
-    button.dataset.tooltip = strings.showHtmlSource;
-    button.setAttribute('aria-label', strings.showHtmlSource);
-    button.appendChild(createElement(Code2, { width: 18, height: 18, 'aria-hidden': 'true' }));
-    button.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      enterHtmlSource(view, { from: this.from, to: this.to });
-    });
-    return button;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
 function addFootnoteReferenceDecorations(builder: DecorationCollector, state: EditorState, reference: FootnoteReference, activeLines: Set<number>): boolean {
   if (!shouldRenderFootnoteReference(state, reference, activeLines)) {
     return false;
@@ -1569,13 +1518,6 @@ function addDetailsBlockDecorations(builder: DecorationCollector, state: EditorS
         )
       }).range(detailsBlock.summaryFrom, detailsBlock.summaryTo)
     );
-    builder.push(
-      Decoration.widget({
-        widget: new DetailsSourceToggleWidget(detailsBlock.sectionFrom, detailsBlock.sectionTo),
-        side: 1
-      }).range(detailsBlock.lineFrom)
-    );
-
     if (detailsBlock.anchorTo > detailsBlock.summaryTo) {
       builder.push(
         hiddenDetailsSourceDeco.range(detailsBlock.summaryTo, detailsBlock.anchorTo)
@@ -1722,11 +1664,7 @@ export function collectInlineMarkdownSyntaxRanges(text: string): SourceRange[] {
   return merged;
 }
 
-function addAtxHeadingContentColor(builder: DecorationCollector, state: EditorState, from: number, to: number): void {
-  const line = state.doc.lineAt(from);
-  const text = state.doc.sliceString(line.from, line.to);
-  const match = /^(#{1,6}[ \t]+)/.exec(text);
-  const contentFrom = match ? line.from + match[1].length : from;
+function addHeadingContentColor(builder: DecorationCollector, state: EditorState, contentFrom: number, to: number): void {
   if (contentFrom >= to) {
     return;
   }
@@ -1942,12 +1880,14 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       literalBlockLines.add(lineNo);
     }
   }
-  addForcedThematicBreakDecorations(ranges, state, activeLines, frontmatter, literalBlockLines);
+  addForcedThematicBreakDecorations(ranges, state, tree, activeLines, frontmatter, literalBlockLines);
   const literalRanges = collectMarkdownLiteralRanges(state, tree);
   const htmlCodeBodies = literalRanges.flatMap(range => range.htmlCode ? [range.htmlCode] : []);
   for (const body of htmlCodeBodies) addRange(ranges, body.from, body.to, inlineStyleDecos.inlineCode);
   const inlineHtmlRanges: Array<{ from: number; to: number }> = [];
+  const htmlDecorationStart = ranges.length;
   const renderedHtmlBlocks = addHtmlContentDecorations(ranges, state, activeLines, previous, changes, inlineHtmlRanges);
+  const htmlDecorations = new Set(ranges.slice(htmlDecorationStart).map(range => range.value));
 
   tree.iterate({
     enter: (node: SyntaxNodeRef) => {
@@ -1983,12 +1923,23 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       if (node.name === 'Table') {
         tableDepth += 1;
       }
+      if (node.name === 'HorizontalRule' && !isInsideFrontmatter(frontmatter, node.from)) {
+        addThematicBreakDecorations(ranges, state, node.from, node.to, activeLines);
+        return;
+      }
 
       const headingLevel = headingLevelFromName(node.name);
       if (headingLevel !== null) {
         if (tableDepth === 0 && !isInsideFrontmatter(frontmatter, node.from)) {
-          addAtxHeadingPrefixMarkers(ranges, state, node.from, activeLines);
-          addAtxHeadingContentColor(ranges, state, node.from, node.to);
+          const content = headingContentRange(state, node.node);
+          if (node.name.startsWith('SetextHeading')) {
+            const underline = node.node.lastChild!;
+            const active = rangeTouchesActiveLine(state, node.from, node.to, activeLines);
+            addRange(ranges, underline.from, underline.to, active ? activeLineMarkerDeco : markerDeco);
+          } else {
+            addAtxHeadingPrefixMarkers(ranges, state, node.from, activeLines);
+          }
+          addHeadingContentColor(ranges, state, content.from, content.to);
           const headingDecoration = [
             lineStyleDecos.h1,
             lineStyleDecos.h2,
@@ -1997,7 +1948,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
             lineStyleDecos.h5,
             lineStyleDecos.h6
           ][headingLevel - 1];
-          addLineClass(ranges, state, node.from, node.to, headingDecoration);
+          addLineClass(ranges, state, node.from, content.to, headingDecoration);
         }
       }
 
@@ -2265,6 +2216,7 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
       if (tableDepth > 0 && node.name === 'HeaderMark') {
         return;
       }
+      if (node.name === 'HeaderMark' && node.node.parent?.name.startsWith('SetextHeading')) return;
       if (isFenceMarker(state, node.from, node.to)) {
         // Show fence markers on all lines (not just active)
         addLineAwareRange(ranges, activeLines, line.number, node.from, node.to, fenceMarkerDeco, activeLineMarkerDeco);
@@ -2511,7 +2463,8 @@ function buildDecorations(state: EditorState, previous?: DecorationSet, changes?
     ))
   );
   preserveRenderedBlockPreviewHeights(ranges, changes ? previous?.map(changes) : previous);
-  const result = Decoration.set(ranges, true);
+  const result = Decoration.set(htmlEditingRange ? ranges.filter(range =>
+    range.from < htmlEditingRange.from || range.to > htmlEditingRange.to || htmlDecorations.has(range.value)) : ranges, true);
   return filterDecorationsOutsideMergeConflicts(state, result);
 }
 
@@ -2681,13 +2634,14 @@ type LatexMathWidgetElement = HTMLElement & {
 
 class DisplayMathSourceActionsWidget extends UiLanguageSensitiveWidget {
   constructor(readonly anchor: number) { super(); }
-  eq(other: WidgetType): boolean { return other instanceof DisplayMathSourceActionsWidget && other.anchor === this.anchor; }
+  eq(other: WidgetType): boolean { return other instanceof DisplayMathSourceActionsWidget && this.hasSameUiLanguageEpoch(other) && other.anchor === this.anchor; }
   toDOM(view: EditorView): HTMLElement {
-    const actions = createDisplayMathActions(view, () => this.anchor);
+    const actions = createDisplayMathActions(view, () => this.anchor, true);
     actions.classList.add('meo-math-source-actions');
     return actions;
   }
   ignoreEvent(): boolean { return true; }
+  destroy(root: HTMLElement): void { (root as HTMLElement & { disposeMathActions?: () => void }).disposeMathActions?.(); }
 }
 
 class LatexMathWidget extends UiLanguageSensitiveWidget {
@@ -2777,6 +2731,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     wrapper.className = `meo-md-math meo-md-math-${this.mode}`;
     if (this.fencedDisplay && this.mode === 'display') {
       wrapper.classList.add('meo-md-math-fenced-display');
+      wrapper.dataset.meoMathAnchor = String(this.anchor);
       wrapper.classList.toggle('meo-math-live-result', this.editing);
       wrapper.addEventListener('pointerdown', (event: PointerEvent) => {
         if (event.button === 0) {
@@ -2788,7 +2743,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     if (this.fencedDisplay && this.mode === 'display') {
       applyLiveBlockIndent(wrapper, this.indentColumns);
       wrapper.__meoLatexMathViewport = attachLatexMathViewport(wrapper);
-      if (!this.editing) wrapper.append(createDisplayMathActions(view, () => wrapper.__meoLatexMathWidget!.anchor));
+      if (!this.editing) wrapper.append(createDisplayMathActions(view, () => wrapper.__meoLatexMathWidget!.anchor, false));
       this.updateResultLabel(wrapper, view);
       // Enter before pointerdown bubbles: another embedded editor may release
       // its projected selection and replace this DOM before a click can arrive.
@@ -2813,6 +2768,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
   }
 
   private updateResultLabel(wrapper: HTMLElement, view: EditorView): void {
+    if (wrapper.dataset.meoMathStale !== String(this.stale)) wrapper.dataset.meoMathStale = String(this.stale);
     wrapper.querySelector(':scope > .meo-math-result-status')?.remove();
     if (!this.editing) return;
     const label = wrapper.ownerDocument.createElement('span');
@@ -2830,6 +2786,7 @@ class LatexMathWidget extends UiLanguageSensitiveWidget {
     // Keep both DOM and its fitted height across caret/input transactions.
     // Mounted callbacks resolve the current widget instead of a stale source range.
     wrapper.__meoLatexMathWidget = this;
+    if (wrapper.dataset.meoMathAnchor !== String(this.anchor)) wrapper.dataset.meoMathAnchor = String(this.anchor);
     applyLiveBlockIndent(wrapper, this.indentColumns);
     if (previous.html !== this.html) wrapper.__meoLatexMathViewport?.setContent(this.html);
     this.updateResultLabel(wrapper, view);
@@ -3726,6 +3683,7 @@ const liveLineNumberMarkerField = StateField.define<RangeSet<GutterMarker>>({
 
 function buildStyledLineNumberMarkers(state: EditorState): RangeSet<GutterMarker> {
   const builder = new RangeSetBuilder<GutterMarker>();
+  const frontmatter = parseFrontmatter(state);
   resolvedSyntaxTree(state).iterate({
     enter(node) {
       if (node.name === 'CodeBlock' && !hasCodeBlockAncestor(node)) {
@@ -3734,7 +3692,7 @@ function buildStyledLineNumberMarkers(state: EditorState): RangeSet<GutterMarker
         return false;
       }
       const level = headingLevelFromName(node.name);
-      if (level === null) return;
+      if (level === null || isInsideFrontmatter(frontmatter, node.from)) return;
       const line = state.doc.lineAt(node.from);
       builder.add(line.from, line.from, headingGutterLineClassMarkers[level - 1]);
     }
@@ -3758,7 +3716,7 @@ export const editorMarkdownLanguage = markdown({
   addKeymap: false,
   codeLanguages: resolveCodeLanguage,
   extensions: [...inlineMarkdownExtensions,
-    { props: [sourceMarkdownHighlightProps] }, { remove: ['SetextHeading', 'Emoji'] }]
+    { props: [sourceMarkdownHighlightProps] }, { remove: ['Emoji'] }]
 });
 
 export function liveModeExtensions(options: { readonly largeDocument?: boolean } = {}): Extension[] {

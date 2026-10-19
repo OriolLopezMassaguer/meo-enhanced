@@ -160,6 +160,12 @@ async function main(): Promise<void> {
         records,
         frames,
         makeTable,
+        tableMutations(rootId: string) {
+          return [{
+            target: document.querySelector(`[data-table-column-width="${rootId}"]`)!,
+            addedNodes: [], removedNodes: []
+          }];
+        },
         snapshot: (): LifecycleSnapshot => structuredClone(metrics),
         callbacks(kind: ObserverKind, rootId: string) {
           return records.filter((record) => record.kind === kind && record.rootId === rootId)
@@ -223,7 +229,7 @@ async function main(): Promise<void> {
       const released = lifecycle.snapshot();
       const table = document.querySelector<HTMLTableElement>('[data-table-column-width="first"]')!;
       table.style.width = '321px';
-      oldRootCallback([], {});
+      oldRootCallback(lifecycle.tableMutations('first'), {});
       oldResizeCallback([], {});
       lifecycle.runFrame(pendingFrame);
       return {
@@ -247,13 +253,13 @@ async function main(): Promise<void> {
       const oldResizeCallback = lifecycle.callbacks('resize', 'first')[0];
       (window as any).__firstWidthLifecycle.acquire();
       const beforeOldCallbacks = lifecycle.snapshot();
-      oldRootCallback([], {});
+      oldRootCallback(lifecycle.tableMutations('first'), {});
       oldResizeCallback([], {});
       lifecycle.runFrame(lifecycle.oldFrame);
       const afterOldCallbacks = lifecycle.snapshot();
       const currentRootCallback = lifecycle.callbacks('mutation', 'first')[1];
       const currentResizeCallback = lifecycle.callbacks('resize', 'first')[1];
-      currentRootCallback([], {});
+      currentRootCallback(lifecycle.tableMutations('first'), {});
       const afterCurrentRoot = lifecycle.snapshot();
       currentResizeCallback([], {});
       const afterCurrentResize = lifecycle.snapshot();

@@ -17,7 +17,7 @@ export type HostViewNavigationLifecycle = {
   hasPendingExplicitNavigation(): boolean;
   revealSelection(selection: ViewSelection): Promise<void>;
   revealFragment(href: string): Promise<void>;
-  ready(): Promise<void>;
+  ready(options?: { readonly preserveInitialView?: boolean }): Promise<void>;
   flush(): Promise<void>;
   dispose(): void;
 };
@@ -25,7 +25,7 @@ export type HostViewNavigationLifecycle = {
 /** Host Session port; the concrete editor source is interpreted only by its Adapter. */
 export type HostViewNavigationPort<TEditorSource> = {
   hasPendingExplicitNavigation(): boolean;
-  ready(): Promise<void>;
+  ready(options?: { readonly preserveInitialView?: boolean }): Promise<void>;
   flush(): Promise<void>;
   revealSelectionForEditor(editor: TEditorSource | undefined): Promise<void>;
   revealCurrentEditorSelection(): Promise<void>;
@@ -128,8 +128,15 @@ export function createHostViewNavigationLifecycle(
       requestGeneration += 1;
       return flush();
     },
-    ready() {
+    ready(options) {
       if (disposed) return Promise.resolve();
+      if (options?.preserveInitialView) {
+        // Save As already owns its first viewport and selection. Ignore the
+        // unchanged native selection inherited while replacing that editor.
+        lastSentSelectionKey = pendingSelection ? selectionKey(pendingSelection) : null;
+        pendingSelection = null;
+        pendingFragment = null;
+      }
       ready = true;
       return flush();
     },

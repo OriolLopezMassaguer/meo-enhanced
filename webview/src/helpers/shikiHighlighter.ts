@@ -1,5 +1,6 @@
 import type { HighlighterCore } from 'shiki/core';
 import { bundledLanguages, bundledLanguagesInfo } from 'shiki/langs';
+import { mathSyntaxGrammar, withMarkdownSyntax } from '../adapters/markdownSyntaxGrammar';
 
 export type RawVscodeTheme = {
   name: string;
@@ -88,6 +89,7 @@ type PendingHighlight = {
   readonly consumers: Set<() => boolean>;
   readonly foregroundConsumers: Set<() => boolean>;
   priority: 'foreground' | 'background';
+  readonly deferBackground: () => boolean;
   resumeForeground?: () => void;
 };
 
@@ -226,13 +228,16 @@ export function getShikiTokens(
 /**
  * isNeeded is a cheap synchronous check of the caller's current document/lifetime.
  * Identical requests share work while at least one caller still needs the result.
+ * deferBackground pauses preparation without discarding completed batches;
+ * a foreground request for the same tokens resumes that work immediately.
  */
 export function requestShikiTokens(
   lang: string,
   code: string,
   surface: ShikiSurface = 'editor',
   isNeeded: () => boolean = alwaysNeeded,
-  priority: 'foreground' | 'background' = 'foreground'
+  priority: 'foreground' | 'background' = 'foreground',
+  deferBackground: () => boolean = () => false
 ): void {
   const state = getRuntimeState(surface);
   if (!state.rawTheme || state.activeHighlightConsumers === 0) {
@@ -252,7 +257,7 @@ export function requestShikiTokens(
   }
   const request: PendingHighlight = {
     generation: state.workGeneration,
-    priority,
+    priority, deferBackground,
     foregroundConsumers: new Set(priority === 'foreground' ? [isNeeded] : []),
     consumers: new Set([isNeeded])
   };
@@ -328,12 +333,18 @@ async function ensureLang(
     return true;
   }
   const loader = LANG_LOADERS[lang];
+  if (lang === mathSyntaxGrammar.name) {
+    record.grammarVersion += 1;
+    await highlighter.loadLanguage(mathSyntaxGrammar);
+    record.loadedLangs.add(lang);
+    return true;
+  }
   if (!loader) {
     return false;
   }
   const grammar = (await loader()).default;
   record.grammarVersion += 1;
-  await highlighter.loadLanguage(grammar as any);
+  await highlighter.loadLanguage(lang === 'markdown' ? withMarkdownSyntax(grammar as any) : grammar as any);
   record.loadedLangs.add(lang);
   return true;
 }
@@ -361,7 +372,8 @@ function tokenizeInBatches(
   code: string,
   isCurrent: () => boolean,
   request: PendingHighlight,
-  waitForForeground: () => Promise<void>
+  waitForForeground: () => Promise<void>,
+  waitForRunnable: () => Promise<boolean>
 ): ShikiTokenLines | null | Promise<ShikiTokenLines | null> {
   const lines = /\r?\n/g;
   let start = 0;
@@ -370,6 +382,9 @@ function tokenizeInBatches(
   let mapped: ShikiToken[][] = [];
   const runBatch = (): ShikiTokenLines | null | Promise<ShikiTokenLines | null> => {
     if (!isCurrent()) return null;
+    if (request.priority === 'background' && request.deferBackground()) {
+      return waitForRunnable().then(ready => ready ? runBatch() : null);
+    }
     if (grammarVersion !== record.grammarVersion) {
       // A language loaded while we yielded may alter injections or embeddings.
       // Restart against that grammar registry instead of combining two histories.
@@ -473,13 +488,33 @@ async function tokenizeAndCache(
     finish();
     return false;
   };
+  const waitForRunnable = async (): Promise<boolean> => {
+    // An idle deadline may expire between wheel events. Keep grammar state and
+    // mapped tokens alive while reading, and let an explicit mode change wake
+    // this same job instead of restarting whole-document preparation.
+    while (isCurrent() && request.priority === 'background' && request.deferBackground()) {
+      await new Promise<void>(resolve => {
+        const resume = () => {
+          clearTimeout(timer);
+          if (request.resumeForeground === resume) request.resumeForeground = undefined;
+          resolve();
+        };
+        const timer = setTimeout(resume, 50);
+        request.resumeForeground = resume;
+      });
+    }
+    return isCurrent();
+  };
   try {
+    if (request.priority === 'background' && request.deferBackground()) await waitForRunnable();
+    if (!isCurrent()) { finish(); return; }
     const record = getHighlighter(state, lang);
     if (!record) {
       finish();
       return;
     }
     const highlighter = await record.promise;
+    if (request.priority === 'background' && request.deferBackground()) await waitForRunnable();
     if (record.generation !== generation || !isCurrent()) {
       finish();
       return;
@@ -496,6 +531,7 @@ async function tokenizeAndCache(
         if (language && language !== 'markdown') embedded.add(language);
       }
       for (const language of embedded) {
+        if (request.priority === 'background' && request.deferBackground()) await waitForRunnable();
         if (!isCurrent()) { finish(); return; }
         await ensureLang(record, highlighter, language);
       }
@@ -514,7 +550,7 @@ async function tokenizeAndCache(
     if (!mapped) {
       const tokenization = tokenizeInBatches(record, highlighter, lang, code, continueBatch, request, async () => {
         while (activeTokenBatch && activeTokenBatch !== ownedBatch) await activeTokenBatch;
-      });
+      }, waitForRunnable);
       if (tokenization instanceof Promise) {
         const completion = tokenization.then(() => undefined, () => undefined);
         ownedBatch = completion;

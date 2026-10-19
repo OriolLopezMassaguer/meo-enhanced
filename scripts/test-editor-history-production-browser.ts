@@ -246,7 +246,7 @@ async function assertFormulaToolbarHistoryHitability(page: any): Promise<void> {
     if (lineNumber > 0) return lineNumber;
     throw new Error('Missing Formula opening line in History hitability fixture');
   });
-  const readTarget = () => page.$eval('.meo-math-copy-actions .meo-select-all-code-btn', button => {
+  const readTarget = () => page.$eval('.meo-math-copy-actions .meo-copy-code-btn', button => {
     const rect = button.getBoundingClientRect();
     return { connected: button.isConnected, point: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } };
   });
@@ -270,21 +270,25 @@ async function assertFormulaToolbarHistoryHitability(page: any): Promise<void> {
   await showReading(); await page.mouse.move(5, 5); await waitForFrames(page, 2);
   const fresh = await readTarget(); assert.equal(fresh.connected, true);
   const hit = () => page.evaluate(point => {
-    const button = document.querySelector('.meo-math-copy-actions .meo-select-all-code-btn')!, target = document.elementFromPoint(point.x, point.y);
+    const button = document.querySelector('.meo-math-copy-actions .meo-copy-code-btn')!, target = document.elementFromPoint(point.x, point.y);
     return button === target || button.contains(target);
   }, fresh.point);
   assert.equal(await hit(), false, 'Hidden formula action must not intercept a pointer');
   await page.mouse.move(fresh.point.x, fresh.point.y); assert.equal(await hit(), true, 'The fresh action must become the browser hit target on hover');
   await page.mouse.down(); await page.mouse.up(); await waitForFrames(page);
+  assert.equal(await page.$('.meo-math-copy-actions .meo-select-all-code-btn'), null, 'Reading formula hides source selection');
+  await page.click('.meo-md-math-fenced-display .katex'); await waitForFrames(page);
+  await page.click('.meo-math-source-actions .meo-select-all-code-btn'); await waitForFrames(page);
   const readSelection = () => page.evaluate(() => {
     const view = (window as any).__historyProductionEditor.view;
     return { source: view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to), focused: view.hasFocus && document.activeElement === view.contentDOM, legacyMode: !!document.querySelector('.meo-latex-math-mode-btn') };
   });
   assert.deepEqual(await readSelection(), { source: 'x = 1', focused: true, legacyMode: false });
-  await showReading(); await page.focus('.meo-math-copy-actions .meo-select-all-code-btn');
+  await showReading(); await page.click('.meo-md-math-fenced-display .katex'); await waitForFrames(page);
+  await page.focus('.meo-math-source-actions .meo-select-all-code-btn');
   await page.keyboard.press('Tab');
-  assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('meo-copy-code-btn')), true,
-    'The formula Copy action must follow Select in keyboard order');
+  assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('meo-format-math-btn')), true,
+    'Formula Format follows Select in keyboard order');
   await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
   await page.keyboard.press('Enter'); await waitForFrames(page);
   assert.deepEqual(await readSelection(), { source: 'x = 1', focused: true, legacyMode: false });

@@ -4,6 +4,7 @@ import {
 } from './fixedChromeGeometry';
 
 const sampleDistance = 100;
+const samplesByParent = new WeakMap<HTMLElement, readonly HTMLSpanElement[]>();
 
 /** Samples the complete local-to-viewport mapping for an element's fixed containing block. */
 export function measureFixedContainingBlockMapping(
@@ -18,11 +19,18 @@ export function measureFixedContainingBlockMapping(
       'display:block;width:0;height:0;margin:0;padding:0;border:0;visibility:hidden;pointer-events:none;';
     return sample;
   };
-  const origin = probe(0, 0);
-  const horizontal = probe(sampleDistance, 0);
-  const vertical = probe(0, sampleDistance);
+  let samples = samplesByParent.get(parent);
+  if (!samples || samples.some(sample => sample.parentElement !== parent)) {
+    for (const sample of samples ?? []) sample.remove();
+    samples = [probe(0, 0), probe(sampleDistance, 0), probe(0, sampleDistance)];
+    parent.append(...samples);
+    samplesByParent.set(parent, samples);
+  }
+  const [origin, horizontal, vertical] = samples;
   try {
-    parent.append(origin, horizontal, vertical);
+    // Keep the zero-size probes with their parent. Inserting/removing them on
+    // every scroll invalidates layout and feeds CodeMirror's DOM observer.
+    // Read fresh rectangles so host zoom, transforms and scrolling still apply.
     const originRect = origin.getBoundingClientRect();
     const horizontalRect = horizontal.getBoundingClientRect();
     const verticalRect = vertical.getBoundingClientRect();
@@ -34,9 +42,5 @@ export function measureFixedContainingBlockMapping(
     );
   } catch {
     return null;
-  } finally {
-    origin.remove();
-    horizontal.remove();
-    vertical.remove();
   }
 }

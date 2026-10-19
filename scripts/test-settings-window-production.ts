@@ -27,7 +27,7 @@ try {
   });
   const imagePages = new WeakSet<object>();
   const chord = async (key: string) => { await page.keyboard.down('Control'); await page.keyboard.press(key); await page.keyboard.up('Control'); };
-  const openFixture = async (text = 'hello\n\n# Heading\n\ntext', mode: 'source' | 'live' = 'source', stubMermaid = false) => {
+  const openFixture = async (text = 'hello\n\n# Heading\n\ntext', mode: 'source' | 'live' = 'source', stubMermaid = false, outline: 'left' | 'right' | 'hidden' = 'hidden') => {
     if (!imagePages.has(page)) {
       await page.exposeFunction('__imageLocationHost', (request: ImageLocationRequest) => imageHost.handle(request, 'settings-document'));
       await page.exposeFunction('__imageSaveHost', async (request: {requestId: string; imageData: string; fileName: string}) => {
@@ -75,7 +75,7 @@ try {
           });
         }
         if(message.type==='editorService') {
-          const value=message.action==='links'?{candidates:[]}:{text:message.action==='readClipboard'?window.__clipboard:''};
+          const value=message.action==='links'?{candidates:window.__linkCandidates??[]}:{text:message.action==='readClipboard'?window.__clipboard:''};
           if(message.action==='writeClipboard') window.__clipboard=message.text;
           const reply=()=>queueMicrotask(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'editorServiceResult',requestId:message.requestId,result:{ok:true,value}}})));
           if(message.action==='readClipboard' && window.__holdNextClipboardRead) { window.__holdNextClipboardRead=false; window.__flushClipboardRead=reply; } else reply();
@@ -84,12 +84,70 @@ try {
     ` });
     if (stubMermaid) await page.evaluate(() => { (window as any).mermaid = { initialize() {}, async render() { return { svg: '<svg viewBox="0 0 120 60"><text x="4" y="20">diagram</text></svg>' }; } }; });
     await page.addScriptTag({ content: await build.outputs[0].text() });
-    await page.evaluate(({ text, mode }) => {
+    await page.evaluate(({ text, mode, outline }) => {
       const global = window as any; global.__preferences = { input: { ...global.EditingSettingsHarness.defaultInputAssistance }, shortcuts: {} };
       global.__initMessage = { type: 'init', documentId: 'file:///settings.md', text, version: 1, savedRevision: { version: 1, text }, diagnostics: [], mode, uiLanguage: 'zh-CN', uiLanguagePreference: 'zh-CN', automaticUiLanguage: 'zh-CN', sourceLineNumbers: 'on', previewAppearance: 'light', previewFontFamily: '', previewSourceColoring: true, previewShowComments: false, editorAppearance: 'dark', gitChangesGutter: false, gitDiffLineHighlights: false, gitDiffDetailsVisible: false, diffBaselineMode: 'current-edit', fixedBaselinePinned: false, fixedBaselineActive: false, contentMaxWidthEnabled: false, findOptions: { wholeWord: false, caseSensitive: false }, outlinePosition: 'right', outlineVisible: false, outlineWidth: 260, vscodeTheme: null, editingPreferences: global.__preferences, editingPreferencesRevision: 0 };
+      global.__initMessage.outlinePosition = outline === 'left' ? 'left' : 'right';
+      global.__initMessage.outlineVisible = outline !== 'hidden';
       window.dispatchEvent(new MessageEvent('message', { data: global.__initMessage }));
-    }, { text, mode });
+    }, { text, mode, outline });
   };
+  // Use the real outline controller: its position is owned by the wrapper,
+  // and floating outlines overlap the editor rather than reserving a column.
+  for (const mode of ['source', 'live'] as const) for (const outline of ['left', 'right', 'hidden'] as const) for (const floating of outline === 'hidden' ? [false] : [false, true]) {
+    const label = `${mode}/${outline}/${floating ? 'floating' : 'fixed'}`;
+    await openFixture('', mode, false, outline);
+    await page.waitForSelector('.editor-wrapper:not(.meo-preload-editor-shell) .cm-content');
+    if (floating) await page.click('.outline-header-button[data-action="toggle-mode"]');
+    await page.evaluate(() => {
+      const g = window as any;
+      g.__preferences.input.emoji = true;
+      g.__linkCandidates = [{ label: 'note.md', insert: 'note', detail: 'note.md' }];
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'editingPreferencesChanged', preferences: g.__preferences, revision: ++g.__revision } }));
+    });
+    // A floating left outline covers the start of each line. Keep the input
+    // anchor in visible prose so this exercises placement, not occlusion.
+    const prefix = floating ? 'Visible text '.repeat(4) : '';
+    for (const [name, before, after, typed, expected] of [
+      ['slash', prefix, '', floating ? '/bold' : '/h1', floating ? prefix + '****' : '# '],
+      ['emoji', prefix, '', ':smile', prefix + '😄'],
+      ['wiki', prefix + '[[', ']]', 'no', prefix + '[[note]]'],
+      ['path', prefix + '[File](', ')', 'no', prefix + '[File](note)'],
+      ['heading', '# Target\n\n' + prefix + '[Go](#', ')', 'ta', '# Target\n\n' + prefix + '[Go](#target)']
+    ]) {
+      await page.evaluate(({ before, after }) => {
+        const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: before + after }, selection: { anchor: before.length }, scrollIntoView: true });
+        view.focus();
+      }, { before, after });
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.keyboard.type(typed);
+      await page.waitForSelector('.meo-input-suggestions:not([hidden])', { timeout: 2000 });
+      const bounds = await page.evaluate(() => {
+        const popup = document.querySelector('.meo-input-suggestions')!.getBoundingClientRect();
+        const scroller = document.querySelector('.cm-scroller')!.getBoundingClientRect();
+        const sidebar = document.querySelector('.outline-sidebar')!.getBoundingClientRect();
+        return { popup: popup.toJSON(), scroller: scroller.toJSON(), sidebar: sidebar.toJSON() };
+      });
+      assert.ok(bounds.popup.left >= bounds.scroller.left && bounds.popup.right <= bounds.scroller.right, `${label}/${name}: menu stays inside the editor`);
+      if (outline === 'left') assert.ok(bounds.popup.left >= bounds.sidebar.right, `${label}/${name}: menu clears the left outline`);
+      if (outline === 'right') assert.ok(bounds.popup.right <= bounds.sidebar.left, `${label}/${name}: menu clears the right outline`);
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(expected => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() === expected, { timeout: 2000 }, expected);
+    }
+    if (mode === 'live') {
+      await page.evaluate(prefix => {
+        const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '| A |\n| --- |\n| ' + prefix + ' |' }, selection: { anchor: 0 }, scrollIntoView: true });
+      }, prefix);
+      await page.waitForSelector('tbody textarea');
+      await page.evaluate(() => { const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!; input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
+      await page.keyboard.type('/bold');
+      await page.waitForSelector('.meo-input-suggestions:not([hidden])', { timeout: 2000 });
+      await page.keyboard.press('Enter');
+      assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).value), prefix.trimEnd() + '****', label + ': native table slash command executes');
+    }
+  }
   await openFixture();
   await page.waitForSelector('.cm-editor');
   await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
@@ -138,10 +196,12 @@ try {
   assert.deepEqual(await page.$$eval('.more-tools-panel .more-tools-section-label', elements => elements.map(element => element.textContent)), ['文档显示', '界面设置', '更多设置']);
   await page.click('.more-tools-settings-button');
   assert.equal(await page.$eval('.settings-window', element => (element as HTMLDialogElement).open), true);
-  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 11);
+  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 10);
   assert.equal(await page.$eval('.settings-footer', element => (element as HTMLElement).hidden), true);
   const height = await page.$eval('.settings-window', element => element.getBoundingClientRect().height);
-  await page.click('.settings-jump[data-section="interface"]');
+  assert.equal(await page.$('[data-setting="fontSize"]'), null, 'font size moves out of General');
+  await page.click('[data-tab="appearance"]');
+  await page.click('.settings-jump[data-section="appearanceTypography"]');
   const fontStepper = '.settings-item[data-setting="fontSize"] .editor-font-size-stepper';
   await page.click('[data-setting="fontSize"] [data-value="auto"]');
   assert.equal(await page.$eval(fontStepper, element => element.getAttribute('aria-disabled')), 'true');
@@ -158,13 +218,31 @@ try {
   assert.equal(await page.$eval(fontStepper + ' output', element => Number(element.textContent)), fontValue + 1);
   await page.click('[data-setting="fontSize"] [data-value="auto"]');
   assert.equal(await page.$eval(fontStepper + ' output', element => Number(element.textContent)), fontValue + 1, 'automatic mode preserves the last custom size');
+  const lineSpacing = '[data-setting="lineHeight"] .editor-font-size-stepper';
+  assert.ok(await page.$eval(lineSpacing, stepper => {
+    const outer = stepper.getBoundingClientRect();
+    const parts = [...stepper.children].map(child => child.getBoundingClientRect());
+    return parts.every(rect => rect.left >= outer.left && rect.right <= outer.right)
+      && parts.every((rect, index) => index === 0 || rect.left >= parts[index - 1]!.right);
+  }), 'line spacing buttons and value fit without clipping or overlap');
+  assert.equal(await page.$eval(lineSpacing + ' output', el => el.textContent), '1.5 倍');
+  await page.click(lineSpacing + ' button:last-child');
+  assert.equal(await page.$eval(lineSpacing + ' output', el => el.textContent), '1.6 倍');
+  assert.equal(await page.$eval('.cm-line', el => { const style = getComputedStyle(el); return Math.round(parseFloat(style.lineHeight) / parseFloat(style.fontSize) * 10) / 10; }), 1.6, 'Source line geometry follows the setting');
+  assert.ok(await page.evaluate(() => (window as any).__messages.some((m: any) => m.type === 'setEditorLineHeight' && m.value === 1.6)));
+  await page.click('[data-setting="lineHeight"] .appearance-typography-reset');
+  assert.equal(await page.$eval(lineSpacing + ' output', el => el.textContent), '1.5 倍');
   await page.click('.settings-tab[data-tab="typing"]');
-  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 14);
+  assert.equal(await page.$$eval('.settings-item', elements => elements.length), 15);
   const slashSwitch = '[data-setting="slash"] [role="switch"]';
   const slashAboveSwitch = '[data-setting="slashPreferAbove"] [role="switch"]';
   assert.equal(await page.$eval(slashAboveSwitch, e => e.getAttribute('aria-label')), '候选菜单优先在上方显示');
-  assert.equal(await page.$eval('[data-setting="slashPreferAbove"] .settings-description', e => e.textContent), '斜杠、路径和表情菜单优先显示在输入行上方，推荐输入法用户开启。');
-  assert.deepEqual(await page.$$eval('.settings-item[data-setting]', items => items.map(item => (item as HTMLElement).dataset.setting).filter(key => ['documentSuggestions', 'slash', 'emoji', 'slashPreferAbove'].includes(key!))), ['documentSuggestions', 'slash', 'emoji', 'slashPreferAbove'], 'shared placement follows the three menu enable switches');
+  assert.equal(await page.$eval('[data-setting="slashPreferAbove"] .settings-description', e => e.textContent), '斜杠、路径、表情和公式菜单优先显示在输入行上方，推荐输入法用户开启。');
+  assert.deepEqual(await page.$$eval('.settings-item[data-setting]', items => items.map(item => (item as HTMLElement).dataset.setting).filter(key => ['documentSuggestions', 'slash', 'emoji', 'math', 'slashPreferAbove'].includes(key!))), ['documentSuggestions', 'slash', 'emoji', 'math', 'slashPreferAbove'], 'shared placement follows all menu enable switches');
+  const mathSwitch = '[data-setting="math"] [role="switch"]';
+  assert.equal(await page.$eval(mathSwitch, e => e.getAttribute('aria-checked')), 'true');
+  await page.click(mathSwitch); await page.waitForFunction(() => (window as any).__preferences.input.math === false);
+  await page.click(mathSwitch); await page.waitForFunction(() => (window as any).__preferences.input.math === true);
   await page.click(slashAboveSwitch);
   await page.waitForFunction(() => (window as any).__preferences.input.slashPreferAbove === true);
   await page.click(slashSwitch);
@@ -451,6 +529,24 @@ try {
   await page.click('.settings-footer > .settings-button'); await page.click('.settings-reset-popover .settings-primary');
   await page.waitForFunction(() => Object.keys((window as any).__preferences.shortcuts).length === 0);
   assert.equal(await page.evaluate(() => (window as any).__preferences.input.wrapSelection), false, 'reset must preserve input preferences');
+  await page.click('[data-edit-command="saveAs"]');
+  const beforeSaveAsRecording = await page.evaluate(() => (window as any).__messages.filter((message: any) => message.type === 'saveDocumentAs').length);
+  await page.keyboard.down('Shift'); await chord('s'); await page.keyboard.up('Shift');
+  assert.equal(await page.$eval('.settings-recorder', e => (e as HTMLInputElement).value), 'Ctrl + Shift + S');
+  assert.equal(await page.evaluate(() => (window as any).__messages.filter((message: any) => message.type === 'saveDocumentAs').length), beforeSaveAsRecording,
+    'recording Save As must not run the document action from Settings');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (window as any).__preferences.shortcuts.saveAs?.[0] === 'Ctrl + Shift + S');
+  assert.equal(await page.$eval('[data-action="saveAs"]', e => (e as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Shift + S');
+  await page.click('.settings-search'); await page.keyboard.type('新路径保存');
+  assert.deepEqual(await page.$$eval('.settings-item[data-command]', elements => elements.map(e => (e as HTMLElement).dataset.command)), ['saveAs']);
+  await page.click('.settings-search-clear');
+  await page.click('[data-command="saveAs"] .settings-subtle');
+  await page.waitForFunction(() => (window as any).__preferences.shortcuts.saveAs?.length === 0);
+  assert.equal(await page.$eval('[data-action="saveAs"]', e => (e as HTMLElement).dataset.tooltipShortcut), undefined);
+  await page.click('.settings-footer > .settings-button'); await page.click('.settings-reset-popover .settings-primary');
+  await page.waitForFunction(() => Object.keys((window as any).__preferences.shortcuts).length === 0);
+  assert.equal(await page.$eval('[data-action="saveAs"]', e => (e as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Shift + S');
   await page.click('.settings-search'); await page.keyboard.type('  ');
   assert.equal(await page.$eval('.settings-search-clear', e => (e as HTMLElement).hidden), false);
   assert.ok(await page.$$eval('.settings-tab-badge', elements => elements.every(e => (e as HTMLElement).hidden)));
@@ -493,7 +589,21 @@ try {
     assert.ok(Math.abs(sample.width - value.samples[0].width) <= .1 && Math.abs(sample.height - value.samples[0].height) <= .1 && sample.radius === value.samples[0].radius, 'the selected pill keeps its dimensions and corner radius throughout the slide');
   }
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
-  assert.equal(await page.$eval('[data-appearance-mode="dark"]', e => { (e as HTMLButtonElement).click(); return e.querySelector<HTMLElement>('.segmented-control-button-indicator')!.getAnimations().length; }), 0);
+  await page.evaluate(() => document.body.classList.add('vscode-reduce-motion'));
+  const reducedMotionAnimation = await page.$eval('[data-appearance-mode="dark"]', e => {
+    (e as HTMLButtonElement).click();
+    const pill = e.querySelector<HTMLElement>('.segmented-control-button-indicator')!;
+    return pill.getAnimations().map(animation => {
+      animation.pause();
+      const positions = [0, 75, 150].map(time => { animation.currentTime = time; return pill.getBoundingClientRect().left; });
+      const duration = animation.effect?.getTiming().duration;
+      animation.finish();
+      return { positions, duration };
+    });
+  });
+  assert.ok(reducedMotionAnimation.some(value => value.duration === 150 && value.positions[0] < value.positions[1]
+    && value.positions[1] < value.positions[2]), 'segmented controls still slide when system and Host reduced-motion preferences are enabled');
+  await page.evaluate(() => document.body.classList.remove('vscode-reduce-motion'));
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
   for (const language of ['en', 'zh-CN']) for (const appearance of ['light', 'dark']) {
     await page.click('.settings-tab[data-tab="general"]');
@@ -503,6 +613,14 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.editorAppearance), appearance);
     assert.equal(await page.$eval('.more-tools-settings-button', element => element.textContent), language === 'en' ? 'Open settings' : '打开设置');
     assert.equal(await page.$('.more-tools-settings-button svg'), null, 'Open settings uses a text-only button');
+    await page.click('.settings-tab[data-tab="shortcuts"]');
+    assert.equal(await page.$eval('[data-command="saveAs"] .settings-item-title', e => e.textContent), language === 'en' ? 'Save as…' : '另存为…');
+    assert.ok(await page.$('[data-command="saveAs"] [data-edit-command="saveAs"]'));
+    if (process.env.MEO_SETTINGS_SCREENSHOTS) {
+      const directory = path.resolve(process.env.MEO_SETTINGS_SCREENSHOTS); await fs.mkdir(directory, { recursive: true });
+      await page.$eval('[data-command="saveAs"]', row => row.scrollIntoView({ block: 'center' }));
+      await page.screenshot({ path: path.join(directory, `save-as-shortcut-${language}-${appearance}.png`) });
+    }
     await page.click('.settings-tab[data-tab="typing"]');
     assert.equal(await page.$eval('[data-setting="selectionToolbar"] .settings-item-title', e => e.textContent), language === 'en' ? 'Selection toolbar' : '选区工具栏');
     const wrappingDescription = await page.$eval(wrap + ' .settings-description', element => element.textContent ?? '');
@@ -605,7 +723,7 @@ try {
         query: element.querySelector('.settings-item-title')!.textContent!,
         values: [...element.querySelectorAll('.settings-key, .image-location-mode-title, .image-location-field-label, .image-location-picker, .image-location-token')].map(control => control.getAttribute('aria-label') ?? control.textContent!)
       })));
-      assert.equal(items.length, tab === 'general' ? 11 : tab === 'appearance' ? 9 : tab === 'typing' ? 14 : editorCommandIds.length, 'search inventory includes every setting and command');
+      assert.equal(items.length, tab === 'general' ? 10 : tab === 'appearance' ? 11 : tab === 'typing' ? 15 : editorCommandIds.length, 'search inventory includes every setting and command');
       searchCases.push(...items.flatMap(item => [item.query, ...item.values].map(query => ({tab, id: item.id, query}))));
     }
     await page.click('.settings-close');
@@ -615,7 +733,7 @@ try {
     ['general', 'width', '版心', 'reading width'], ['general', 'strongColor', '加粗颜色', 'bold color'],
     ['general', 'boldHeadings', '标题字重', 'heading weight'], ['general', 'criticMarkup', '修订标记', 'track changes'], ['general', 'stickyHeader', '冻结表头', 'freeze header'],
     ['general', 'restorePosition', '上次位置', 'remember position'], ['general', 'largeDocument', '启动速度', 'large file'],
-    ['appearance', 'mode', '夜间', 'night'], ['appearance', 'surface', '底色', 'surface'], ['appearance', 'documentBackground', '画布', 'canvas'], ['appearance', 'textEmphasis', '脚注', 'footnote'], ['general', 'language', '本地化', 'locale'], ['general', 'fontSize', '文字大小', 'zoom'],
+    ['appearance', 'mode', '夜间', 'night'], ['appearance', 'surface', '底色', 'surface'], ['appearance', 'documentBackground', '画布', 'canvas'], ['appearance', 'textEmphasis', '脚注', 'footnote'], ['general', 'language', '本地化', 'locale'], ['appearance', 'fontSize', '文字大小', 'zoom'], ['appearance', 'lineHeight', '行高', 'leading'],
     ['typing', 'selectionToolbar', '浮动工具栏', 'floating toolbar'], ['typing', 'wrapSelection', '环绕选区', 'surround selection'],
     ['typing', 'pairMode', '自动闭合', 'auto close'], ['typing', 'skipMode', '跳出符号', 'overtype'],
     ['typing', 'deleteMode', '一起删除', 'paired deletion'], ['typing', 'lists', '清单', 'list continuation'],
@@ -876,6 +994,32 @@ try {
     }
   }
   assert.ok(height > 500);
+  const htmlText = 'Before.\n\n<div><p>Format me</p><p>Second</p></div>\n\nAfter.';
+  await page.close(); page = await browser.newPage(); page.on('pageerror', error => errors.push(String(error)));
+  await openFixture(htmlText, 'live');
+  await page.waitForSelector('.cm-editor');
+  await page.waitForFunction(() => !document.querySelector('.mode-toolbar')?.classList.contains('meo-preload-toolbar'));
+  await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+    view.dispatch({ selection: { anchor: view.state.doc.toString().indexOf('Format me') + 2 } }); view.focus();
+  });
+  await page.waitForSelector('.meo-format-html-btn');
+  await page.click('.more-tools-wrapper > .format-button'); await page.click('.more-tools-settings-button');
+  await page.click('.settings-tab[data-tab="shortcuts"]');
+  await page.click('.settings-search'); await page.keyboard.type('整理代码');
+  assert.deepEqual(await page.$$eval('.settings-item[data-command]', rows => rows.map(e => (e as HTMLElement).dataset.command)), ['formatHtml']);
+  await page.click('[data-edit-command="formatHtml"]');
+  await page.keyboard.down('Alt'); await chord('l'); await page.keyboard.up('Alt'); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (window as any).__preferences.shortcuts.formatHtml?.[0] === 'Ctrl + Alt + L');
+  await closeSettings('button');
+  assert.equal(await page.$eval('.meo-format-html-btn', e => (e as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Alt + L');
+  await page.keyboard.down('Alt'); await page.keyboard.down('Shift'); await page.keyboard.press('f');
+  await page.keyboard.up('Shift'); await page.keyboard.up('Alt');
+  assert.equal(await page.evaluate(() => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString()), htmlText);
+  await page.keyboard.down('Alt'); await chord('l'); await page.keyboard.up('Alt');
+  await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() !== text, {}, htmlText);
+  await chord('z');
+  await page.waitForFunction(text => (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString() === text, {}, htmlText);
   console.log('Bilingual settings search passed (' + searchChecks + ' title, alias, option and shortcut checks across both languages/themes)');
   assert.deepEqual(errors, []);
   if (process.env.MEO_SETTINGS_SCREENSHOTS) {

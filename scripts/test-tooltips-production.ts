@@ -154,6 +154,77 @@ try {
   assert.equal(menuHint.inside, true);
   assert.equal(await page.$eval(menuButton, element => element.getAttribute('data-tooltip-placement')), null);
   assert.equal(menuHint.visibleCount, 1);
+  phase = 'table shortcut hints';
+  let shortcutRevision = 0;
+  const setShortcuts = async (shortcuts: Record<string, string[]>) => page.evaluate(({ shortcuts, revision }) => {
+    const g = window as any;
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'editingPreferencesChanged', revision,
+      preferences: { input: { ...g.EditingSettingsHarness.defaultInputAssistance }, shortcuts }
+    } }));
+  }, { shortcuts, revision: ++shortcutRevision });
+  const tableHintKey = () => page.$eval(menuButton, element =>
+    document.getElementById(element.getAttribute('aria-describedby')!)?.querySelector('kbd:not([hidden])')?.textContent ?? null);
+  await setShortcuts({ rowBelow: ['Ctrl + Alt + R', 'Ctrl + Alt + B'], save: ['Ctrl + Alt + S'] });
+  assert.equal(await tableHintKey(), 'Ctrl + Alt + R', 'a visible table hint immediately displays the first effective binding');
+  assert.equal(await page.$eval('[data-action="save"]', element => (element as HTMLElement).dataset.tooltipShortcut), 'Ctrl + Alt + S');
+  await setShortcuts({ rowBelow: ['Ctrl + Alt + N'], save: [] });
+  assert.equal(await tableHintKey(), 'Ctrl + Alt + N', 'rebinding updates the open hint without another hover');
+  assert.equal(await page.$eval('[data-action="save"]', element => (element as HTMLElement).dataset.tooltipShortcut), undefined);
+  await setShortcuts({ rowBelow: [] });
+  assert.equal(await tableHintKey(), null, 'clearing a binding removes only its badge');
+  assert.equal(await page.$eval('.meo-tooltip.is-visible .meo-tooltip-label', element => element.textContent), menuHint.text);
+
+  await setShortcuts({ rowBelow: ['Ctrl + Alt + R'] });
+  await page.keyboard.press('Escape');
+  await page.mouse.move(0, 0);
+  // A table mounted after preferences change must not depend on an earlier toolbar scan.
+  await page.evaluate(() => {
+    const view = (window as any).EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    (window as any).__shortcutFixtureEnd = view.state.doc.length;
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '\n\n| New | Table |\n| --- | --- |\n| C | D |' } });
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table-shell').length === 2);
+  const newTrigger = await page.$$('.meo-md-html-table-context-trigger');
+  const newInputs = await page.$$('.meo-md-html-table-shell tbody textarea');
+  await newInputs[newInputs.length - 1]!.focus();
+  await newTrigger[1]!.click();
+  assert.equal((await show(menuButton)).shortcut, 'Ctrl + Alt + R', 'new tables resolve the current binding');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => {
+    const g = window as any;
+    const view = g.EditingSettingsHarness.EditorView.findFromDOM(document.querySelector('.editor-host > .cm-editor'));
+    view.dispatch({ changes: { from: g.__shortcutFixtureEnd, to: view.state.doc.length } });
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.meo-md-html-table-shell').length === 1);
+  await page.focus('.meo-md-html-table-shell tbody textarea');
+  const rowsBefore = await page.$$eval('.meo-md-html-table-shell tbody tr', elements => elements.length);
+  await page.keyboard.down('Control'); await page.keyboard.down('Alt'); await page.keyboard.press('r');
+  await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+  await page.waitForFunction(count => document.querySelectorAll('.meo-md-html-table-shell tbody tr').length === count + 1, {}, rowsBefore);
+  await page.click(trigger);
+  assert.equal((await show(menuButton)).shortcut, 'Ctrl + Alt + R', 'the displayed shortcut still executes the table action');
+  await setShortcuts({});
+  assert.equal(await tableHintKey(), null, 'reset restores the unbound table default');
+  assert.equal(await page.$eval('[data-action="save"]', element => (element as HTMLElement).dataset.tooltipShortcut), 'Ctrl + S', 'reset restores the platform default');
+  phase = 'collapsed table delete hint';
+  const deleteTable = menu + ' [data-command="delete-table"]';
+  const waitForDeleteHint = async () => {
+    await page.hover(deleteTable);
+    await page.waitForFunction(selector => {
+      const button = document.querySelector(selector)!;
+      const hint = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+      return hint?.classList.contains('is-visible') && hint.querySelector('.meo-tooltip-label')?.textContent === 'Delete table';
+    }, { timeout: 1200 }, deleteTable);
+  };
+  await waitForDeleteHint();
+  await page.click(deleteTable);
+  assert.equal(await page.$eval(deleteTable, button => button.classList.contains('is-delete-armed')), true);
+  await page.waitForFunction(() => !document.querySelector('.meo-tooltip.is-visible'), { timeout: 1200 });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.$eval(deleteTable, button => button.classList.contains('is-delete-armed')), false);
+  await page.mouse.move(0, 0);
+  await waitForDeleteHint();
   await page.keyboard.press('Escape');
   await page.mouse.move(0, 0);
 
@@ -321,11 +392,14 @@ try {
   phase = 'native formula actions';
   assert.equal(await page.$('.meo-latex-math-mode-btn'), null, 'formula editing uses the main document');
   const formulaCopy = '.meo-math-copy-actions .meo-copy-code-btn';
-  assert.equal((await show(formulaCopy)).text, 'Copy');
+  assert.equal((await show(formulaCopy)).text, 'Copy source');
   await page.mouse.move(0, 0);
   await page.keyboard.press('Tab');
   await page.mouse.move(0, 0);
   const formulaSelect = '.meo-math-copy-actions .meo-select-all-code-btn';
+  assert.equal(await page.$(formulaSelect), null, 'Reading formulas hide source selection actions');
+  await page.click('.meo-md-math-fenced-display .katex');
+  await page.waitForSelector('.meo-math-source-actions');
   await page.focus(formulaSelect);
   await page.waitForFunction(() => !!document.querySelector('.meo-tooltip.is-visible'));
   assert.equal(await page.$eval(formulaSelect, element => document.getElementById(element.getAttribute('aria-describedby')!)?.querySelector('.meo-tooltip-label')?.textContent), 'Select formula source');
@@ -333,7 +407,7 @@ try {
   await page.waitForSelector('.meo-math-source-line');
   assert.equal(await page.$('.meo-tooltip.is-visible'), null, 'entering formula source dismisses the action hint');
   await page.hover('.meo-mermaid-block');
-  await page.click('.meo-mermaid-preview-controls [aria-label="Fullscreen"]');
+  await page.click('.meo-mermaid-preview-controls [aria-label="View fullscreen"]');
   await page.waitForSelector('.meo-mermaid-fullscreen-controls');
   for (const label of ['Zoom in', 'Zoom out', 'Reset zoom', 'Exit fullscreen']) {
     const selector = `.meo-mermaid-fullscreen-controls [aria-label="${label}"]`;

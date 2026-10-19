@@ -17,7 +17,7 @@ export type ShortcutStroke = {
 };
 
 const fixedCommands = new Set<EditorCommandId>(['copy', 'cut', 'paste', 'selection', 'home', 'enter', 'tab', 'escape', 'delete', 'indent', 'tableNav']);
-const globalCommands = new Set<EditorCommandId>(['save', 'find', 'replace', 'mode', 'preview']);
+const globalCommands = new Set<EditorCommandId>(['save', 'saveAs', 'find', 'replace', 'mode', 'preview']);
 const tableCommands = new Set<EditorCommandId>([
   'cellBreak', 'rowAbove', 'rowBelow', 'rowDelete', 'columnBefore', 'columnAfter', 'columnDelete',
   'moveRowUp', 'moveRowDown', 'moveColumnLeft', 'moveColumnRight', 'alignLeft', 'alignCenter', 'alignRight', 'copyMarkdown', 'copyCsv'
@@ -35,10 +35,10 @@ export function defaultShortcuts(platform: ShortcutPlatform): Record<EditorComma
   const primary = platform === 'mac' ? 'Cmd' : 'Ctrl';
   const result = Object.fromEntries(editorCommandIds.map(id => [id, [] as readonly string[]])) as Record<EditorCommandId, readonly string[]>;
   Object.assign(result, {
-    save: [`${primary} + S`], undo: [`${primary} + Z`], redo: platform === 'mac' ? ['Cmd + Shift + Z'] : ['Ctrl + Y', 'Ctrl + Shift + Z'],
+    save: [`${primary} + S`], saveAs: [`${primary} + Shift + S`], undo: [`${primary} + Z`], redo: platform === 'mac' ? ['Cmd + Shift + Z'] : ['Ctrl + Y', 'Ctrl + Shift + Z'],
     find: [`${primary} + F`], replace: platform === 'mac' ? ['Cmd + Alt + F'] : ['Ctrl + H'],
     all: [`${primary} + A`], copy: [`${primary} + C`], cut: [`${primary} + X`], paste: [`${primary} + V`],
-    lineComment: [`${primary} + /`], selectionComment: ['Alt + Shift + A'],
+    lineComment: [`${primary} + /`], selectionComment: ['Alt + Shift + A'], formatHtml: ['Alt + Shift + F'],
     bold: [`${primary} + B`], italic: [`${primary} + I`], mode: ['Alt + Shift + M'],
     moveUp: ['Alt + ArrowUp'], moveDown: ['Alt + ArrowDown'], copyUp: ['Alt + Shift + ArrowUp'], copyDown: ['Alt + Shift + ArrowDown'],
     deleteLine: platform === 'mac' ? ['Cmd + Shift + K'] : ['Ctrl + Shift + K'],
@@ -93,6 +93,12 @@ export function effectiveShortcuts(overrides: ShortcutOverrides, platform: Short
   for (const command of editorCommandIds) {
     const keys = overrides[command];
     if (keys && canBindCommand(command) && keys.every(key => normalizeShortcut(key))) defaults[command] = keys.map(key => normalizeShortcut(key)!);
+  }
+  // Newly introduced defaults must not steal older custom bindings.
+  for (const added of ['saveAs', 'formatHtml'] as const) {
+    if (!Object.hasOwn(overrides, added) && editorCommandIds.some(command => command !== added
+      && canBindCommand(command) && Object.hasOwn(overrides, command)
+      && defaults[command].some(key => defaults[added].includes(key)))) defaults[added] = [];
   }
   return defaults;
 }

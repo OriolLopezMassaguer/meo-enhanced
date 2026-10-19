@@ -1202,9 +1202,9 @@ async function main(): Promise<void> {
         panelClientHeight: panel.clientHeight,
         panelBackground: panelStyle.backgroundColor,
         triggerBackground: triggerStyle.backgroundColor,
-        fieldBackground: (() => {
+        selectedBackground: (() => {
           const probe = document.createElement('span');
-          probe.style.backgroundColor = 'var(--meo-ui-surface-field)';
+          probe.style.backgroundColor = 'var(--meo-ui-surface-selected)';
           document.body.append(probe);
           const value = getComputedStyle(probe).backgroundColor;
           probe.remove();
@@ -1213,6 +1213,14 @@ async function main(): Promise<void> {
         floatingShadow: (() => {
           const probe = document.createElement('span');
           probe.style.boxShadow = 'var(--meo-ui-shadow)';
+          document.body.append(probe);
+          const value = getComputedStyle(probe).boxShadow;
+          probe.remove();
+          return value;
+        })(),
+        selectedShadow: (() => {
+          const probe = document.createElement('span');
+          probe.style.boxShadow = 'inset 0 0 0 1px var(--meo-ui-selection-border)';
           document.body.append(probe);
           const value = getComputedStyle(probe).boxShadow;
           probe.remove();
@@ -1228,22 +1236,22 @@ async function main(): Promise<void> {
       'Preview font dropdown must use the export menu surface');
     assert.equal(dropdownThemeContract.panelScrollHeight, dropdownThemeContract.panelClientHeight,
       'Font options and their gaps fit without a scrollbar when the viewport has enough space');
-    assert.equal(dropdownThemeContract.triggerBackground, dropdownThemeContract.fieldBackground,
-      'Preview font trigger must use the shared field surface');
+    assert.equal(dropdownThemeContract.triggerBackground, dropdownThemeContract.selectedBackground,
+      'The open Preview font trigger must use the shared selected surface');
+    assert.equal(dropdownThemeContract.triggerShadow, dropdownThemeContract.selectedShadow,
+      'The open Preview font trigger must use the shared selected border');
     assert.equal(dropdownThemeContract.panelShadow, dropdownThemeContract.floatingShadow,
       'Preview font popup must share the floating surface shadow');
     assert.deepEqual({
       controlAppearance: dropdownThemeContract.controlAppearance,
       panelAppearance: dropdownThemeContract.panelAppearance,
       panelHidden: dropdownThemeContract.panelHidden,
-      panelRadius: dropdownThemeContract.panelRadius,
-      triggerShadow: dropdownThemeContract.triggerShadow
+      panelRadius: dropdownThemeContract.panelRadius
     }, {
       controlAppearance: 'light',
       panelAppearance: 'light',
       panelHidden: false,
-      panelRadius: 6,
-      triggerShadow: 'none'
+      panelRadius: 6
     }, 'Preview dropdown popup must keep its rounded native UI surface and shadow');
     await page.keyboard.press('Escape');
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -1986,7 +1994,7 @@ async function main(): Promise<void> {
           },
           math: {
             roots: mathRoots.map(inspectMathRoot),
-            controls: doc.querySelectorAll('.meo-latex-math-zoom-controls, [aria-label*="fullscreen" i]').length,
+            controls: doc.querySelectorAll('.meo-export-math .meo-latex-math-zoom-controls, .meo-export-math [aria-label*="fullscreen" i]').length,
             inline: {
               short: inspectInline(shortInline, shortBefore, shortAfter),
               long: inspectInline(longInline, longBefore, longAfter),

@@ -189,7 +189,7 @@ async function enterMermaidFullscreen(page: Page): Promise<void> {
     let remainingFrames = 120;
     const probe = () => {
       const button = Array.from(document.querySelectorAll<HTMLButtonElement>(
-        '.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="Fullscreen"]'
+        '.meo-mermaid-preview-controls .meo-mermaid-zoom-btn[aria-label="View fullscreen"]'
       )).find((candidate) => {
         if (!candidate.isConnected || candidate.closest('.meo-rendered-block-preview')?.querySelector('.meo-mermaid-block')?.getAttribute('aria-busy') === 'true') {
           return false;
@@ -1130,6 +1130,9 @@ async function assertMermaidModePointerSurvivesSettlement(page: Page): Promise<v
         scope.__mermaidSettlePointerProbe.releaseSettlement();
       });
       await waitForFrames(page, 8);
+      // Framework-only transactions (for example completion blur) must not
+      // replace a pressed widget merely because its measured height changed.
+      await page.evaluate(() => (window as any).__mermaidSettlePointerProbe.announce());
       const settled = await label.evaluate(element => ({
         connected: element.isConnected,
         removals: (window as any).__mermaidSettleRemovals,
@@ -1296,7 +1299,7 @@ async function main() {
         const label = shell?.querySelector<HTMLElement>(
           ':scope > .meo-rendered-block-preview-language'
         ) ?? null;
-        const controls = Array.from(toolbar?.querySelectorAll<HTMLElement>('button, [role="button"]') ?? []);
+        const controls = Array.from(toolbar?.querySelectorAll<HTMLElement>('button:not([hidden]), [role="button"]:not([hidden])') ?? []);
         return {
           shell: Boolean(shell),
           label: label?.textContent ?? null,
@@ -1575,6 +1578,9 @@ async function main() {
     await page.evaluate(() => (window as any).__mermaidEditingEditor.scrollToLine(1, 'top'));
     await waitForFrames(page);
 
+    // Select-all belongs to the visible source; preview retains only reading controls.
+    await clickVisibleBlockModeButton(page, 'mermaid');
+    await waitForFrames(page);
     await page.evaluate(() => {
       const editor = (window as any).__mermaidEditingEditor;
       const samples: Array<{
@@ -1666,7 +1672,7 @@ async function main() {
     if (!selectAllMode.source || !selectAllMode.selectedText?.startsWith('graph TD\nnode1 --> node2')) {
       throw new Error(`Mermaid select all did not reveal and select source: ${JSON.stringify(selectAllMode)}`);
     }
-    if (selectAllMode.controls.at(-2) !== 'Select all code' || selectAllMode.controls.at(-1) !== 'Copy') {
+    if (selectAllMode.controls[0] !== 'Select all code' || selectAllMode.controls.at(-2) !== 'Copy as image' || selectAllMode.controls.at(-1) !== 'Copy source') {
       throw new Error(`Unexpected Mermaid action order: ${JSON.stringify(selectAllMode.controls)}`);
     }
     await clickVisibleBlockModeButton(page, 'mermaid');
@@ -1728,7 +1734,7 @@ async function main() {
       '.meo-mermaid-editing-block.is-split [data-themed-node]',
       (node) => ({ fill: node.getAttribute('fill'), light: Boolean(node.closest('.meo-mermaid-light-theme')) })
     );
-    await page.focus('.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="Fullscreen"]');
+    await page.focus('.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="View fullscreen"]');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => Boolean(
       document.querySelector<HTMLElement>('.meo-mermaid-fullscreen .meo-mermaid-svg-wrapper')?.style.transform
@@ -1824,7 +1830,7 @@ async function main() {
     await waitForFrames(page, 3);
     const restoredThemeFocus = await page.evaluate(() => {
       const target = document.querySelector<HTMLButtonElement>(
-        '.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="Fullscreen"]'
+        '.meo-mermaid-editing-block.is-split .meo-mermaid-zoom-btn[aria-label="View fullscreen"]'
       );
       return {
         restored: Boolean(target?.isConnected && document.activeElement === target),
@@ -2303,7 +2309,7 @@ async function main() {
       });
     });
     await page.waitForFunction(() => (
-      document.querySelectorAll('#localized-rendered-block-actions .meo-mermaid-toolbar .meo-code-block-pill').length === 2
+      document.querySelectorAll('#localized-rendered-block-actions .meo-mermaid-toolbar .meo-code-block-pill').length === 3
       && document.querySelectorAll('#localized-rendered-block-actions .meo-math-copy-actions .meo-copy-code-btn').length === 1
     ));
     const localizedRenderedBlockActions = await page.evaluate(() => ({
@@ -2316,11 +2322,12 @@ async function main() {
     }));
     const expectedLocalizedActions = [
       { tooltip: '全选代码', label: '全选代码' },
-      { tooltip: '复制', label: '复制' }
+      { tooltip: '复制为图片', label: '复制为图片' },
+      { tooltip: '复制源码', label: '复制源码' }
     ];
     if (
       JSON.stringify(localizedRenderedBlockActions.mermaid) !== JSON.stringify(expectedLocalizedActions)
-      || JSON.stringify(localizedRenderedBlockActions.latex) !== JSON.stringify(expectedLocalizedActions.slice(1))
+      || JSON.stringify(localizedRenderedBlockActions.latex) !== JSON.stringify(expectedLocalizedActions.slice(-1))
     ) {
       throw new Error(`Rendered-block actions did not use the editor UI language: ${JSON.stringify(localizedRenderedBlockActions)}`);
     }

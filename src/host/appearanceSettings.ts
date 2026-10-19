@@ -1,4 +1,5 @@
 import type { EditorAppearance } from '../protocol/editorCommands';
+import { normalizeEditorLineHeight } from '../foundation/editorLineHeight';
 import { decodeUiColors, type UiColors } from '../foundation/uiColors';
 import { normalizePreviewFontFamily } from '../protocol/editorStyleEnvironment';
 import type { PreviewAppearance } from '../protocol/readyInit';
@@ -36,6 +37,7 @@ export const PREVIEW_SOURCE_COLORING_SETTING_KEY = 'preview.sourceColoring';
 export const LIVE_STRONG_COLORING_SETTING_KEY = 'appearance.strongColoring';
 export const EDITOR_FONT_SIZE_MODE_SETTING_KEY = 'appearance.fontSizeMode';
 export const EDITOR_FONT_SIZE_SETTING_KEY = 'appearance.fontSize';
+export const EDITOR_LINE_HEIGHT_SETTING_KEY = 'appearance.lineHeight';
 export const APPEARANCE_SETTINGS_MIGRATION_STATE_KEY = 'appearanceSettingsMigration';
 
 export type AppearanceSettings = {
@@ -63,6 +65,8 @@ export type AppearanceSettingsStore = {
 };
 
 export type AppearanceSettingsOwner = {
+  getEditorLineHeight: () => number;
+  setEditorLineHeight: (value: number) => Promise<void>;
   getUiColors: () => UiColors;
   setUiColors: (colors: UiColors) => Promise<UiColors>;
   getEditorAppearance: () => EditorAppearance;
@@ -336,6 +340,13 @@ export async function createAppearanceSettingsOwner(
   };
 
   return {
+    getEditorLineHeight: () => normalizeEditorLineHeight(store.readConfiguration(EDITOR_LINE_HEIGHT_SETTING_KEY).value),
+    setEditorLineHeight: async value => {
+      const normalized = normalizeEditorLineHeight(value);
+      if (normalizeEditorLineHeight(store.readConfiguration(EDITOR_LINE_HEIGHT_SETTING_KEY).value) !== normalized) {
+        await store.updateConfiguration(EDITOR_LINE_HEIGHT_SETTING_KEY, normalized);
+      }
+    },
     getUiColors: () => decodeUiColors(store.readConfiguration(UI_COLORS_SETTING_KEY).value) ?? { light: {}, dark: {} },
     setUiColors: async (colors) => {
       const normalized = decodeUiColors(colors);

@@ -1,3 +1,4 @@
+import { syncPreviewRenderedActions } from './previewBlockActions';
 import type { EditorAppearance } from '../../../src/protocol/editorCommands';
 import { getGithubMermaidConfig } from '../../../src/preview/githubMermaid';
 import { getMermaidPalette } from '../../../src/shared/mermaidPalette';
@@ -112,6 +113,7 @@ async function renderMermaidBlocks(
   commit: (mutate: () => void) => void
 ): Promise<void> {
   if (!isCurrent()) return;
+  syncPreviewRenderedActions(frameDocument);
   const preset = frameDocument.documentElement.dataset.meoPreviewPreset ?? 'default';
   const revision = frameDocument.documentElement.dataset.meoPreviewPresetRevision ?? '';
   const palette = readPreviewMermaidPalette(frameDocument, appearance);
@@ -251,10 +253,11 @@ async function renderMermaidBlocks(
       if (copyActions) block.append(copyActions);
     }
     for (const block of failed) {
-      if (!block.classList.contains('is-rendered')) block.classList.add('is-error');
+      block.classList.add('is-error');
       delete block.dataset.meoPreviewMermaidPending;
     }
   });
+  syncPreviewRenderedActions(frameDocument);
   onDiagramRendered?.();
 }
 

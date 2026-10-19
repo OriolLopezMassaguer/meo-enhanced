@@ -317,7 +317,7 @@ async function main() {
       language: 'zh-CN',
       previewTools: '预览工具',
       sourceColoring: '代码着色',
-      exports: ['导出为...'],
+      exports: ['导出为…'],
       previewFrameTitle: 'Markdown 预览',
       previewAppearance: '预览主题',
       editorAppearance: '界面主题',
@@ -476,7 +476,7 @@ async function main() {
       };
     });
     if (
-      JSON.stringify(toolbarLayout.left.slice(0, 5)) !== JSON.stringify(['outline-left', 'line-jump', 'save', 'discard', 'separator']) ||
+      JSON.stringify(toolbarLayout.left.slice(0, 8)) !== JSON.stringify(['outline-left', 'line-jump', 'save', 'saveAs', 'undo', 'redo', 'discard', 'separator']) ||
       JSON.stringify(toolbarLayout.right) !== JSON.stringify(['split-preview', 'changes', 'separator', 'find', 'outline-right', 'more']) ||
       JSON.stringify(toolbarLayout.changes) !== JSON.stringify(['changes-review-trigger', 'changes-review-panel'])
     ) {
@@ -2807,7 +2807,7 @@ async function main() {
       throw new Error(`Implicit webview updates moved the visual anchor: ${JSON.stringify({ before, afterUpdate, afterTheme, wheelScrollTops, wheelLinePositions, afterUpwardScroll })}`);
     }
 
-    const tallMermaidBefore = await page.evaluate(async () => {
+    let tallMermaidBefore = await page.evaluate(async () => {
       const scroller = document.querySelector<HTMLElement>('.editor-host > .cm-editor .cm-scroller')!;
       scroller.scrollTop = scroller.scrollHeight;
       for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -2872,6 +2872,26 @@ async function main() {
     if (!tallMermaidBefore || tallMermaidBefore.top === null || tallMermaidBefore.blockHeight <= 0) {
       throw new Error(`Tall Mermaid did not enter the controlled pending state: ${JSON.stringify(tallMermaidBefore)}`);
     }
+    // Raw DOM scrolling discovers the block, but does not reserve a reading
+    // intent while CodeMirror replaces virtual gaps. Establish that intent
+    // through the product navigation API before measuring trusted wheel input.
+    tallMermaidBefore = await page.evaluate(async before => {
+      await (window as any).__viewportTestRetainReadingLine(before.text, before.top);
+      const scroller = document.querySelector<HTMLElement>('.editor-host > .cm-editor .cm-scroller')!;
+      const anchor = Array.from(scroller.querySelectorAll<HTMLElement>('.cm-line'))
+        .find(line => line.textContent === before.text);
+      const block = scroller.querySelector<HTMLElement>('.meo-mermaid-block[aria-busy="true"]:has(svg[height="3000"])');
+      const anchorTop = anchor?.getBoundingClientRect().top;
+      if (anchorTop === undefined || Math.abs(anchorTop - before.top!) > 1 || !block) {
+        throw new Error(`Tall Mermaid reading navigation did not settle: ${JSON.stringify({ before, anchorTop, pending: Boolean(block) })}`);
+      }
+      return {
+        ...before, top: anchorTop, blockTop: block.getBoundingClientRect().top,
+        blockHeight: block.getBoundingClientRect().height, scrollTop: scroller.scrollTop,
+        scrollHeight: scroller.scrollHeight,
+        gaps: Array.from(scroller.querySelectorAll<HTMLElement>('.cm-gap')).map(gap => gap.getBoundingClientRect().height)
+      };
+    }, tallMermaidBefore);
     const tallMermaidWheelDelta = -20;
     const tallMermaidWheelCount = 6;
     const pendingWheelCount = tallMermaidWheelCount / 2;

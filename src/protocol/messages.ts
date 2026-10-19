@@ -1,6 +1,7 @@
 import { decodePreviewFontsRequest, decodePreviewFontsResponse, type PreviewFontsRequest, type PreviewFontsResponse } from './previewFonts';
 import { decodeEditorServiceRequest, decodeEditorServiceResponse, type EditorServiceRequest, type EditorServiceResponse } from './editorServices';
 import { decodeSaveDocumentCopyRequest, decodeDocumentCopyResponse, type SaveDocumentCopyRequest, type DocumentCopyResponse } from './documentCopy';
+import { decodeSaveDocumentAsRequest, decodeDocumentSaveAsResponse, type SaveDocumentAsRequest, type DocumentSaveAsResponse } from './documentSaveAs';
 import { decodeSaveImageFromClipboardRequest, decodeSavedImagePathResponse, type SaveImageFromClipboardRequest, type SavedImagePathResponse } from './clipboardImageSave';
 import { decodeDiagnosticsChangedEvent, type DiagnosticsChangedEvent } from './diagnostics';
 import { decodeDocumentSyncCommand, decodeDocumentSyncMessage, type DocumentSyncCommand, type DocumentSyncMessage } from './documentSync';
@@ -44,6 +45,7 @@ export type WebviewToHostMessage =
   | ResolveLocalLinksRequest
   | SaveImageFromClipboardRequest
   | SaveDocumentCopyRequest
+  | SaveDocumentAsRequest
   | PreviewRenderRequest
   | ExportSnapshotResponse;
 
@@ -72,6 +74,7 @@ export type HostToWebviewMessage =
   | ResolvedLocalLinksResponse
   | SavedImagePathResponse
   | DocumentCopyResponse
+  | DocumentSaveAsResponse
   | PreviewRenderResponse
   | ExportSnapshotRequest
   | GitBaselineChangedEvent;
@@ -96,6 +99,7 @@ export function decodeWebviewToHostMessage(value: unknown): WebviewToHostMessage
     ?? decodeResolveLocalLinksRequest(value)
     ?? decodeSaveImageFromClipboardRequest(value)
     ?? decodeSaveDocumentCopyRequest(value)
+    ?? decodeSaveDocumentAsRequest(value)
     ?? decodePreviewRenderRequest(value)
     ?? decodeExportSnapshotResponse(value);
 }
@@ -125,6 +129,7 @@ export function decodeHostToWebviewMessage(value: unknown): HostToWebviewMessage
     ?? decodeResolvedLocalLinksResponse(value)
     ?? decodeSavedImagePathResponse(value)
     ?? decodeDocumentCopyResponse(value)
+    ?? decodeDocumentSaveAsResponse(value)
     ?? decodePreviewRenderResponse(value)
     ?? decodeExportSnapshotRequest(value)
     ?? decodeGitBaselineChangedEvent(value);

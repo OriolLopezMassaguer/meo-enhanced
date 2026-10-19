@@ -30,7 +30,7 @@ assert.equal(english.properties, 'Properties');
 assert.equal(chinese.properties, 'Properties');
 assert.equal(getReadingUiStrings('en').properties, 'Properties');
 assert.equal(english.exportHtml, 'Export as HTML');
-assert.equal(english.exportDocument, 'Export as...');
+assert.equal(english.exportDocument, 'Export as…');
 assert.deepEqual(
   [english.previewFontFamily, english.previewCodeFontFamily, english.previewCodeColors, english.previewAppearance],
   ['Body font', 'Code font', 'Code color', 'Preview theme']
@@ -63,7 +63,9 @@ assert.deepEqual([chinese.feedbackPrompt, chinese.reportIssue], ['使用中遇�
 assert.equal(english.line, 'Lines');
 assert.equal(chinese.line, '行号');
 assert.equal(chinese.exportHtml, '导出为 HTML');
-assert.equal(chinese.exportDocument, '导出为...');
+assert.deepEqual([english.deleteTable, english.sortTableAscending, english.sortTableDescending], ['Delete table', 'Sort ascending', 'Sort descending']);
+assert.deepEqual([chinese.deleteTable, chinese.sortTableAscending, chinese.sortTableDescending], ['删除表格', '升序排列', '降序排列']);
+assert.equal(chinese.exportDocument, '导出为…');
 assert.equal(english.findMatches(2), '2 matches');
 assert.equal(chinese.findMatches(2), '2 个匹配项');
 assert.equal(chinese.replacedRemaining(3), '已替换 • 剩余 3 个');
@@ -75,11 +77,13 @@ assert.equal(chinese.untitled, '未命名');
 assert.equal(chinese.backToTop, '回到顶部');
 assert.equal(chinese.markTaskComplete, '标记任务为已完成');
 assert.equal(chinese.jumpToFootnoteReference(2), '跳转到脚注引用 2');
-assert.equal(chinese.copyCode, '复制');
+assert.equal(chinese.copyCode, '复制源码');
+assert.equal(getUiStrings('en').copyCode, 'Copy source');
+assert.equal(chinese.copyImage, '复制为图片');
 assert.equal(chinese.showMoreCode(9), '显示其余 9 行代码');
 assert.deepEqual(
   [chinese.loading, chinese.zoomIn, chinese.zoomOut, chinese.resetZoom, chinese.fullscreen, chinese.exitFullscreen],
-  ['正在加载…', '放大', '缩小', '重置缩放', '全屏', '退出全屏']
+  ['正在加载…', '放大', '缩小', '重置缩放', '全屏查看', '退出全屏']
 );
 assert.deepEqual(
   [chinese.colorLabel('#ff0000'), chinese.acceptCurrent, chinese.acceptIncoming, chinese.acceptBoth],

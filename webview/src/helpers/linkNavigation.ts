@@ -1,12 +1,21 @@
 import { currentMarkdownHeadings } from '../editor/headingSuggestions';
 import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
+import type { SyntaxNode, SyntaxNodeRef, Tree } from '@lezer/common';
+import { parseDocument } from 'htmlparser2';
+import type { ChildNode } from 'domhandler';
+import { isSafeHtmlUrl } from '../../../src/shared/htmlPolicy';
+import { normalizeLinkDestination } from '../../../src/foundation/linkDestination';
 import { extractHeadings, resolvedSyntaxTree } from './markdownSyntax';
 import { isWikiLinkNode, parseWikiLinkData } from './wikiLinks';
 import { findRawSourceUrlMatches, linkSchemeRe, normalizeSourceHref } from './rawUrls';
 
 const linkReferenceCache = new WeakMap<object, Map<string, string>>();
+type SourceHtmlLink = { from: number; to: number; href: string };
+const sourceHtmlLinkCache = new WeakMap<object, {
+  tree: Tree;
+  regions: Map<number, { links: SourceHtmlLink[]; excluded: { from: number; to: number }[] }>;
+}>();
 type LinkLookupOptions = {
   exactTextHit?: boolean;
 };
@@ -202,6 +211,54 @@ function hrefFromRawSourceUrlAtPos(state: EditorState, pos: number, exactTextHit
   return '';
 }
 
+function hrefFromSourceHtmlAtPos(state: EditorState, tree: Tree, pos: number): string {
+  let region: SyntaxNode | null = tree.resolveInner(pos, 1);
+  while (region) {
+    if (/^(?:InlineCode|InlineHTMLCode|FencedCode|CodeBlock|Comment|CommentBlock)$/.test(region.name)) return '';
+    if (/^(?:Paragraph|HTMLBlock|TableCell|TableHeader|ATXHeading[1-6]|SetextHeading[12])$/.test(region.name)) break;
+    region = region.parent;
+  }
+  if (!region) return '';
+  let cache = sourceHtmlLinkCache.get(state.doc);
+  if (!cache || cache.tree !== tree) {
+    cache = { tree, regions: new Map() };
+    sourceHtmlLinkCache.set(state.doc, cache);
+  }
+  let parsed = cache.regions.get(region.from);
+  if (!parsed) {
+    const result = { links: [] as SourceHtmlLink[], excluded: [] as { from: number; to: number }[] };
+    const source = state.doc.sliceString(region.from, region.to);
+    if (/<a\b/i.test(source)) {
+      // Parse only the containing Markdown region and cache across selection/
+      // hover updates. HTML parsing supplies entity decoding and source offsets.
+      const offset = region.from;
+      const visit = (nodes: readonly ChildNode[]): void => {
+        for (const node of nodes) {
+          if (node.startIndex === null || node.endIndex === null) continue;
+          const from = offset + node.startIndex, to = offset + node.endIndex + 1;
+          if (node.type === 'comment' || node.type === 'script' || node.type === 'style'
+            || (node.type === 'tag' && /^(?:code|pre|textarea)$/.test(node.name))) {
+            result.excluded.push({ from, to });
+            continue;
+          }
+          if (node.type === 'tag' && node.name === 'a' && /<\/a\s*>$/i.test(source.slice(node.startIndex, node.endIndex + 1))) {
+            let syntax: SyntaxNode | null = tree.resolveInner(from, 1);
+            while (syntax && syntax.name !== 'HTMLTag' && syntax.name !== 'HTMLBlock') syntax = syntax.parent;
+            const href = normalizeLinkDestination(node.attribs.href ?? '');
+            if (syntax && isSafeHtmlUrl(href, 'href')) result.links.push({ from, to, href });
+          }
+          if ('children' in node) visit(node.children);
+        }
+      };
+      visit(parseDocument(source, { withStartIndices: true, withEndIndices: true }).children);
+    }
+    cache.regions.set(region.from, result);
+    parsed = result;
+  }
+  if (parsed.excluded.some(range => pos >= range.from && pos < range.to)) return '';
+  return parsed.links.find(link => pos >= link.from && pos < link.to)?.href ?? '';
+}
+
 /** Resolve a draft with document references; exact hits exclude Markdown delimiters. */
 export function getLinkHrefAtSourcePosition(state: EditorState, pos: number, options: LinkLookupOptions = {}, referenceState = state): string {
   const exactTextHit = options.exactTextHit === true;
@@ -252,6 +309,8 @@ export function getLinkHrefAtSourcePosition(state: EditorState, pos: number, opt
     }
   }
 
+  const htmlHref = hrefFromSourceHtmlAtPos(state, tree, pos);
+  if (htmlHref) return htmlHref;
   const rawHref = hrefFromRawSourceUrlAtPos(state, pos, exactTextHit);
   if (rawHref && linkSchemeRe.test(rawHref)) {
     return rawHref;

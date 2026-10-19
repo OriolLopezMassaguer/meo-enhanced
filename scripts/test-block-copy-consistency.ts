@@ -40,7 +40,7 @@ try {
       text: editor.getText(), selection: editor.view.state.selection.toJSON(), history: editor.getHistoryDepth()
     }; });
     await page.$eval(selector, node => {
-      if (node.getAttribute('aria-label') !== '复制' || (node as HTMLElement).dataset.tooltip !== '复制') {
+      if (node.getAttribute('aria-label') !== '复制源码' || (node as HTMLElement).dataset.tooltip !== '复制源码') {
         throw new Error('All block copy controls must use the same concise label');
       }
       (node as HTMLElement).click();

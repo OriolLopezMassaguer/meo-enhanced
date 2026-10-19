@@ -29,6 +29,7 @@ import {
 import { AgentReviewOverrideController } from './agents/reviewOverrides';
 import {
   EXTENSION_CONFIG_SECTION,
+  MARKDOWN_EDITOR_VIEW_TYPE as VIEW_TYPE,
   GIT_CHANGES_GUTTER_LEGACY_SETTING_KEY,
   GIT_CHANGES_GUTTER_LEGACY_VISIBLE_SETTING_KEY,
   GIT_CHANGES_GUTTER_LEGACY_VISIBILITY_SETTING_KEY,
@@ -70,6 +71,7 @@ import { runVscodeExportWithFeedback } from './host/vscodeExportFeedback';
 import { createDiffBaselineProtocolAdapter } from './host/diffBaselineProtocolAdapter';
 import { createVscodeViewNavigationAdapter } from './host/vscodeViewNavigationAdapter';
 import { createVscodeReadingPositionAdapter } from './host/vscodeReadingPositionAdapter';
+import { createDocumentSaveAsViewStateHandoff } from './application/documentSaveAsViewState';
 import { cleanupRetiredWorkspaceState } from './host/vscodeRetiredWorkspaceStateCleanup';
 import { type PreviewRenderResult } from './shared/preview';
 import {
@@ -102,7 +104,6 @@ import { createPreviewFonts, readSystemPreviewFonts } from './host/previewFonts'
 import { createPreviewPresetPreferences, PREVIEW_PRESET_PREFERENCES_STATE_KEY } from './host/previewPresetPreferences';
 import type { PreviewPresetsChanged, PreviewPresetRequest, PreviewPresetResponse } from './protocol/previewPresets';
 
-const VIEW_TYPE = 'meoEnhanced.editor';
 const ACTIVE_EDITOR_CONTEXT_KEY = 'meoEnhanced.activeEditor';
 const FIND_OPTIONS_STATE_KEY = 'findOptions';
 
@@ -392,6 +393,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   private readonly previewPresetPreferences: ReturnType<typeof createPreviewPresetPreferences>;
   private readonly activePanels = new Set<vscode.WebviewPanel>();
   private readonly panelSessions = new Map<vscode.WebviewPanel, PanelSession>();
+  private readonly saveAsViewStateHandoff = createDocumentSaveAsViewStateHandoff();
   private lastActivePanel: vscode.WebviewPanel | null = null;
 
   constructor(
@@ -517,6 +519,9 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
   }
 
   async handleConfigurationChanged(event: vscode.ConfigurationChangeEvent): Promise<void> {
+    if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.appearance.lineHeight`)) {
+      this.broadcast({ type: 'editorLineHeightChanged', value: this.appearanceSettings.getEditorLineHeight() });
+    }
     if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${UI_COLORS_SETTING_KEY}`)) {
       this.broadcast({ type: 'uiColorsChanged', colors: this.appearanceSettings.getUiColors() });
     }
@@ -688,6 +693,7 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
         document,
         getRestoreReadingPositionOnOpen
       ),
+      saveAsViewStateHandoff: this.saveAsViewStateHandoff,
       saveDocument: async () => document.save(),
       onExportDocument: (session, options) => this.exportSessionDocument(session, options),
       renderPreview: async (options) => {
@@ -724,6 +730,8 @@ class MarkdownWebviewProvider implements vscode.CustomTextEditorProvider {
       getUiColors: this.appearanceSettings.getUiColors,
       setUiColors: this.appearanceSettings.setUiColors,
       setEditorAppearance: this.appearanceSettings.setEditorAppearance,
+      getEditorLineHeight: this.appearanceSettings.getEditorLineHeight,
+      setEditorLineHeight: this.appearanceSettings.setEditorLineHeight,
       getEditorFontSizePreference: this.appearanceSettings.getEditorFontSizePreference,
       setEditorFontSizePreference: this.appearanceSettings.setEditorFontSizePreference,
       setOutlineVisible: (visible) => this.setOutlineVisible(visible),

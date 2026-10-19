@@ -53,10 +53,22 @@ try {
   });
   const placeAnchor = async (offset: number) => {
     await page.evaluate(() => (window as any).editor.view.dispatch({ scrollIntoView: true })); await settlePosition();
-    await page.evaluate(offset => {
+    const target = await page.evaluate(offset => {
       const g = window as any, view = g.editor.view, coords = view.coordsAtPos(g.slashAnchor ?? view.state.selection.main.head);
-      view.scrollDOM.scrollTop += coords.top - view.scrollDOM.getBoundingClientRect().top - offset;
-    }, offset); await settlePosition();
+      const viewport = view.scrollDOM.getBoundingClientRect();
+      return { x: viewport.right - 24, y: viewport.top + viewport.height / 2,
+        delta: coords.top - viewport.top - offset };
+    }, offset);
+    // Scrolling after typing is a new user intent, so retire input retention
+    // through the native wheel path before measuring the popup's edge layout.
+    await page.mouse.move(target.x, target.y);
+    await page.mouse.wheel({ deltaY: target.delta });
+    await settlePosition();
+    await page.waitForFunction(offset => {
+      const g = window as any, view = g.editor.view;
+      const coords = view.coordsAtPos(g.slashAnchor ?? view.state.selection.main.head);
+      return Math.abs(coords.top - view.scrollDOM.getBoundingClientRect().top - offset) < 1;
+    }, { timeout: 3000 }, offset);
   };
   const geometry = () => page.evaluate(() => {
     const g = window as any, view = g.editor.view, anchor = view.coordsAtPos(g.slashAnchor), popup = document.querySelector<HTMLElement>('.meo-input-suggestions')!, menu = popup.getBoundingClientRect(), scroller = view.scrollDOM.getBoundingClientRect();
@@ -78,6 +90,18 @@ try {
     return layout.visible.length;
   };
   for (const mode of ['source', 'live']) {
+    await prepare(mode);
+    const slashIme = await page.createCDPSession();
+    // Some input methods leave the preedit caret before the slash. Confirming
+    // the same character then changes only the selection, not the document.
+    await slashIme.send('Input.imeSetComposition', { text: '/', selectionStart: 0, selectionEnd: 0 });
+    await slashIme.send('Input.insertText', { text: '/' }); await open();
+    await page.keyboard.type('h1'); await page.keyboard.press('Enter'); await waitText('# ');
+    await prepare(mode);
+    await slashIme.send('Input.imeSetComposition', { text: '/', selectionStart: 0, selectionEnd: 0 });
+    await slashIme.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
+    await page.keyboard.type('word'); await waitText('word'); await closed();
+    await slashIme.detach();
     await prepare(mode); await page.keyboard.type('/'); await open(); await completeRows(mode + ': preferred menu height'); await watchPopup();
     await page.keyboard.type('bold', { delay: 60 }); await open();
     assert.deepEqual(await popupContinuity(), { hiddenFrames: 0, replaced: false }, mode + ': filtering retains the visible popup without blank frames');
@@ -528,6 +552,13 @@ try {
     await page.waitForSelector('tbody textarea'); await page.click('tbody textarea');
     await page.evaluate(pos => (document.activeElement as HTMLTextAreaElement).setSelectionRange(pos, pos), pos);
   };
+  await prepareCell();
+  const cellSlashIme = await page.createCDPSession();
+  await cellSlashIme.send('Input.imeSetComposition', { text: '/', selectionStart: 0, selectionEnd: 0 });
+  await cellSlashIme.send('Input.insertText', { text: '/' }); await open();
+  await page.keyboard.type('bold'); await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(() => (document.activeElement as HTMLTextAreaElement).value), '****', 'native cell accepts a slash committed by the IME');
+  await cellSlashIme.detach();
   await prepareCell('', 0, true); await page.keyboard.type('/'); await open();
   assert.equal(await page.$eval('.meo-slash-list', list => (list.lastElementChild as HTMLElement).dataset.command), 'bold', 'native cell uses the fixed upward order');
   await page.keyboard.press('ArrowUp'); await completeRows('native cell: upward navigation');
@@ -627,9 +658,12 @@ try {
   await page.setViewport({ width: 1000, height: 720 });
   const wideTable = ['A', '---', 'x'].map(value => '| ' + Array(10).fill(value).join(' | ') + ' |').join('\n');
   await prepare('live', wideTable, 0); await page.waitForSelector('tbody textarea');
+  // Keep the scrollable clipping fixture independent of automatic width fitting.
+  await page.addStyleTag({ content: '.slash-horizontal-clipping-fixture { min-width: 1000px !important; }' });
   await page.evaluate(() => {
     const input = document.querySelector<HTMLTextAreaElement>('tbody textarea')!, wrap = input.closest<HTMLElement>('.meo-md-html-table-wrap')!;
-    wrap.style.width = '150px'; input.focus(); input.setSelectionRange(0, 0);
+    input.closest('table')!.classList.add('slash-horizontal-clipping-fixture');
+    wrap.style.width = '150px'; wrap.style.overflowX = 'auto'; input.focus(); input.setSelectionRange(0, 0);
   }); await settlePosition(); await page.keyboard.type('/b'); await open();
   assert.ok(await page.$eval('.meo-input-suggestions', popup => popup.getBoundingClientRect().width > 150), 'native menus can extend beyond a narrow cell');
   await page.evaluate(() => {

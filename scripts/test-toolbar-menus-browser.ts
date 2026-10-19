@@ -117,7 +117,7 @@ try {
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), false, 'Escape closes a nested dropdown before the options panel');
   await page.keyboard.press('Escape');
   assert.equal(await page.$eval('.preview-options-panel', panel => (panel as HTMLElement).hidden), true);
-  assert.equal(await page.$eval('.preview-export-trigger', element => element.textContent?.trim()), '导出为...');
+  assert.equal(await page.$eval('.preview-export-trigger', element => element.textContent?.trim()), '导出为…');
   assert.equal(await page.$eval('.preview-export-trigger svg path', path => path.getAttribute('d')?.startsWith('M14 17a1 1 0 1 0 0 2z') && path.getAttribute('fill') === 'currentColor'), true);
   assert.equal(await page.$$eval('.preview-export-menu-action', elements => elements.length), 6);
   const formatIconColors = await page.$$eval('.preview-export-menu-action', elements => elements.map(element => {
@@ -389,7 +389,7 @@ try {
     await page.click(`.editor-appearance-button[data-editor-appearance="${appearance}"]`);
     await page.click('.more-tools-wrapper > .format-button');
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.equal(await page.$eval('.preview-export-trigger', el => el.textContent?.trim()), language === 'zh-CN' ? '导出为...' : 'Export as...');
+    assert.equal(await page.$eval('.preview-export-trigger', el => el.textContent?.trim()), language === 'zh-CN' ? '导出为…' : 'Export as…');
     await page.hover('.preview-export-trigger');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.preview-export-menu')!).opacity === '1');
     assert.equal(await page.$eval('.preview-export-trigger .preview-toolbar-action-label', el => el.scrollWidth <= el.clientWidth), true, 'Export wording fits the toolbar');

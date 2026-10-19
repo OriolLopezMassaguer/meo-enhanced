@@ -407,6 +407,24 @@ await flushFrames(documentFrames);
 if (documentScrollDOM.scrollTop !== 1470) {
   throw new Error(`Layout refresh moved the document anchor to ${documentScrollDOM.scrollTop}`);
 }
+// A newer layout operation supersedes an older retained cell/toolbar position.
+// They must never alternate between two scroll targets during settlement.
+let retainedElementTop = 4000;
+const retainedElement = {
+  isConnected: true,
+  ownerDocument: { defaultView: {} },
+  getBoundingClientRect: () => ({ top: retainedElementTop - documentScrollDOM.scrollTop })
+};
+documentController.retainElementTopWhileMutation(retainedElement as any, () => retainedElement as any, () => {});
+documentController.preserveDocumentAnchorWhileMutation(() => {
+  documentBlockTop += 100;
+  retainedElementTop += 700;
+});
+await flushFrames(documentFrames);
+if (documentScrollDOM.scrollTop !== 1570) {
+  throw new Error(`An obsolete element anchor overrode the newer layout operation: ${documentScrollDOM.scrollTop}`);
+}
+
 documentBlockTop = 1750;
 documentController.restoreDocumentAnchor({ position: 42, lineOffset: 20 });
 const selectionOnlyNavigation = documentController.beginNavigationReveal();
@@ -475,21 +493,34 @@ globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
 };
 
 class FakeEventTarget {
-  private readonly listeners = new Map<string, Set<EventListener>>();
+  private readonly listeners = new Map<string, Array<{ listener: EventListener; capture: boolean }>>();
 
-  addEventListener(type: string, listener: EventListener): void {
-    const listeners = this.listeners.get(type) ?? new Set<EventListener>();
-    listeners.add(listener);
+  addEventListener(type: string, listener: EventListener, options?: boolean | AddEventListenerOptions): void {
+    const listeners = this.listeners.get(type) ?? [];
+    const capture = typeof options === 'boolean' ? options : options?.capture ?? false;
+    if (!listeners.some(entry => entry.listener === listener && entry.capture === capture)) {
+      listeners.push({ listener, capture });
+    }
     this.listeners.set(type, listeners);
   }
 
-  removeEventListener(type: string, listener: EventListener): void {
-    this.listeners.get(type)?.delete(listener);
+  removeEventListener(type: string, listener: EventListener, options?: boolean | EventListenerOptions): void {
+    const capture = typeof options === 'boolean' ? options : options?.capture ?? false;
+    this.listeners.set(type, (this.listeners.get(type) ?? [])
+      .filter(entry => entry.listener !== listener || entry.capture !== capture));
+  }
+
+  listenerCount(type: string): number {
+    return this.listeners.get(type)?.length ?? 0;
   }
 
   dispatch(type: string, event: unknown): void {
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener(event as Event);
+    // At the event target, capture listeners precede non-capture listeners even
+    // when the latter were registered first, as CodeMirror's scroll observer is.
+    for (const capture of [true, false]) {
+      for (const entry of [...this.listeners.get(type) ?? []]) {
+        if (entry.capture === capture) entry.listener(event as Event);
+      }
     }
   }
 }
@@ -1390,10 +1421,10 @@ if (revealScrollDOM.scrollTop !== 420) {
   throw new Error(`A stale reveal moved the viewport to ${revealScrollDOM.scrollTop}`);
 }
 
-type GeometryShiftInterruption = 'none' | 'stale-frame' | 'destroy' | 'late-measure' | 'editor-update-overwrite' | 'read-write-layout' | 'layout-preservation' | 'overlap-layout-preservation';
+type GeometryShiftInterruption = 'none' | 'stale-frame' | 'destroy' | 'late-measure' | 'editor-update-overwrite' | 'editor-update-layout' | 'read-write-layout' | 'layout-preservation' | 'overlap-layout-preservation';
 
 const runGeometryShiftReveal = async (
-  kind: 'ordinary' | 'settled' | 'bounds',
+  kind: 'ordinary' | 'settled' | 'bounds' | 'retained',
   interruption: GeometryShiftInterruption = 'none'
 ) => {
   const frames: FrameRequestCallback[] = [];
@@ -1460,7 +1491,8 @@ const runGeometryShiftReveal = async (
 
   try {
     const isCurrent = controller.beginNavigationReveal();
-    if (kind === 'ordinary') controller.revealPosition(1600, { y: 'center' }, isCurrent);
+    if (kind === 'retained') controller.retainPositionTop(1600, 350, isCurrent);
+    else if (kind === 'ordinary') controller.revealPosition(1600, { y: 'center' }, isCurrent);
     else if (kind === 'bounds') controller.revealVerticalBounds(
       () => ({ top: targetTop - scrollTop, bottom: targetTop + 20 - scrollTop }),
       isCurrent
@@ -1477,6 +1509,20 @@ const runGeometryShiftReveal = async (
     } else {
       flushMeasure();
       await Promise.resolve();
+      if (interruption === 'editor-update-layout') {
+        targetTop += 600;
+        scrollTop += 200;
+        controller.reconcileAfterEditorUpdate();
+        // The input owner receives this completed geometry receipt before the
+        // browser paints, while the next measure request is still queued.
+        controller.retainPositionTop(1600, 350, isCurrent, true);
+        await Promise.resolve();
+        if (targetTop - scrollTop !== 350) {
+          throw new Error(`Retained caret used an old absolute offset after measurement: ${targetTop - scrollTop}`);
+        }
+        await flushAll();
+        return { scrollTop, writes, targetVisible: targetTop >= scrollTop && targetTop + 20 <= scrollTop + 500 };
+      }
       if (interruption === 'layout-preservation' || interruption === 'overlap-layout-preservation') {
         if (interruption === 'overlap-layout-preservation') {
           // The same navigation can request another reveal after adopting its
@@ -1546,6 +1592,10 @@ if (
   JSON.stringify(ordinaryGeometryReveal.writes) !== '[1360]'
 ) {
   throw new Error(`One-shot reveal did not expose the layout overwrite: ${JSON.stringify(ordinaryGeometryReveal)}`);
+}
+const retainedGeometryReveal = await runGeometryShiftReveal('retained', 'editor-update-layout');
+if (!retainedGeometryReveal.targetVisible || JSON.stringify(retainedGeometryReveal.writes) !== '[1250,1250,1850]') {
+  throw new Error(`Measured layout changed a retained caret's viewport offset: ${JSON.stringify(retainedGeometryReveal)}`);
 }
 const settledGeometryReveal = await runGeometryShiftReveal('settled');
 if (
@@ -1744,7 +1794,44 @@ const readingWheelView = {
   }),
   requestMeasure: ({ read, write }: { read: () => unknown; write: (value: unknown) => void }) => write(read())
 };
+let pendingScrollMeasurement: { layoutDelta: number; estimateDelta: number } | null = null;
+// CodeMirror installs this non-capture observer before the viewport controller.
+// It can synchronously measure and reconcile inside the native scroll event.
+readingWheelScrollDOM.addEventListener('scroll', () => {
+  if (!pendingScrollMeasurement) return;
+  const { layoutDelta, estimateDelta } = pendingScrollMeasurement;
+  pendingScrollMeasurement = null;
+  readingAnchorDocumentTop += layoutDelta;
+  readingEstimatedOffset += estimateDelta;
+  readingWheelScrollDOM.scrollTop += layoutDelta + estimateDelta;
+  readingWheelController.reconcileAfterEditorUpdate();
+});
 const readingWheelController = new ViewportController(readingWheelView as any);
+for (const progress of [-21.375, 23.5]) {
+  for (const layoutDelta of [-48.25, 0, 78.75]) {
+    readingWheelController.markInteraction();
+    readingAnchorDocumentTop = 1200;
+    readingEstimatedOffset = 0;
+    readingWheelScrollDOM.scrollTop = 1000;
+    readingWheelScrollDOM.dispatch('wheel', { deltaX: 0, deltaY: Math.sign(progress) * 120, ctrlKey: false });
+    readingWheelScrollDOM.scrollTop += Math.sign(progress) * 20;
+    readingWheelScrollDOM.dispatch('scroll', {});
+    readingWheelScrollDOM.scrollTop += progress;
+    const nativeTop = readingWheelScrollDOM.scrollTop;
+    pendingScrollMeasurement = { layoutDelta, estimateDelta: 27.5 };
+    readingWheelScrollDOM.dispatch('scroll', {});
+    const expected = nativeTop + layoutDelta;
+    if (Math.abs(readingWheelScrollDOM.scrollTop - expected) > 0.01) {
+      throw new Error(`Scroll-event measurement discarded native progress: ${JSON.stringify({
+        progress, layoutDelta, nativeTop, expected, actual: readingWheelScrollDOM.scrollTop
+      })}`);
+    }
+  }
+}
+readingWheelController.markInteraction();
+readingAnchorDocumentTop = 1200;
+readingEstimatedOffset = 0;
+readingWheelScrollDOM.scrollTop = 1000;
 readingWheelScrollDOM.dispatch('wheel', { deltaX: 0, deltaY: -100, ctrlKey: false });
 readingWheelScrollDOM.scrollTop = 970;
 readingWheelScrollDOM.dispatch('scroll', {});
@@ -1804,7 +1891,96 @@ if (readingWheelScrollDOM.scrollTop !== 654) {
     `A negative height correction overrode native reading scroll: ${readingWheelScrollDOM.scrollTop}`
   );
 }
+// Smooth scrolling continues well after its last wheel event. Late virtual
+// height-map anchoring must not become a visible backward step during its tail.
+const originalMomentumNow = performance.now;
+let momentumNow = 0;
+performance.now = () => momentumNow;
+try {
+  readingWheelController.markInteraction();
+  readingAnchorDocumentTop = 1200;
+  readingEstimatedOffset = 0;
+  readingWheelScrollDOM.scrollTop = 1000;
+  readingWheelScrollDOM.dispatch('wheel', { deltaX: 0, deltaY: -1200, ctrlKey: false });
+  for (const [time, top] of [[100, 970], [300, 930], [450, 900]]) {
+    momentumNow = time;
+    readingWheelScrollDOM.scrollTop = top;
+    readingWheelScrollDOM.dispatch('scroll', {});
+    const pendingFrames = wheelFrames.splice(0);
+    for (const frame of pendingFrames) frame(time);
+    await Promise.resolve();
+  }
+  momentumNow = 500;
+  readingEstimatedOffset = 100;
+  readingWheelScrollDOM.scrollTop += 100;
+  readingWheelController.reconcileAfterEditorUpdate();
+  if (readingWheelScrollDOM.scrollTop !== 900) {
+    throw new Error(`Late height-map anchoring rebounded during native smooth progress: ${readingWheelScrollDOM.scrollTop}`);
+  }
+  momentumNow = 1500;
+  for (let n = 0; n < 5; n++) {
+    const pendingFrames = wheelFrames.splice(0);
+    for (const frame of pendingFrames) frame(momentumNow);
+    await Promise.resolve();
+  }
+  readingEstimatedOffset += 90;
+  readingWheelScrollDOM.scrollTop += 90;
+  readingWheelController.reconcileAfterEditorUpdate();
+  if (readingWheelScrollDOM.scrollTop !== 900) {
+    throw new Error(`Idle reading lost its anchor before a deferred block measurement: ${readingWheelScrollDOM.scrollTop}`);
+  }
+} finally {
+  readingWheelController.markInteraction();
+  performance.now = originalMomentumNow;
+}
 readingWheelController.destroy();
+if (readingWheelScrollDOM.listenerCount('scroll') !== 1 || readingWheelScrollDOM.listenerCount('wheel') !== 0) {
+  throw new Error('Destroy must detach the capture scroll listener and leave other observers intact');
+}
+
+// A viewport can contain only a rendered table or a diagram, without a normal
+// CodeMirror line. Delayed height-map receipts still need a visual reading owner.
+for (const kind of ['table', 'mermaid']) {
+  const document = new FakeEventTarget();
+  const scroller = Object.assign(new FakeEventTarget(), {
+    ownerDocument: document, scrollTop: 1000, scrollLeft: 0,
+    scrollHeight: 5000, scrollWidth: 900, clientHeight: 500, clientWidth: 900,
+    getBoundingClientRect: () => ({ top: 0, bottom: 500, height: 500 })
+  });
+  const source = Text.of(Array.from({ length: 80 }, () => 'source'));
+  const position = source.line(42).from;
+  let estimateDelta = 0;
+  const block = {
+    dataset: kind === 'table' ? { sourceLineNumber: '42' }
+      : { meoRenderedBlockStartLine: '42', meoRenderedBlockKind: kind },
+    getBoundingClientRect: () => ({
+      top: 800 - scroller.scrollTop,
+      bottom: 2000 - scroller.scrollTop
+    })
+  };
+  const view = {
+    dom: new FakeEventTarget(), scrollDOM: scroller, state: { doc: source },
+    contentDOM: { querySelectorAll: (selector: string) => {
+      if (selector === ':scope > .cm-line') return [];
+      return selector.includes(kind === 'table' ? 'data-source-line-number' : 'data-meo-rendered-block')
+        ? [block] : [];
+    } },
+    posAtDOM: () => position,
+    lineBlockAt: () => ({ from: position, top: 800 + estimateDelta }),
+    requestMeasure: ({ read, write }: any) => write(read())
+  };
+  const controller = new ViewportController(view as any);
+  scroller.dispatch('wheel', { deltaX: 0, deltaY: -120, ctrlKey: false });
+  scroller.scrollTop = 900;
+  scroller.dispatch('scroll', {});
+  estimateDelta = 90;
+  scroller.scrollTop += 90;
+  controller.reconcileAfterEditorUpdate();
+  if (scroller.scrollTop !== 900) {
+    throw new Error(`A ${kind}-only viewport rebounded after delayed measurement: ${scroller.scrollTop}`);
+  }
+  controller.destroy();
+}
 
 wheelController.markInteraction();
 wheelScrollDOM.scrollTop = 1000;
@@ -2807,6 +2983,54 @@ for (const interpolatedWhitespace of [undefined, true]) {
       throw new Error(`Preview presentation confused a retained reading band with whitespace: ${JSON.stringify(projections)}`);
     }
   } finally { controller.destroy(); }
+}
+
+// Independent alignment measures current semantic geometry only on explicit activation.
+{
+  const doc = Text.of(Array.from({ length: 100 }, () => 'line'));
+  const selection = { main: { anchor: 5, head: 9 } };
+  const scrollDOM = { scrollTop: 300, scrollLeft: 27, scrollHeight: 2000, scrollWidth: 900, clientHeight: 400, clientWidth: 800 };
+  let previewTop = 1800;
+  let geometryShift = 0;
+  let measurements = 0;
+  const view = {
+    dom: {}, scrollDOM, state: { doc, selection },
+    dispatch: () => { throw new Error('View alignment must not dispatch a selection or document change'); },
+    lineBlockAt: (position: number) => {
+      const line = doc.lineAt(position);
+      return { from: line.from, to: line.to, top: (line.number - 1) * 20, bottom: line.number * 20 };
+    }
+  };
+  const controller = new ViewportController(view as any, {
+    attachInteractions: false, getMode: () => 'source',
+    previewSurface: {
+      captureTopVisiblePosition: () => null, restoreTopVisiblePosition: () => { throw new Error('Measured map should own alignment'); },
+      readScrollTop: () => previewTop, writeScrollTop: top => { previewTop = top; },
+      captureLinkedGeometry: () => {
+        measurements++;
+        return { regions: [{ startLine: 11, endLine: 20, top: 500 + geometryShift, bottom: 600 + geometryShift }], maximumScrollTop: 2800 };
+      }
+    }
+  });
+  try {
+    if (!controller.alignLinkedViewport('editor') || previewTop !== 550 || scrollDOM.scrollTop !== 300) throw new Error('Manual Source alignment ignored semantic geometry');
+    if (controller.getLastViewportInteractionOwner() !== 'editor') throw new Error('Manual alignment lost its origin owner');
+    scrollDOM.scrollTop = 1200;
+    if (!controller.alignLinkedViewport('preview') || scrollDOM.scrollTop !== 300 || previewTop !== 550 || scrollDOM.scrollLeft !== 27) throw new Error('Manual Preview alignment changed its origin or Source horizontal position');
+    if (controller.getLastViewportInteractionOwner() !== 'preview' || view.state.selection !== selection) throw new Error('Manual alignment changed Source selection');
+    geometryShift = 120;
+    controller.alignLinkedViewport('editor');
+    if (previewTop !== 670 || measurements !== 3) throw new Error('Manual alignment reused stale geometry');
+    scrollDOM.scrollTop = 1000;
+    controller.editorViewportChanged();
+    controller.previewViewportChanged();
+    controller.linkedPreviewReady();
+    if (previewTop !== 670 || measurements !== 3) throw new Error('One-shot alignment enabled continuous sync or background measurements');
+    controller.setLinkedPreviewEnabled(true, 'last-interaction');
+    if (controller.alignLinkedViewport('editor')) throw new Error('Automatic sync must own linked alignment');
+    controller.setLinkedPreviewEnabled(false);
+  } finally { controller.destroy(); }
+  if (controller.alignLinkedViewport('editor')) throw new Error('Disposed alignment must be inert');
 }
 
 console.log('viewport controller checks passed');

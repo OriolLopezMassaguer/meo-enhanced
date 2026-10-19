@@ -1281,11 +1281,14 @@ async function main() {
       const command = table?.closest<HTMLElement>('.meo-md-html-table-shell')
         ?.querySelector<HTMLButtonElement>('button[data-tooltip="Insert row below"]');
       if (!command) throw new Error('Missing Insert row below control');
-      return !command.dispatchEvent(new PointerEvent('pointerdown', {
+      const consumed = !command.dispatchEvent(new PointerEvent('pointerdown', {
         button: 0,
         bubbles: true,
         cancelable: true
       }));
+      command.dispatchEvent(new PointerEvent('pointerup', { button: 0, bubbles: true }));
+      command.click();
+      return consumed;
     });
     if (!commandConsumed) throw new Error('Insert row below command was not consumed');
     await page.waitForFunction((expectedRows) => document.querySelectorAll<HTMLElement>(
