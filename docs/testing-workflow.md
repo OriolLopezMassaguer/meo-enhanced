@@ -50,7 +50,8 @@ Source/Live transitions continue to respect the caret; inline HTML and code keep
 their own input paths. `bun scripts/test-html-content.ts --pointer-only` runs only
 the HTML layout/gutter alignment with hidden trailing nodes and nested containers,
 HTML/math final-row clicks, native source dragging and actual Ctrl+C/Ctrl+V round trips,
-the nonselectable format action and source presentation through pointer release. The checks also
+the nonselectable format action and source presentation through pointer release, including
+entering a native table cell whose widget bypasses CodeMirror's pointer handlers. The checks also
 cover forward/reverse HTML/math cross-block drags, keyboard selection extension,
 source-only copying, exact cut/undo/redo and native HTML reading selection.
 `bun scripts/test-html-content.ts --selection-only` isolates those selection checks.

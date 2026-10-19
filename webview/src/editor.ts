@@ -2756,6 +2756,14 @@ export function createEditor({
   onEditorPointerDown = (event) => {
     if (event.button === 0) {
       suppressRenderedBlockPointerFocus(view.dom);
+      if (currentMode === 'live' && event.target instanceof Element &&
+        event.target.closest('.meo-md-html-table-shell')) {
+        // Table widgets bypass CodeMirror's pointer handlers. Keep the same
+        // source presentation until their own pointerup resolves the cell.
+        liveSelectionGeneration += 1;
+        liveSelectionPointerId = event.pointerId;
+        view.dispatch({ effects: setLivePointerSelectionActiveEffect.of({ active: true, preservedLine: null }) });
+      }
       const target = editableTarget(event.target);
       if (target) {
         // A new document click takes precedence over the focus target saved before blur.
@@ -3241,7 +3249,11 @@ export function createEditor({
     // Keep the originating diff domain while the completed selection remains.
     // Otherwise Chromium repaints the DOM range after pointerup and reveals
     // text from the other version under the same native range.
-    clearPointerSelection(true);
+    if (liveSelectionPointerId === event.pointerId && event.target instanceof Element &&
+      event.target.closest('.meo-md-html-table-shell')) {
+      // The table still needs the original hit geometry during this release.
+      finishPointerSelection(event.pointerId, true, true);
+    } else clearPointerSelection(true);
     if (completedSelection && quoteClick?.pointerId === event.pointerId && isLiveMode(view)
       && isPlainPrimaryPointerEvent(event) && view.state.selection.ranges.length === 1
       && view.state.selection.main.empty && Math.hypot(event.clientX - quoteClick.x, event.clientY - quoteClick.y) <= 3) {

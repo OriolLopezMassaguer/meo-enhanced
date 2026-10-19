@@ -186,6 +186,36 @@ async function checkHtmlPointerEditing(page: Page): Promise<void> {
     assert.equal(await page.$(selector), null, `${kind}: source collapses after release outside the block`);
     assert.equal(await page.evaluate(() => (window as any).__htmlEditor.view.state.selection.main.empty), true, `${kind}: clicking below creates no unintended selection`);
   }
+  for (const kind of ['html', 'math'] as const) {
+    await page.evaluate(({ kind, html }) => {
+      const editor = (window as any).__htmlEditor;
+      const block = kind === 'html' ? html : '$$\nx^2 + 1\n$$';
+      const text = `Before.\n\n${block}\n\n| Key | Value |\n| --- | ---: |\n| target | 11 |\n\nAfter.`;
+      editor.setText(text, true);
+      editor.view.dispatch({ selection: { anchor: text.indexOf(kind === 'html' ? 'First' : 'x^2') + 1 } });
+      editor.view.focus();
+    }, { kind, html });
+    await frames(page);
+    const target = await page.evaluate(() => {
+      const cell = Array.from(document.querySelectorAll<HTMLTextAreaElement>('.meo-md-html-table textarea'))
+        .find(input => input.value === '11')!;
+      const rect = cell.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, top: rect.top };
+    });
+    const selector = kind === 'html' ? '.meo-md-html-live-result' : '.meo-math-live-result';
+    await page.mouse.move(target.x, target.y); await page.mouse.down(); await frames(page);
+    assert.ok(await page.$(selector), `${kind}: entering a table preserves source until pointer release`);
+    assert.ok(Math.abs(await page.evaluate(() => Array.from(document.querySelectorAll<HTMLTextAreaElement>('.meo-md-html-table textarea'))
+      .find(input => input.value === '11')!.getBoundingClientRect().top) - target.top) <= 1,
+    `${kind}: a held table click must not move its target`);
+    await page.mouse.up(); await frames(page);
+    assert.equal(await page.$(selector), null, `${kind}: entering a table collapses source after release`);
+    assert.equal(await page.evaluate(() => document.activeElement instanceof HTMLTextAreaElement ? document.activeElement.value : null), '11',
+      `${kind}: release enters the table's native input`);
+    await page.keyboard.press('End'); await page.keyboard.type('_edited'); await frames(page);
+    assert.match(await page.evaluate(() => (window as any).__htmlEditor.getText()), /\| target \| 11_edited \|/,
+      `${kind}: the same table input remains editable after source collapse`);
+  }
   await page.evaluate(text => (window as any).__htmlEditor.setText(text, true), source);
 }
 

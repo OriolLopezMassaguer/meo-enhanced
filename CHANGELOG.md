@@ -9,6 +9,7 @@ Optimized project. New MEO Enhanced releases start from version 0.1.0.
 - Unified HTML and formula editing frames and preview dividers. Stabilized expansion, pointer selections, final-line hit testing, copying, line numbers and viewport positions; kept source actions visible only when their source is shown.
 - Kept HTML and formula source at the selected font size, prevented edited tables from jumping during layout changes, and kept pressed Mermaid controls attached during background updates.
 - Preserved rendered tables' source identities during widget reuse and kept visible table rows mounted while font changes reflow a long document.
+- Kept HTML and formula source expanded through table pointer gestures so collapsing source cannot move the cell before release or interrupt entering its editor.
 - Prevented mixed table and formula edits from briefly scrolling away from the active caret while virtual layouts settle.
 - Added LaTeX completion previews and syntax coloring in Source and Live, with better handling of unfinished formulas, fenced blocks and currency-like text.
 - Added Save As and undo/redo toolbar actions, configurable shortcuts and safer recovery from document-action failures. Improved saved-copy state and link navigation within MEO.
