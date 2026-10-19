@@ -96,6 +96,33 @@ assert.equal([...closedChanges].sort((left, right) => right.from - left.from)
 assert.equal(apply('accept', { from: 0, to: doc.indexOf(' B ') }), 'A one B {--two--} C {~~x~>y~~} D {==h==}{>>#c1 n<<}', 'a range limits the units');
 assert.equal(resolveAllCriticUnits('plain', [], 'accept').length, 0);
 
+// Nested marks: the scanner finds inner marks, and bulk review resolves them with their parent.
+const applyAll = (text: string, decision: 'accept' | 'reject', range?: { from: number; to: number }) =>
+  [...resolveAllCriticUnits(text, groupCriticUnits(findCriticMarks(text)), decision, range)]
+    .sort((left, right) => right.from - left.from)
+    .reduce((output, change) => output.slice(0, change.from) + change.insert + output.slice(change.to), text);
+assert.deepEqual(findCriticMarks('{++A {--B--} C++}').map((mark) => [mark.kind, mark.from, mark.to]), [['add', 0, 17], ['del', 5, 12]], 'inner marks are found');
+assert.equal(applyAll('{++A {--B--} C++}', 'accept'), 'A  C', 'accepting an addition resolves the deletion inside it');
+assert.equal(applyAll('{++A {--B--} C++}', 'reject'), '', 'rejecting an addition drops everything inside it');
+assert.equal(applyAll('{--A {++B++} C--}', 'reject'), 'A  C', 'rejecting a deletion rejects the addition inside it');
+assert.equal(applyAll('x {~~a {++b++}~>c {--d--}~~} y', 'accept'), 'x c  y', 'substitution halves resolve their inner marks');
+assert.equal(applyAll('x {~~a {++b++}~>c {--d--}~~} y', 'reject'), 'x a  y');
+assert.equal(applyAll('{==see {++new++} text==}{>>#c1 open<<}', 'accept'), '{==see new text==}{>>#c1 open<<}', 'an open note stays; changes inside its highlight resolve');
+assert.equal(applyAll('{==see {++new++} text==}{>>#c1 [x] done<<}', 'accept'), 'see new text', 'a resolved note clears its highlight and inner changes');
+assert.equal(applyAll('{++a {>>#c1 open<<} b++}', 'reject'), '', 'rejecting an addition drops a note proposed with it');
+assert.equal(applyAll('{++a {>>#c1 open<<} b++}', 'accept'), 'a {>>#c1 open<<} b', 'accepting keeps the open note inside');
+const nestedDoc = 'P {++outer {--inner--} end++} Q';
+const innerFrom = nestedDoc.indexOf('{--');
+assert.equal(applyAll(nestedDoc, 'accept', { from: innerFrom, to: nestedDoc.indexOf('--}') + 3 }), 'P {++outer  end++} Q', 'a range around an inner mark resolves only that mark');
+// The highlight's glued comment is found past its inner marks; the cursor picks the innermost unit.
+const gluedNested = groupCriticUnits(findCriticMarks('{==a {++b++} c==}{>>#c1 n<<}'));
+assert.deepEqual(gluedNested.map((unit) => [unit.kind, unit.from, unit.to, !!unit.comment]), [['hl', 0, 28, true], ['add', 5, 12, false]]);
+assert.equal(criticUnitAt(groupCriticUnits(findCriticMarks(nestedDoc)), innerFrom + 4)?.kind, 'del', 'the cursor resolves the innermost mark');
+assert.equal(resolve(nestedDoc, innerFrom + 4, 'reject'), 'P {++outer inner end++} Q');
+// Overlapping (not nested) matches are not marks; a comment body holds no marks.
+assert.deepEqual(findCriticMarks('{>>note {++x++}<<}').map((mark) => mark.kind), ['comment']);
+assert.deepEqual(findCriticMarks('{==a {++b==} c++}').map((mark) => mark.kind), ['hl'], 'an inner match crossing its parent is not a mark');
+
 const repoRoot = path.resolve(import.meta.dir, '..');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'meo-criticmarkup-review-'));
 const build = await Bun.build({
@@ -283,6 +310,47 @@ try {
   assert.equal(extras.restored, extras.text, 'accept all is one undo step');
   assert.equal(extras.rejectedAll, 'A  b old c {==h==}{>>#c01 @O 2026-10-18: pending<<} d ', 'reject all keeps the originals and open notes');
   assert.equal(extras.acceptedInSelection, extras.text.replace('{++new++}', 'new'), 'a selection limits accept all');
+
+  // Accept / reject all respect syntax contexts the renderer treats as literal, and resolve nested marks.
+  const contexts = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
+    const text = [
+      'Escaped \\{++keep++} here.',
+      'Math $x{++y++}$ stays.',
+      '',
+      '$$',
+      'a{--b--}',
+      '$$',
+      '',
+      'Link [t](http://x/{++a++}) and <http://y/{--b--}>.',
+      'Code `{++c++}` stays.',
+      '',
+      'Nested {++A {--B--} C++} and {==mark {>>#c05 @O: inner note<<} text==}.'
+    ].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    const panel = harness.createCriticCommentsPanel({ getView: () => editor.view, getStrings: () => ({ title: 'C', empty: 'None', acceptAll: 'A', rejectAll: 'R', hideResolved: 'H', markResolved: 'M' }) });
+    document.body.append(panel.element);
+    panel.open();
+    await settle();
+    const listed = Array.from(panel.element.querySelectorAll('.meo-critic-comments-body')).map((node) => node.textContent);
+    const action = (name: string) => (panel.element.querySelector(`.meo-critic-comments-action.${name}`) as HTMLElement).click();
+    action('is-accept');
+    await settle();
+    const accepted = editor.getText();
+    editor.undo();
+    await settle();
+    action('is-reject');
+    await settle();
+    const rejected = editor.getText();
+    panel.element.remove();
+    editor.destroy();
+    return { text, listed, accepted, rejected };
+  });
+  const untouched = contexts.text.split('\n').slice(0, 9).join('\n');
+  assert.deepEqual(contexts.listed, ['inner note'], 'a comment nested in a highlight is listed');
+  assert.equal(contexts.accepted, `${untouched}\n\nNested A  C and {==mark {>>#c05 @O: inner note<<} text==}.`, 'accept all leaves escapes, math, URLs and code alone and resolves nested marks');
+  assert.equal(contexts.rejected, `${untouched}\n\nNested  and {==mark {>>#c05 @O: inner note<<} text==}.`, 'reject all does the same');
 
   // Dates: the comment button writes today after the author.
   const dated = await page.evaluate(async () => {

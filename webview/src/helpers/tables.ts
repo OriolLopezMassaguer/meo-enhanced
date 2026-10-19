@@ -1503,6 +1503,8 @@ function appendTableInlinePreviewImage(
   parent.appendChild(dom);
 }
 
+const tableCriticClass: Readonly<Record<string, string>> = { add: 'meo-md-critic-add', del: 'meo-md-critic-del', hl: 'meo-md-critic-hl', comment: 'meo-md-critic-comment' };
+
 function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, options: {
   baseOffset?: number;
   diagnostics?: TableCellDiagnostics[];
@@ -1770,6 +1772,38 @@ function appendTableInlinePreviewNodes(parent: HTMLElement, text: string, option
       appendTablePlainText(el, text.slice(cursor, script.to - 1), baseOffset + cursor, diagnostics, searchState, sourceRange);
       parent.appendChild(el);
       i = script.to;
+      continue;
+    }
+
+    const critic = inlineSyntax.critics.get(baseOffset + i);
+    if (critic) {
+      flushBuffer();
+      // Delimiters stay in the cell as markers: hidden while CriticMarkup is on, plain text while it is off.
+      const appendMarker = (from: number, to: number) => {
+        const el = document.createElement('span');
+        el.className = 'meo-md-marker meo-md-critic-marker';
+        appendTablePlainText(el, text.slice(from - baseOffset, to - baseOffset), from, diagnostics, searchState, sourceRange);
+        parent.appendChild(el);
+      };
+      const appendContent = (from: number, to: number, className: string) => {
+        if (to <= from) return;
+        const el = document.createElement('span');
+        el.className = className;
+        // A comment body is plain text; other marks keep inline Markdown and inner marks.
+        if (critic.kind === 'comment') appendTablePlainText(el, text.slice(from - baseOffset, to - baseOffset), from, diagnostics, searchState, sourceRange);
+        else appendTableInlinePreviewNodes(el, text.slice(from - baseOffset, to - baseOffset), { ...options, baseOffset: from });
+        parent.appendChild(el);
+      };
+      appendMarker(baseOffset + i, critic.contentFrom);
+      if (critic.separator) {
+        appendContent(critic.contentFrom, critic.separator.from, 'meo-md-critic-del');
+        appendMarker(critic.separator.from, critic.separator.to);
+        appendContent(critic.separator.to, critic.contentTo, 'meo-md-critic-add');
+      } else {
+        appendContent(critic.contentFrom, critic.contentTo, tableCriticClass[critic.kind]);
+      }
+      appendMarker(critic.contentTo, critic.to);
+      i = critic.to - baseOffset;
       continue;
     }
 

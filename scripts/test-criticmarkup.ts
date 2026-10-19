@@ -70,6 +70,25 @@ assert(!html.includes('critic-add">escaped'), 'escaped brace must not open a mar
 assert(html.includes('{--fenced--}') && !html.includes('critic-del">fenced'), 'fenced code must stay literal');
 assert(preview.styles.dark.includes('.critic-add') && preview.styles.light.includes('.critic-del'), 'Preview styles carry the palette');
 
+// Preview: a mark that spans blocks becomes one span per block, with no delimiters left.
+const previewBody = (markdownText: string) => exportRuntime.renderPreviewDocument({
+  markdownText, sourceDocumentPath: 'C:/tmp/critic.md', uiLanguage: 'en', styleEnvironment: { previewFontFamily: '' }
+}).html.replace(/ data-source-[a-z-]+="[^"]*"/g, '');
+const spanningList = previewBody('{==a\n\n- b\n- c\n\nd==} tail');
+for (const expected of ['<p><span class="critic-hl">a</span></p>', '<li><span class="critic-hl">b</span></li>', '<li><span class="critic-hl">c</span></li>', '<p><span class="critic-hl">d</span> tail</p>']) {
+  assert(spanningList.includes(expected), `cross-block Preview missing ${expected}`);
+}
+assert(!spanningList.includes('{==') && !spanningList.includes('==}'), 'cross-block delimiters are removed');
+const spanningSub = previewBody('x {~~old\n\nmid~>new\n\nend~~} y');
+for (const expected of ['<p>x <span class="critic-del">old</span></p>', '<p><span class="critic-del">mid</span><span class="critic-add">new</span></p>', '<p><span class="critic-add">end</span> y</p>']) {
+  assert(spanningSub.includes(expected), `cross-block substitution missing ${expected}`);
+}
+assert(previewBody('p {++one\n\ntwo++} and {--in--} q').includes('<p><span class="critic-add">two</span> and <span class="critic-del">in</span> q</p>'), 'a mark after a cross-block mark still renders');
+const fencedOpener = previewBody('```\n{==in code\n```\n\nafter==}');
+assert(fencedOpener.includes('{==in code') && fencedOpener.includes('after==}') && !fencedOpener.includes('critic-hl'), 'an opener in code does not span');
+const escapedOpener = previewBody('\\{==esc\n\nno==}');
+assert(escapedOpener.includes('<p>{==esc</p>') && escapedOpener.includes('<p>no==}</p>'), 'an escaped opener does not span');
+
 // Editor: Live and Source.
 const build = await Bun.build({
   entrypoints: [path.join(repoRoot, 'scripts', 'test-highlight-entry.ts')],
@@ -166,6 +185,33 @@ try {
   }
   assert(crossBlock.live.markers.every((display) => display === 'none'), 'Live hides cross-block delimiters off the active mark');
   assert(crossBlock.source.markers.every((display) => display !== 'none'), 'Source keeps cross-block delimiters visible');
+
+  // Live tables render marks inside cells; with the setting off the cell shows the raw text.
+  const table = await page.evaluate(async () => {
+    const harness = (window as any).HighlightHarness;
+    const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 120));
+    document.getElementById('app')!.replaceChildren();
+    const text = ['| A | B |', '| --- | --- |', '| {++added++} | {~~old~>new~~} |', '| {==see **bold**==} | {>>#c1 note<<} |', '', 'Last paragraph.'].join('\n');
+    const editor = harness.createEditor({ parent: document.getElementById('app')!, text, initialMode: 'live', onApplyChanges() {} });
+    editor.view.dispatch({ selection: { anchor: text.length } });
+    await settle();
+    const cells = () => Array.from(document.querySelectorAll<HTMLElement>('.cm-editor td')).map((cell) => cell.innerText.trim());
+    const inCells = (selector: string) => Array.from(document.querySelectorAll<HTMLElement>(`.cm-editor td ${selector}`)).map((node) => node.textContent);
+    const on = { cells: cells(), add: inCells('.meo-md-critic-add'), del: inCells('.meo-md-critic-del'), hl: inCells('.meo-md-critic-hl'), comment: inCells('.meo-md-critic-comment'), bold: inCells('.meo-md-critic-hl .meo-md-strong') };
+    document.documentElement.classList.remove('meo-critic-markup');
+    await settle();
+    const off = cells();
+    document.documentElement.classList.add('meo-critic-markup');
+    editor.destroy();
+    return { on, off };
+  });
+  assert.deepEqual(table.on.add, ['added', 'new'], `Live table additions: ${JSON.stringify(table.on)}`);
+  assert.deepEqual(table.on.del, ['old']);
+  assert.deepEqual(table.on.hl, ['see bold'], 'inline Markdown renders inside a mark in a cell');
+  assert.deepEqual(table.on.bold, ['bold']);
+  assert.deepEqual(table.on.comment.map((value) => value?.trim()), ['#c1 note']);
+  assert.deepEqual(table.on.cells, ['added', 'oldnew', 'see bold', '#c1 note'], 'delimiters are hidden in Live table cells');
+  assert.deepEqual(table.off, ['{++added++}', '{~~old~>new~~}', '{==see bold==}', '{>>#c1 note<<}'], 'with the setting off the cell shows the marks as text');
 
   // The checkbox off: delimiters visible, no color, no strike-through, identical to plain Markdown text.
   const off = await page.evaluate(async () => {

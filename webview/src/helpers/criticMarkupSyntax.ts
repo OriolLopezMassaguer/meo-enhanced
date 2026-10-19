@@ -7,6 +7,8 @@ import {
   criticCommentTagRange, findCriticMarks, matchCriticMarkup, type CriticMark, type CriticMarkupKind
 } from '../../../src/foundation/criticMarkup';
 import { currentSyntaxTree, syntaxTreeChanged } from './markdownSyntax';
+import { collectMarkdownLiteralRanges } from './markdownLiteralRanges';
+import { collectLatexMathRanges } from './math';
 
 const OPEN_BRACE_CODE = 123;
 
@@ -140,13 +142,37 @@ export const sourceCriticField = StateField.define<DecorationSet>({
 // Lezer parses inline syntax one block at a time, so those marks are found here, on the
 // document text, and decorated for both Live and Source.
 const CROSS_BLOCK_MAX_LENGTH = 20000;
-const nonProseAncestors = new Set(['FencedCode', 'CodeBlock', 'InlineCode', 'CodeText', 'HTMLBlock', 'Comment', 'CommentBlock']);
+// Positions the renderer never reads as CriticMarkup: code, HTML, escapes (\{++x++}), inline math
+// and link destinations. Review actions must skip the same places, or they rewrite literal text.
+const nonProseAncestors = new Set([
+  'FencedCode', 'CodeBlock', 'InlineCode', 'CodeText', 'HTMLBlock', 'Comment', 'CommentBlock',
+  'Escape', 'InlineMath', 'URL', 'Autolink', 'LinkTitle', 'LinkLabel'
+]);
 const crossBlockMarker = Decoration.mark({ class: 'meo-md-marker meo-md-critic-marker' });
 const crossBlockMarkerActive = Decoration.mark({ class: 'meo-md-marker-active meo-md-critic-marker-active' });
 
 function insideNonProse(tree: ReturnType<typeof currentSyntaxTree>, position: number): boolean {
   for (let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(position, 1); node; node = node.parent) {
     if (nonProseAncestors.has(node.name)) return true;
+  }
+  return false;
+}
+
+/** Inline and display math (`$` blocks have no tree node), sorted by start. */
+function documentMathRanges(state: EditorState, tree: ReturnType<typeof currentSyntaxTree>): readonly { from: number; to: number }[] {
+  const literal = collectMarkdownLiteralRanges(state, tree).filter((range) => !range.script);
+  return collectLatexMathRanges(state.doc.toString(), { excludedRanges: [...literal] });
+}
+
+function insideRanges(ranges: readonly { from: number; to: number }[], position: number): boolean {
+  let low = 0;
+  let high = ranges.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const range = ranges[middle];
+    if (position < range.from) high = middle - 1;
+    else if (position >= range.to) low = middle + 1;
+    else return true;
   }
   return false;
 }
@@ -162,7 +188,8 @@ export function criticMarksInState(state: EditorState): CriticMark[] {
   const tree = currentSyntaxTree(state);
   const cached = marksCache.get(state.doc);
   if (cached && cached.tree === tree) return cached.marks;
-  const marks = findCriticMarks(state.doc.toString(), (position) => insideNonProse(tree, position));
+  const math = documentMathRanges(state, tree);
+  const marks = findCriticMarks(state.doc.toString(), (position) => insideNonProse(tree, position) || insideRanges(math, position));
   marksCache.set(state.doc, { tree, marks });
   return marks;
 }

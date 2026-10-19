@@ -3,6 +3,7 @@ import { Table, type LeafBlock, type LeafBlockParser, type MarkdownConfig, type 
 import { parseMarkdownTable } from '../application/delimitedTable';
 import { isThematicBreakLine } from './frontmatter';
 import { criticMarkdownExtension } from './criticMarkupSyntax';
+import type { CriticMarkupKind } from '../../../src/foundation/criticMarkup';
 import { footnoteMarkdownExtension } from './footnotes';
 import { highlightMarkdownExtension } from './highlightSyntax';
 import { inlineScriptMarkdownExtension } from './inlineStyles';
@@ -41,6 +42,9 @@ const literalParser = (markdownLanguage.parser as MarkdownParser).configure(lite
 export const inlineMarkdownExtensions = [...literalExtensions, createMathLiteralSyntaxExtension(literalParser), createPunctuationInlineStyleExtension(literalParser)];
 const inlineParser = (markdownLanguage.parser as MarkdownParser).configure(inlineMarkdownExtensions);
 
+export type TableCriticMark = { kind: CriticMarkupKind; contentFrom: number; contentTo: number; to: number; separator?: { from: number; to: number } };
+const criticKinds: Readonly<Record<string, CriticMarkupKind>> = { CriticAdd: 'add', CriticDel: 'del', CriticSub: 'sub', CriticHighlight: 'hl', CriticComment: 'comment' };
+
 /** Tables adapt the same resolved inline tree as prose, retaining source offsets. */
 export function parseTableInlineSyntax(text: string, offset: number) {
   const spans = new Map<number, { kind: 'em' | 'strong' | 'strike' | 'highlight'; contentFrom: number; contentTo: number; to: number }>();
@@ -48,7 +52,16 @@ export function parseTableInlineSyntax(text: string, offset: number) {
   const htmlTags = new Map<number, number>();
   const codes = new Map<number, { contentFrom: number; contentTo: number; to: number }>();
   const links = new Map<number, { image: boolean; labelFrom: number; labelTo: number; urlFrom: number; urlTo: number; to: number }>();
+  const critics = new Map<number, TableCriticMark>();
   inlineParser.parse(`x ${text}`).iterate({ enter(node) {
+    const criticKind = criticKinds[node.name];
+    if (criticKind) {
+      const separator = node.node.getChild('CriticSubSep');
+      critics.set(offset + node.from - 2, {
+        kind: criticKind, contentFrom: offset + node.from + 3 - 2, contentTo: offset + node.to - 3 - 2, to: offset + node.to - 2,
+        ...(separator ? { separator: { from: offset + separator.from - 2, to: offset + separator.to - 2 } } : {})
+      });
+    }
     if (node.name === 'InlineCode') {
       const first = node.node.firstChild, last = node.node.lastChild;
       if (first && last) codes.set(offset + node.from - 2, { contentFrom: offset + first.to - 2, contentTo: offset + last.from - 2, to: offset + node.to - 2 });
@@ -69,5 +82,5 @@ export function parseTableInlineSyntax(text: string, offset: number) {
     const first = node.node.firstChild, last = node.node.lastChild;
     if (first && last) spans.set(offset + node.from - 2, { kind, contentFrom: offset + first.to - 2, contentTo: offset + last.from - 2, to: offset + node.to - 2 });
   } });
-  return { spans, scripts, htmlTags, codes, links, mathExcludedRanges: text.includes('$') ? collectInlineMathExcludedRanges(literalParser, text).map(range => ({ from: offset + range.from, to: offset + range.to })) : [] };
+  return { spans, scripts, htmlTags, codes, links, critics, mathExcludedRanges: text.includes('$') ? collectInlineMathExcludedRanges(literalParser, text).map(range => ({ from: offset + range.from, to: offset + range.to })) : [] };
 }

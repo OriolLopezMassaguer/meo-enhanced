@@ -127,28 +127,43 @@ export type CriticUnit = Readonly<{
 const CROSS_BLOCK_MAX_LENGTH = 20000;
 
 /**
- * Every mark in the document, including marks that open in one block and close in another.
- * `skip` lets the caller exclude positions that are not prose (code spans, fenced code).
+ * Every mark in the document, sorted by start, including marks that open in one block and close
+ * in another and marks nested inside other marks (`{++A {--B--} C++}`). A comment body is plain
+ * text, so nothing nests inside a comment. Marks nest but never overlap: an inner match that runs
+ * past the content of its parent is not a mark. `skip` lets the caller exclude positions that are
+ * not prose (code, escapes, math, link destinations).
  */
 export function findCriticMarks(text: string, skip: (position: number) => boolean = () => false): CriticMark[] {
   const marks: CriticMark[] = [];
+  // Content ends of the marks that enclose the scan position, innermost last.
+  const parents: number[] = [];
   for (let from = text.indexOf('{'); from >= 0; from = text.indexOf('{', from + 1)) {
+    while (parents.length && from >= parents[parents.length - 1]) parents.pop();
     const match = matchCriticMarkup(text, from);
     if (!match || match.to - from > CROSS_BLOCK_MAX_LENGTH || skip(from)) continue;
+    if (parents.length && match.to > parents[parents.length - 1]) continue;
     marks.push({ ...match, from });
-    from = match.to - 1;
+    if (match.kind === 'comment') from = match.to - 1;
+    else {
+      parents.push(match.to - match.closeLength);
+      from += match.openLength - 1;
+    }
   }
   return marks;
 }
 
 export function groupCriticUnits(marks: readonly CriticMark[]): CriticUnit[] {
+  const commentsByStart = new Map<number, CriticMark>();
+  for (const mark of marks) if (mark.kind === 'comment') commentsByStart.set(mark.from, mark);
+  const glued = new Set<CriticMark>();
   const units: CriticUnit[] = [];
-  for (let index = 0; index < marks.length; index += 1) {
-    const mark = marks[index];
-    const next = marks[index + 1];
-    if (mark.kind === 'hl' && next?.kind === 'comment' && next.from === mark.to) {
-      units.push({ from: mark.from, to: next.to, kind: 'hl', mark, comment: next });
-      index += 1;
+  for (const mark of marks) {
+    if (glued.has(mark)) continue;
+    // The glued comment starts where the highlight ends; inner marks of the highlight come first.
+    const comment = mark.kind === 'hl' ? commentsByStart.get(mark.to) : undefined;
+    if (comment) {
+      glued.add(comment);
+      units.push({ from: mark.from, to: comment.to, kind: 'hl', mark, comment });
     } else {
       units.push({ from: mark.from, to: mark.to, kind: mark.kind, mark });
     }
@@ -156,39 +171,42 @@ export function groupCriticUnits(marks: readonly CriticMark[]): CriticUnit[] {
   return units;
 }
 
-/** The unit containing `position` (delimiters included), or null. */
+/** The innermost unit containing `position` (delimiters included), or null. */
 export function criticUnitAt(units: readonly CriticUnit[], position: number): CriticUnit | null {
-  return units.find((unit) => position >= unit.from && position <= unit.to) ?? null;
+  let found: CriticUnit | null = null;
+  for (const unit of units) {
+    if (position < unit.from || position > unit.to) continue;
+    if (!found || unit.to - unit.from < found.to - found.from) found = unit;
+  }
+  return found;
 }
 
 export type CriticResolution = Readonly<{ from: number; to: number; insert: string }>;
 
 /** Accept keeps the proposed text, reject keeps the original; both drop the delimiters and notes. */
 export function resolveCriticUnit(text: string, unit: CriticUnit, decision: 'accept' | 'reject'): CriticResolution {
+  const kept = keptRange(unit, decision);
+  return { from: unit.from, to: unit.to, insert: kept ? text.slice(kept.from, kept.to) : '' };
+}
+
+/** The part of a unit that survives the decision, or null when nothing does. */
+function keptRange(unit: CriticUnit, decision: 'accept' | 'reject'): Readonly<{ from: number; to: number }> | null {
   const { mark } = unit;
   const contentFrom = mark.from + mark.openLength;
   const contentTo = mark.to - mark.closeLength;
-  let insert = '';
   switch (mark.kind) {
     case 'add':
-      insert = decision === 'accept' ? text.slice(contentFrom, contentTo) : '';
-      break;
+      return decision === 'accept' ? { from: contentFrom, to: contentTo } : null;
     case 'del':
-      insert = decision === 'accept' ? '' : text.slice(contentFrom, contentTo);
-      break;
+      return decision === 'accept' ? null : { from: contentFrom, to: contentTo };
     case 'sub':
-      insert = mark.separator
-        ? decision === 'accept' ? text.slice(mark.separator.to, contentTo) : text.slice(contentFrom, mark.separator.from)
-        : '';
-      break;
+      if (!mark.separator) return null;
+      return decision === 'accept' ? { from: mark.separator.to, to: contentTo } : { from: contentFrom, to: mark.separator.from };
     case 'hl':
-      insert = text.slice(contentFrom, contentTo);
-      break;
+      return { from: contentFrom, to: contentTo };
     case 'comment':
-      insert = '';
-      break;
+      return null;
   }
-  return { from: unit.from, to: unit.to, insert };
 }
 
 /** `c07` -> next is `c08`; keeps the widest zero padding seen. Ids come from comment marks only. */
@@ -237,8 +255,45 @@ export function resolveAllCriticUnits(
   decision: 'accept' | 'reject',
   range?: Readonly<{ from: number; to: number }>
 ): CriticResolution[] {
-  return units
-    .filter((unit) => !range || (unit.from >= range.from && unit.to <= range.to))
-    .filter((unit) => !isOpenReviewNote(text, unit))
-    .map((unit) => resolveCriticUnit(text, unit, decision));
+  const resolvable = (node: UnitNode): boolean =>
+    (!range || (node.unit.from >= range.from && node.unit.to <= range.to)) && !isOpenReviewNote(text, node.unit);
+  // The text of [from, to) with each unit inside it resolved, or kept with its own inner units resolved.
+  const render = (from: number, to: number, children: readonly UnitNode[]): string => {
+    let output = '';
+    let cursor = from;
+    for (const child of children) {
+      if (child.unit.from < cursor || child.unit.to > to) continue;
+      output += text.slice(cursor, child.unit.from) + (resolvable(child) ? resolved(child) : render(child.unit.from, child.unit.to, child.children));
+      cursor = child.unit.to;
+    }
+    return output + text.slice(cursor, to);
+  };
+  const resolved = (node: UnitNode): string => {
+    const kept = keptRange(node.unit, decision);
+    return kept ? render(kept.from, kept.to, node.children) : '';
+  };
+  // A resolved unit is one edit that already covers its inner units; a kept unit lets its inner
+  // units resolve as separate edits. Either way the edits never overlap.
+  const collect = (nodes: readonly UnitNode[]): CriticResolution[] => nodes.flatMap((node) => resolvable(node)
+    ? [{ from: node.unit.from, to: node.unit.to, insert: resolved(node) }]
+    : collect(node.children));
+  return collect(nestCriticUnits(units));
+}
+
+type UnitNode = Readonly<{ unit: CriticUnit; children: UnitNode[] }>;
+
+/** Units as a forest: each unit holds the units nested inside it, in document order. */
+function nestCriticUnits(units: readonly CriticUnit[]): UnitNode[] {
+  const sorted = [...units].sort((left, right) => left.from - right.from || right.to - left.to);
+  const roots: UnitNode[] = [];
+  const stack: UnitNode[] = [];
+  for (const unit of sorted) {
+    while (stack.length && unit.from >= stack[stack.length - 1].unit.to) stack.pop();
+    const node: UnitNode = { unit, children: [] };
+    const parent = stack[stack.length - 1];
+    if (parent && unit.to <= parent.unit.to) parent.children.push(node);
+    else roots.push(node);
+    stack.push(node);
+  }
+  return roots;
 }
