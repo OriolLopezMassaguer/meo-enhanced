@@ -234,6 +234,17 @@ exact commands without running them.
 
 ## Daily repair loop
 
+Browser fixtures must establish the state their assertions inspect. Reset an
+inherited selection and fit a finite fixture before querying its complete reading
+DOM; offscreen nodes may be virtualized. After a pointer release, wait for the
+resulting presentation before reading its activity markers. For text-boundary
+clicks, use integer coordinates inside the first half of the visible glyph rather
+than a fractional edge that can round into hidden syntax. Inject command failures
+into document-changing transactions so unrelated UI effects cannot consume them.
+When positioning a popup after typing, use a native wheel gesture and verify the
+actual anchor position before testing its edge layout. Assigning `scrollTop`
+alone does not signal a new user scroll and can compete with input retention.
+
 `scripts/test-document-save-as-view-state.ts` checks one-shot view handoff before
 native replacement resolves and when the default editor needs a later MEO open.
 The first init retains mode, semantic reading position and selection with opening

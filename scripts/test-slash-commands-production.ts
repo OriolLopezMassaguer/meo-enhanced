@@ -53,10 +53,22 @@ try {
   });
   const placeAnchor = async (offset: number) => {
     await page.evaluate(() => (window as any).editor.view.dispatch({ scrollIntoView: true })); await settlePosition();
-    await page.evaluate(offset => {
+    const target = await page.evaluate(offset => {
       const g = window as any, view = g.editor.view, coords = view.coordsAtPos(g.slashAnchor ?? view.state.selection.main.head);
-      view.scrollDOM.scrollTop += coords.top - view.scrollDOM.getBoundingClientRect().top - offset;
-    }, offset); await settlePosition();
+      const viewport = view.scrollDOM.getBoundingClientRect();
+      return { x: viewport.right - 24, y: viewport.top + viewport.height / 2,
+        delta: coords.top - viewport.top - offset };
+    }, offset);
+    // Scrolling after typing is a new user intent, so retire input retention
+    // through the native wheel path before measuring the popup's edge layout.
+    await page.mouse.move(target.x, target.y);
+    await page.mouse.wheel({ deltaY: target.delta });
+    await settlePosition();
+    await page.waitForFunction(offset => {
+      const g = window as any, view = g.editor.view;
+      const coords = view.coordsAtPos(g.slashAnchor ?? view.state.selection.main.head);
+      return Math.abs(coords.top - view.scrollDOM.getBoundingClientRect().top - offset) < 1;
+    }, { timeout: 3000 }, offset);
   };
   const geometry = () => page.evaluate(() => {
     const g = window as any, view = g.editor.view, anchor = view.coordsAtPos(g.slashAnchor), popup = document.querySelector<HTMLElement>('.meo-input-suggestions')!, menu = popup.getBoundingClientRect(), scroller = view.scrollDOM.getBoundingClientRect();

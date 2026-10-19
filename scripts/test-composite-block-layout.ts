@@ -600,6 +600,9 @@ async function main() {
       await page.waitForFunction(source=>(window as any).__editors.quote.getText()===source,{timeout:2000},fixtures.quote);
     }
     await page.click('#table tbody .meo-md-footnote-ref');
+    // Table pointer release commits deferred source presentation on its next
+    // frame; read the resulting activity marker after that presentation lands.
+    await page.waitForFunction(() => document.querySelector('#table .cm-activeLine')?.textContent?.includes('[^cell]'));
     const after = await page.evaluate(()=>({
       footnoteNavigation:document.querySelector('#table .cm-activeLine')?.textContent?.includes('[^cell]'),
       split:!!document.querySelector('#quote .meo-mermaid-editing-block.is-split'),

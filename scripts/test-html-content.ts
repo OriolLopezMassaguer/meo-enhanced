@@ -651,6 +651,11 @@ async function main(): Promise<void> {
       assert.deepEqual(errors, []); console.log('HTML/math cross-block selection, layout/gutter, source copy, unselectable actions and pointer-release checks passed.'); return;
     }
     await checkHtmlPasteEditing(page);
+    // This snapshot inspects the complete reading DOM, including nodes below
+    // the normal interaction viewport. Reset the inherited caret and fit it.
+    await select(page, 'Prelude paragraph.');
+    await page.setViewport({ width: 1000, height: 2400, deviceScaleFactor: 1 });
+    await frames(page);
     const initial = await page.evaluate(() => {
       const root = document.querySelector('.cm-editor')!;
       const empty = root.querySelector<HTMLElement>('.meo-md-html-invisible-source-text');
@@ -712,6 +717,8 @@ async function main(): Promise<void> {
     assert.equal(initial.unsupported, true);
     assert.equal(initial.warning, true);
     assert.equal(initial.comment, true);
+    await page.setViewport({ width: 1000, height: 1200, deviceScaleFactor: 1 });
+    await frames(page);
     await page.screenshot({ path: path.join(artifacts, 'light-reading.png') });
 
     const beforeTop = await page.$eval('#center', node => node.getBoundingClientRect().top);
