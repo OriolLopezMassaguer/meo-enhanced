@@ -2832,8 +2832,8 @@ export function createEditor({
   interactionContinuity = createEditorInteractionContinuity({
     view,
     viewport: {
-      retainCaretTop(position, top, isCurrent) {
-        viewportController.retainPositionTop(position, top, isCurrent);
+      retainCaretTop(position, top, isCurrent, measuredLayout) {
+        viewportController.retainPositionTop(position, top, isCurrent, measuredLayout);
       },
       revealCaret(position, isCurrent, originScrollTop) {
         viewportController.revealPosition(position, {

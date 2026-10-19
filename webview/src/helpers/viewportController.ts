@@ -165,6 +165,7 @@ interface NavigationRevealState {
 interface NavigationRevealOptions {
   readonly schedule?: 'immediate' | 'next-frame';
   readonly settle?: boolean;
+  readonly measuredLayout?: boolean;
 }
 
 interface RevealPositionOptions {
@@ -1993,13 +1994,13 @@ export class ViewportController {
       state.phase = 'settling';
       scheduleNextMeasure(measure);
     };
-    const measure = (): void => {
+    const measure = (measuredLayout = false): void => {
       if (!isRevealCurrent() || attempts >= MAX_SETTLE_FRAMES) {
         finish();
         return;
       }
       attempts += 1;
-      this.view.requestMeasure({
+      const request = {
         read: () => {
           if (!isRevealCurrent()) return { kind: 'unavailable' } as const;
           if (state.phase === 'reserved') state.phase = 'measured';
@@ -2014,7 +2015,7 @@ export class ViewportController {
             return { kind: 'unavailable' } as const;
           }
         },
-        write: (initialMeasurement) => {
+        write: (initialMeasurement: NavigationRevealMeasurement) => {
           if (!isRevealCurrent() || initialMeasurement.kind === 'unavailable') {
             finish();
             return;
@@ -2101,11 +2102,15 @@ export class ViewportController {
             completeFrame(measure, changed);
           });
         }
-      });
+      };
+      // Editor measurement receipts already describe the finished DOM. A new
+      // RAF here would expose its height-map correction before retaining input.
+      if (measuredLayout) request.write(request.read());
+      else this.view.requestMeasure(request);
     };
 
     if (options.schedule === 'next-frame') scheduleNextMeasure(measure);
-    else measure();
+    else measure(options.measuredLayout);
   }
 
   private stabilizeScrollPosition(target: ScrollPosition): void {
@@ -2376,7 +2381,8 @@ export class ViewportController {
   retainPositionTop(
     position: number,
     viewportTop: number,
-    isCurrent: () => boolean = () => true
+    isCurrent: () => boolean = () => true,
+    measuredLayout = false
   ): void {
     const targetPosition = Math.max(0, Math.min(position, this.view.state.doc.length));
     this.runNavigationReveal(() => {
@@ -2388,7 +2394,7 @@ export class ViewportController {
         kind: 'target',
         target: { top: this.view.scrollDOM.scrollTop + delta }
       };
-    }, { settle: true }, isCurrent);
+    }, { settle: true, measuredLayout }, isCurrent);
   }
 
   private revealPositionInternal(

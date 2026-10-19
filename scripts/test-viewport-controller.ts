@@ -1421,10 +1421,10 @@ if (revealScrollDOM.scrollTop !== 420) {
   throw new Error(`A stale reveal moved the viewport to ${revealScrollDOM.scrollTop}`);
 }
 
-type GeometryShiftInterruption = 'none' | 'stale-frame' | 'destroy' | 'late-measure' | 'editor-update-overwrite' | 'read-write-layout' | 'layout-preservation' | 'overlap-layout-preservation';
+type GeometryShiftInterruption = 'none' | 'stale-frame' | 'destroy' | 'late-measure' | 'editor-update-overwrite' | 'editor-update-layout' | 'read-write-layout' | 'layout-preservation' | 'overlap-layout-preservation';
 
 const runGeometryShiftReveal = async (
-  kind: 'ordinary' | 'settled' | 'bounds',
+  kind: 'ordinary' | 'settled' | 'bounds' | 'retained',
   interruption: GeometryShiftInterruption = 'none'
 ) => {
   const frames: FrameRequestCallback[] = [];
@@ -1491,7 +1491,8 @@ const runGeometryShiftReveal = async (
 
   try {
     const isCurrent = controller.beginNavigationReveal();
-    if (kind === 'ordinary') controller.revealPosition(1600, { y: 'center' }, isCurrent);
+    if (kind === 'retained') controller.retainPositionTop(1600, 350, isCurrent);
+    else if (kind === 'ordinary') controller.revealPosition(1600, { y: 'center' }, isCurrent);
     else if (kind === 'bounds') controller.revealVerticalBounds(
       () => ({ top: targetTop - scrollTop, bottom: targetTop + 20 - scrollTop }),
       isCurrent
@@ -1508,6 +1509,20 @@ const runGeometryShiftReveal = async (
     } else {
       flushMeasure();
       await Promise.resolve();
+      if (interruption === 'editor-update-layout') {
+        targetTop += 600;
+        scrollTop += 200;
+        controller.reconcileAfterEditorUpdate();
+        // The input owner receives this completed geometry receipt before the
+        // browser paints, while the next measure request is still queued.
+        controller.retainPositionTop(1600, 350, isCurrent, true);
+        await Promise.resolve();
+        if (targetTop - scrollTop !== 350) {
+          throw new Error(`Retained caret used an old absolute offset after measurement: ${targetTop - scrollTop}`);
+        }
+        await flushAll();
+        return { scrollTop, writes, targetVisible: targetTop >= scrollTop && targetTop + 20 <= scrollTop + 500 };
+      }
       if (interruption === 'layout-preservation' || interruption === 'overlap-layout-preservation') {
         if (interruption === 'overlap-layout-preservation') {
           // The same navigation can request another reveal after adopting its
@@ -1577,6 +1592,10 @@ if (
   JSON.stringify(ordinaryGeometryReveal.writes) !== '[1360]'
 ) {
   throw new Error(`One-shot reveal did not expose the layout overwrite: ${JSON.stringify(ordinaryGeometryReveal)}`);
+}
+const retainedGeometryReveal = await runGeometryShiftReveal('retained', 'editor-update-layout');
+if (!retainedGeometryReveal.targetVisible || JSON.stringify(retainedGeometryReveal.writes) !== '[1250,1250,1850]') {
+  throw new Error(`Measured layout changed a retained caret's viewport offset: ${JSON.stringify(retainedGeometryReveal)}`);
 }
 const settledGeometryReveal = await runGeometryShiftReveal('settled');
 if (

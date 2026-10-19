@@ -32,6 +32,7 @@ function checkPendingInputLayoutOwnership(): void {
     for (const reflowed of [false, true]) {
       let caretTop = 350;
       let lineHeight = 24;
+      let pendingHeightMapShift = false;
       const dom = Object.assign(new EventTarget(), { ownerDocument: new EventTarget() });
       const scroller = Object.assign(new EventTarget(), {
         scrollTop: 1_000,
@@ -42,7 +43,14 @@ function checkPendingInputLayoutOwnership(): void {
         state: { selection: { main: { head: 100, empty: true } },
           doc: { length: 1_000, lineAt: () => ({ number: 10 }) } },
         coordsAtPos: () => ({ top: caretTop, bottom: caretTop + 24 }),
-        lineBlockAt: () => ({ height: lineHeight }),
+        lineBlockAt: () => {
+          if (pendingHeightMapShift) {
+            pendingHeightMapShift = false;
+            caretTop = 700;
+            scroller.scrollTop = 800;
+          }
+          return { height: lineHeight };
+        },
         requestMeasure: ({ read, write }: any) => write(read())
       };
       let retains = 0;
@@ -77,9 +85,33 @@ function checkPendingInputLayoutOwnership(): void {
         continuity.observe({
           transactions: [{ docChanged: true, isUserEvent: () => true }], selectionSet: true
         } as any);
+        continuity.observe({ transactions: [{ docChanged: false, effects: [{ is: () => true }] }], selectionSet: false } as any);
+        // Two post-refresh geometry receipts can arrive before any queued RAF.
+        // They must not consume the input's two stable animation frames.
+        for (let receipt = 0; receipt < 2; receipt++) {
+          continuity.observe({ transactions: [{ docChanged: false, effects: [] }], selectionSet: false, geometryChanged: true } as any);
+        }
+        // CodeMirror can correct virtual heights during its current measure
+        // pass, while the input owner already has a later RAF scheduled.
+        caretTop = 700;
+        scroller.scrollTop = 800;
+        continuity.observe({ transactions: [], selectionSet: false, viewportChanged: true } as any);
+        if (caretTop !== 350 || retains !== 2) {
+          throw new Error('Post-refresh receipts ended input retention before a frame advanced');
+        }
+        // A height-map query can flush a queued CodeMirror measurement. Its
+        // final caret must be read afterwards, not paired with an older rect.
+        pendingHeightMapShift = true;
+        continuity.observe({ transactions: [], selectionSet: false, geometryChanged: true } as any);
+        if (caretTop !== 350 || retains !== 3) throw new Error('Input measurement mixed two height-map layouts');
+        view.state.selection.main.head += 10;
+        continuity.observe({ transactions: [], selectionSet: true } as any);
+        caretTop = 700;
+        continuity.observe({ transactions: [], selectionSet: false, geometryChanged: true } as any);
+        if (caretTop !== 700 || retains !== 3) throw new Error('New navigation must retire the main input anchor');
       }
       continuity.dispose();
-      if (reflowed ? retains !== 0 || reveals !== 0 : retains !== 1 || reveals !== 0 || caretTop !== 350) {
+      if (reflowed ? retains !== 0 || reveals !== 0 : retains !== 3 || reveals !== 0 || caretTop !== 700) {
         throw new Error(`Pending input layout ownership failed: ${JSON.stringify({ reflowed, retains, reveals, caretTop })}`);
       }
     }
